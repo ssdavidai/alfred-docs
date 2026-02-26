@@ -4,24 +4,19 @@ description: "Get information about a specific Temporal task queue"
 api: "GET /api/v1/admin/temporal/task-queues/{name}"
 ---
 
-Retrieve detailed information about a Temporal task queue, including active pollers, task statistics, and backlog information.
+Retrieve information about a Temporal task queue. Runs `temporal task-queue describe --task-queue <name> --output json` inside the temporal container and returns the parsed output.
 
 ## Path Parameters
 
 <ParamField path="name" type="string" required>
-  The name of the task queue to describe (e.g., "alfred-workflows", "curator-tasks").
+  The name of the task queue to describe.
 </ParamField>
 
 <RequestExample>
 
 ```bash curl
-# Describe the main Alfred workflow task queue
-curl -H "X-API-Key: YOUR_API_KEY" \
-  https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/temporal/task-queues/alfred-workflows
-
-# Describe a specific service task queue
-curl -H "X-API-Key: YOUR_API_KEY" \
-  https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/temporal/task-queues/curator-tasks
+curl -H "Authorization: Bearer YOUR_API_KEY" \
+  https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/temporal/task-queues/my-task-queue
 ```
 
 </RequestExample>
@@ -30,7 +25,7 @@ curl -H "X-API-Key: YOUR_API_KEY" \
 
 ```json
 {
-  "taskQueueName": "alfred-workflows",
+  "taskQueueName": "my-task-queue",
   "taskQueueType": "Workflow",
   "pollers": [
     {
@@ -55,13 +50,5 @@ curl -H "X-API-Key: YOUR_API_KEY" \
 </ResponseExample>
 
 <Note>
-  Active pollers indicate healthy workers. A `backlogCountHint` of 0 means all tasks are being processed in real-time. If the backlog grows, consider scaling workers or investigating slow task execution.
+  The response structure depends on the Temporal CLI's output. If it outputs non-JSON text, the response will be `{ "raw": "..." }` instead.
 </Note>
-
-<Tip>
-  Common task queues in Alfred:
-  - `alfred-workflows` - Main workflow task queue
-  - `curator-tasks` - Curator daemon activities
-  - `janitor-tasks` - Janitor daemon activities
-  - `distiller-tasks` - Distiller daemon activities
-</Tip>

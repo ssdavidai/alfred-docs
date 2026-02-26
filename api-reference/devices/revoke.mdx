@@ -6,26 +6,25 @@ api: "POST /api/v1/devices/{deviceId}/revoke"
 
 Revokes specific role-based access for a paired device without fully removing it. The device remains paired but loses access to operations requiring the revoked role.
 
+<Note>
+  This endpoint uses `deviceId` in the URL path (not `requestId`). This is the identifier of an already-paired device.
+</Note>
+
 <ParamField path="deviceId" type="string" required>
   The unique identifier of the paired device whose access should be revoked.
 </ParamField>
 
-<ParamField header="Authorization" type="string" required>
-  Bearer token for API authentication. Use `Bearer YOUR_API_KEY`.
-</ParamField>
-
 <ParamField body="role" type="string" required>
-  The role to revoke from the device. Valid values: `agent`, `user`, `admin`.
+  The role to revoke from the device. Valid values: `agent`, `user`, `admin`. This field is required and will return a validation error if omitted.
 </ParamField>
 
 <RequestExample>
 
 ```bash cURL
-curl --request POST \
-  --url https://alfred-acme.tailnet.ts.net:3100/api/v1/devices/dev_x9y8z7w6v5/revoke \
-  --header 'Authorization: Bearer YOUR_API_KEY' \
-  --header 'Content-Type: application/json' \
-  --data '{
+curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/v1/devices/dev_x9y8z7w6v5/revoke \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
     "role": "admin"
   }'
 ```
@@ -36,11 +35,21 @@ curl --request POST \
 
 ```json Response
 {
-  "message": "Device access revoked successfully",
-  "deviceId": "dev_x9y8z7w6v5",
-  "revokedRole": "admin",
-  "remainingRoles": ["agent"]
+  "message": "Access revoked"
+}
+```
+
+```json Validation Error
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "role is required"
+  }
 }
 ```
 
 </ResponseExample>
+
+<ResponseField name="message" type="string">
+  Human-readable status message. Contains the stdout from `openclaw devices revoke`, or `"Access revoked"` if stdout is empty.
+</ResponseField>

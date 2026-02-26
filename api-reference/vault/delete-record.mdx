@@ -6,7 +6,7 @@ api: "DELETE /api/v1/vault/records/{path}"
 
 ## Overview
 
-Permanently deletes a vault record. Use with caution - this operation cannot be undone unless you have vault backups.
+Permanently deletes a vault record. The endpoint runs `alfred vault delete <path>` inside the Alfred container via `docker exec` and returns the CLI output. Use with caution -- this operation cannot be undone unless you have vault backups.
 
 ## Path Parameters
 
@@ -22,12 +22,10 @@ Permanently deletes a vault record. Use with caution - this operation cannot be 
 
 ## Response
 
-<ResponseField name="path" type="string">
-  Path to the deleted record
-</ResponseField>
+The response structure depends on the `alfred vault delete` CLI output. If the CLI returns valid JSON, it is passed through directly. Otherwise, the raw text output is wrapped in a `{ "raw": "..." }` object.
 
-<ResponseField name="deleted" type="boolean">
-  Always `true` on success
+<ResponseField name="raw" type="string">
+  If the CLI output is not valid JSON, the raw text output is returned in this field.
 </ResponseField>
 
 ## Request Example
@@ -36,7 +34,7 @@ Permanently deletes a vault record. Use with caution - this operation cannot be 
 
 ```bash cURL
 curl -X DELETE \
-  https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/records/person/Alice%20Chen.md?scope=janitor \
+  "https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/records/person/Alice%20Chen.md?scope=janitor" \
   -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -61,22 +59,27 @@ console.log(result);
 
 <ResponseExample>
 
-```json 200 OK
+```json 200 OK (raw text fallback)
 {
-  "path": "person/Alice Chen.md",
-  "deleted": true
+  "raw": "Deleted person/Alice Chen.md"
 }
 ```
 
-```json 404 Not Found
+```json 401 Unauthorized
 {
-  "error": "Record not found: person/Unknown Person.md"
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Unauthorized"
+  }
 }
 ```
 
-```json 403 Forbidden
+```json 500 Internal Server Error
 {
-  "error": "Scope 'curator' does not allow delete operations"
+  "error": {
+    "code": "EXEC_ERROR",
+    "message": "Command failed with exit code 1"
+  }
 }
 ```
 

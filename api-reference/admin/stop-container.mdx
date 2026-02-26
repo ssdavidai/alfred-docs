@@ -16,11 +16,11 @@ Stop a running container in the Alfred stack. The container will remain stopped 
 
 ```bash curl
 # Stop the Alfred worker
-curl -X POST -H "X-API-Key: YOUR_API_KEY" \
+curl -X POST -H "Authorization: Bearer YOUR_API_KEY" \
   https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/containers/worker/stop
 
 # Stop Temporal UI
-curl -X POST -H "X-API-Key: YOUR_API_KEY" \
+curl -X POST -H "Authorization: Bearer YOUR_API_KEY" \
   https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/containers/temporal-ui/stop
 ```
 
@@ -30,7 +30,7 @@ curl -X POST -H "X-API-Key: YOUR_API_KEY" \
 
 ```json
 {
-  "message": "Container worker stopped"
+  "message": "Container \"worker\" stopped"
 }
 ```
 

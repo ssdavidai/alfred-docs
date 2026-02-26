@@ -1,7 +1,7 @@
 ---
 title: "Unpause Schedule"
 description: "Resume a paused workflow schedule"
-api: "POST https://alfred-acme.tailnet.ts.net:3100/api/v1/schedules/{schId}/unpause"
+api: "POST /api/v1/schedules/{schId}/unpause"
 ---
 
 Resumes a paused workflow schedule. The schedule will begin executing according to its cron expression.
@@ -11,7 +11,7 @@ Resumes a paused workflow schedule. The schedule will begin executing according 
 </ParamField>
 
 <ParamField body="reason" type="string" optional>
-  Human-readable reason for unpausing. Will be stored in schedule metadata.
+  Human-readable reason for unpausing. Passed to the Temporal CLI.
 </ParamField>
 
 <RequestExample>
@@ -27,13 +27,9 @@ curl -X POST \
 </RequestExample>
 
 <ResponseExample>
-```json 200 OK
+```json 200
 {
-  "success": true,
-  "scheduleId": "curator-hourly",
-  "paused": false,
-  "nextRunTime": "2026-02-26T15:00:00.000Z",
-  "reason": "Vault migration complete"
+  "message": "Schedule unpaused"
 }
 ```
 </ResponseExample>

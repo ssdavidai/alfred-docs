@@ -4,12 +4,12 @@ description: "Retrieve system uptime, disk, and memory information"
 api: "GET /api/v1/admin/system/info"
 ---
 
-Get basic system information including uptime, disk usage, and memory statistics.
+Get basic system information including uptime, disk usage, and memory statistics. Each field contains raw text output from the respective system command (`uptime -p`, `df -h /mnt/encrypted`, `free -m`). If any command fails, the corresponding field will contain `"unknown"`.
 
 <RequestExample>
 
 ```bash curl
-curl -H "X-API-Key: YOUR_API_KEY" \
+curl -H "Authorization: Bearer YOUR_API_KEY" \
   https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/system/info
 ```
 
@@ -19,14 +19,14 @@ curl -H "X-API-Key: YOUR_API_KEY" \
 
 ```json
 {
-  "uptime": " 10:15:23 up 5 days,  3:42,  0 users,  load average: 0.24, 0.31, 0.28",
-  "disk": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1        20G  8.5G   11G  45% /\n/dev/mapper/encrypted  200G   85G  115G  43% /mnt/encrypted",
-  "memory": "              total        used        free      shared  buff/cache   available\nMem:           7.8G        4.8G        1.2G        256M        1.8G        2.7G\nSwap:          2.0G        512M        1.5G"
+  "uptime": "up 5 days, 3 hours, 42 minutes",
+  "disk": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/mapper/encrypted  200G   85G  115G  43% /mnt/encrypted",
+  "memory": "              total        used        free      shared  buff/cache   available\nMem:           7982        4915        1228         256        1838        2810\nSwap:          2047         512        1535"
 }
 ```
 
 </ResponseExample>
 
 <Note>
-  The disk output shows both the root filesystem and the encrypted data volume. The encrypted volume at `/mnt/encrypted` contains all Alfred data including the vault, Docker volumes, and backups.
+  All three fields contain raw text output from the respective system commands. If any command fails, its field will contain `"unknown"`. The disk output shows usage for `/mnt/encrypted`, the encrypted data volume containing all Alfred data.
 </Note>

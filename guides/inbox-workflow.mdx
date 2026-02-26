@@ -12,7 +12,7 @@ The inbox workflow has three stages:
 
 <Steps>
   <Step title="Upload">
-    Upload raw files or text snippets to the inbox via API
+    Upload files or text snippets to the inbox via API
   </Step>
   <Step title="Processing">
     Curator watches the inbox and processes new content automatically
@@ -32,88 +32,19 @@ Curator accepts the following file types:
 - **Code**: `.py`, `.js`, `.ts`, `.json`, `.yaml`
 - **Data**: `.csv`, `.tsv`
 
-All filenames are sanitized automatically (spaces → underscores, special chars removed).
+All filenames are sanitized automatically (special characters like `/\:*?"<>|` are replaced with underscores).
 
 ## Single File Upload
 
-Upload a single file to the inbox:
-
-<CodeGroup>
-
-```bash Basic Upload
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/inbox/upload \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -F "file=@meeting-notes.md"
-```
-
-```bash With Custom Filename
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/inbox/upload \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -F "file=@transcript.txt" \
-  -F "filename=weekly-standup-2026-02-26.md"
-```
-
-</CodeGroup>
-
-**Response:**
-
-```json
-{
-  "ok": true,
-  "file": "meeting_notes.md",
-  "path": "/mnt/encrypted/vault/inbox/meeting_notes.md"
-}
-```
-
-<Tip>
-The API automatically sanitizes filenames. `Meeting Notes (2026).md` becomes `Meeting_Notes_2026_.md`.
-</Tip>
-
-## Bulk Upload
-
-Upload multiple files at once:
+Upload a single file to the inbox by sending JSON with the filename and content:
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/inbox/upload/bulk \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -F "files=@notes1.md" \
-  -F "files=@notes2.md" \
-  -F "files=@transcript.txt"
-```
-
-**Response:**
-
-```json
-{
-  "ok": true,
-  "uploaded": [
-    {
-      "file": "notes1.md",
-      "path": "/mnt/encrypted/vault/inbox/notes1.md"
-    },
-    {
-      "file": "notes2.md",
-      "path": "/mnt/encrypted/vault/inbox/notes2.md"
-    },
-    {
-      "file": "transcript.txt",
-      "path": "/mnt/encrypted/vault/inbox/transcript.txt"
-    }
-  ]
-}
-```
-
-## Text Snippet Upload
-
-Upload raw text without a file:
-
-```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/inbox/text \
-  -H "X-API-Key: YOUR_API_KEY" \
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/vault/inbox \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "text": "Met with Alice and Bob to discuss Q1 roadmap. Key decisions: migrate to microservices, hire 2 engineers.",
-    "filename": "q1-planning-meeting.md"
+    "filename": "meeting-notes.md",
+    "content": "# Weekly Standup 2026-02-26\n\nAttendees: Alice, Bob\n\n## Action Items\n- Migrate database by Q2\n- Hire 2 engineers"
   }'
 ```
 
@@ -121,65 +52,83 @@ curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/inbox/text \
 
 ```json
 {
-  "ok": true,
-  "file": "q1_planning_meeting.md",
-  "path": "/mnt/encrypted/vault/inbox/q1_planning_meeting.md"
+  "message": "Uploaded meeting-notes.md to inbox",
+  "filename": "meeting-notes.md"
 }
 ```
 
-<Note>
-If you omit `filename`, Alfred generates one using timestamp: `snippet_20260226_143022.md`
-</Note>
+<Tip>
+The API automatically sanitizes filenames. `Meeting Notes (2026).md` becomes `Meeting_Notes__2026_.md`.
+</Tip>
+
+## Bulk Upload
+
+Upload multiple files at once:
+
+```bash
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/vault/inbox/bulk \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "files": [
+      {"filename": "notes1.md", "content": "First set of notes..."},
+      {"filename": "notes2.md", "content": "Second set of notes..."},
+      {"filename": "transcript.txt", "content": "Meeting transcript..."}
+    ]
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "message": "Uploaded 3 files to inbox",
+  "filenames": ["notes1.md", "notes2.md", "transcript.txt"]
+}
+```
 
 ## Listing Inbox Contents
 
 Check what's in the inbox:
 
 ```bash
-curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/inbox \
-  -H "X-API-Key: YOUR_API_KEY"
+curl -X GET https://alfred-acme.tailnet.ts.net/api/v1/vault/inbox \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 **Response:**
 
 ```json
 {
-  "ok": true,
   "files": [
-    {
-      "name": "meeting_notes.md",
-      "size": 2048,
-      "modified": "2026-02-26T14:30:22Z"
-    },
-    {
-      "name": "transcript.txt",
-      "size": 15360,
-      "modified": "2026-02-26T15:12:45Z"
-    }
+    "meeting-notes.md",
+    "transcript.txt"
   ]
 }
 ```
+
+<Note>
+The inbox listing returns filenames only (hidden files starting with `.` are excluded). It does not include file sizes or modification times.
+</Note>
 
 ## Automatic Processing
 
 Curator watches the inbox directory and processes new files automatically (default interval: 60 seconds).
 
-To check if Curator is running:
+To check worker status:
 
 ```bash
-curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/workers/curator/status \
-  -H "X-API-Key: YOUR_API_KEY"
+curl -X GET https://alfred-acme.tailnet.ts.net/api/v1/workers/status \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 **Response:**
 
+The workers status endpoint always returns raw text from the `alfred status` command:
+
 ```json
 {
-  "ok": true,
-  "status": "running",
-  "uptime_seconds": 3600,
-  "last_run": "2026-02-26T15:30:00Z",
-  "processed_count": 12
+  "raw": "curator: running (pid 1234)\njanitor: running (pid 1235)\ndistiller: running (pid 1236)"
 }
 ```
 
@@ -188,23 +137,24 @@ curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/workers/curator/status \
 Trigger immediate processing without waiting for the next sweep:
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/workers/curator/process \
-  -H "X-API-Key: YOUR_API_KEY"
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/workers/process \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 **Response:**
 
-```json
-{
-  "ok": true,
-  "message": "Curator processing triggered",
-  "processed": 3,
-  "created_records": [
-    "person/Alice Johnson",
-    "project/Q1 Microservices Migration",
-    "decision/Hire Two Engineers Q1 2026"
-  ]
-}
+If the underlying CLI returns valid JSON, it is passed through directly. Otherwise, the output is returned as `{ "raw": "<text>" }`.
+
+You can optionally pass parameters in the body:
+
+```bash
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/workers/process \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "limit": 5,
+    "dry_run": true
+  }'
 ```
 
 <Warning>
@@ -216,25 +166,13 @@ Manual processing runs synchronously and may take 30-60 seconds for large files 
 After Curator processes inbox files, check the vault for new records:
 
 ```bash
-curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/vault/list?type=person \
-  -H "X-API-Key: YOUR_API_KEY"
+curl -X GET https://alfred-acme.tailnet.ts.net/api/v1/vault/list/person \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 **Response:**
 
-```json
-{
-  "ok": true,
-  "records": [
-    {
-      "title": "Alice Johnson",
-      "type": "person",
-      "path": "person/Alice Johnson.md",
-      "created": "2026-02-26T15:31:00Z"
-    }
-  ]
-}
-```
+If the underlying CLI returns valid JSON, it is passed through directly. Otherwise, the output is returned as `{ "raw": "<text>" }`.
 
 ## Example Workflows
 
@@ -246,9 +184,10 @@ curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/vault/list?type=person \
   </Step>
   <Step title="Upload to inbox">
     ```bash
-    curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/inbox/upload \
-      -H "X-API-Key: YOUR_API_KEY" \
-      -F "file=@weekly-standup-2026-02-26.md"
+    curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/vault/inbox \
+      -H "Authorization: Bearer YOUR_API_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{"filename": "weekly-standup-2026-02-26.md", "content": "..."}'
     ```
   </Step>
   <Step title="Wait for processing">
@@ -256,8 +195,8 @@ curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/vault/list?type=person \
   </Step>
   <Step title="Review results">
     ```bash
-    curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/vault/list?type=task \
-      -H "X-API-Key: YOUR_API_KEY"
+    curl -X GET https://alfred-acme.tailnet.ts.net/api/v1/vault/list/task \
+      -H "Authorization: Bearer YOUR_API_KEY"
     ```
   </Step>
 </Steps>
@@ -267,12 +206,12 @@ curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/vault/list?type=person \
 Upload a chat transcript:
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/inbox/text \
-  -H "X-API-Key: YOUR_API_KEY" \
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/vault/inbox \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "text": "Alice: We need to migrate the database by Q2.\nBob: Agreed. Let'\''s use Postgres.\nAlice: I'\''ll create the migration plan.",
-    "filename": "db-migration-chat.md"
+    "filename": "db-migration-chat.md",
+    "content": "Alice: We need to migrate the database by Q2.\nBob: Agreed. Let'\''s use Postgres.\nAlice: I'\''ll create the migration plan."
   }'
 ```
 
@@ -283,43 +222,63 @@ Curator extracts:
 
 ### Document Batch Processing
 
-Upload multiple PDFs from a project folder:
+Upload multiple files from a project:
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/inbox/upload/bulk \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -F "files=@requirements.pdf" \
-  -F "files=@architecture.pdf" \
-  -F "files=@timeline.pdf"
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/vault/inbox/bulk \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "files": [
+      {"filename": "requirements.md", "content": "..."},
+      {"filename": "architecture.md", "content": "..."},
+      {"filename": "timeline.md", "content": "..."}
+    ]
+  }'
 ```
 
-Curator processes all three documents and extracts relevant entities (projects, decisions, constraints, people).
+Curator processes all documents and extracts relevant entities (projects, decisions, constraints, people).
+
+## Error Handling
+
+All errors follow a consistent format:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "filename and content are required"
+  }
+}
+```
+
+Error codes: `UNAUTHORIZED` (401), `VALIDATION_ERROR` (400), `NOT_FOUND` (404), `EXEC_ERROR` (500), `INTERNAL_ERROR` (500).
 
 ## Troubleshooting
 
 ### File Not Processing
 
-Check Curator status:
+Check worker status:
 
 ```bash
-curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/workers/curator/status \
-  -H "X-API-Key: YOUR_API_KEY"
+curl -X GET https://alfred-acme.tailnet.ts.net/api/v1/workers/status \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
-If stopped, start it:
+If workers are stopped, start them:
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/workers/curator/start \
-  -H "X-API-Key: YOUR_API_KEY"
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/workers/up \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 ### File Rejected
 
-Check Curator logs:
+Check logs:
 
 ```bash
-curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/logs/stream?service=curator&tail=50 \
-  -H "X-API-Key: YOUR_API_KEY"
+curl -N https://alfred-acme.tailnet.ts.net/api/v1/logs?service=alfred&tail=50 \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 Common issues:
@@ -332,16 +291,16 @@ Common issues:
 Curator uses content hashing to avoid re-processing the same file. If you upload the same content twice, it will be skipped. To force re-processing, delete the state file:
 
 ```bash
-# Not exposed via API — requires SSH access
+# Not exposed via API -- requires SSH access
 ssh deploy@alfred-acme.tailnet.ts.net
 rm /mnt/encrypted/data/curator_state.json
 ```
 
-Then restart Curator:
+Then restart the worker container:
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/workers/curator/restart \
-  -H "X-API-Key: YOUR_API_KEY"
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/workers/restart \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 ## Next Steps

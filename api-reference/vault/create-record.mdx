@@ -6,20 +6,20 @@ api: "POST /api/v1/vault/records"
 
 ## Overview
 
-Creates a new record in the vault with the specified type, name, frontmatter fields, and markdown body.
+Creates a new record in the vault with the specified type, name, frontmatter fields, and markdown body. The endpoint runs `alfred vault create` inside the Alfred container via `docker exec` and returns the CLI output.
 
 ## Body Parameters
 
 <ParamField body="type" type="string" required>
-  Record type (e.g., `person`, `project`, `task`, `assumption`). Must be one of the 25 known types.
+  Record type (e.g., `person`, `project`, `task`, `assumption`). Must be one of the 20 known types.
 </ParamField>
 
 <ParamField body="name" type="string" required>
-  Display name for the record. This becomes the filename (e.g., `Alice Chen` → `person/Alice Chen.md`).
+  Display name for the record. This becomes the filename (e.g., `Alice Chen` becomes `person/Alice Chen.md`).
 </ParamField>
 
 <ParamField body="fields" type="object" optional>
-  Key-value pairs for frontmatter metadata. Field names and types must match the schema for the record type.
+  Key-value pairs for frontmatter metadata. Each key-value pair is passed as `--set key=value` to the CLI.
 </ParamField>
 
 <ParamField body="body" type="string" optional>
@@ -32,12 +32,10 @@ Creates a new record in the vault with the specified type, name, frontmatter fie
 
 ## Response
 
-<ResponseField name="path" type="string">
-  Path to the newly created record
-</ResponseField>
+Returns status `201 Created`. The response structure depends on the `alfred vault create` CLI output. If the CLI returns valid JSON, it is passed through directly. Otherwise, the raw text output is wrapped in a `{ "raw": "..." }` object.
 
-<ResponseField name="created" type="boolean">
-  Always `true` on success
+<ResponseField name="raw" type="string">
+  If the CLI output is not valid JSON, the raw text output is returned in this field.
 </ResponseField>
 
 ## Request Example
@@ -55,7 +53,6 @@ curl -X POST \
     "fields": {
       "role": "ML Engineer",
       "org": "[[org/Acme Corp]]",
-      "skills": ["python", "pytorch", "kubernetes"],
       "status": "active"
     },
     "body": "## Background\n\nAlice joined Acme in December 2025."
@@ -75,7 +72,6 @@ const response = await fetch('https://alfred-acme.tailnet.ts.net:3100/api/v1/vau
     fields: {
       role: 'ML Engineer',
       org: '[[org/Acme Corp]]',
-      skills: ['python', 'pytorch', 'kubernetes'],
       status: 'active'
     },
     body: '## Background\n\nAlice joined Acme in December 2025.'
@@ -92,28 +88,36 @@ console.log(result);
 
 <ResponseExample>
 
-```json 201 Created
+```json 201 Created (raw text fallback)
 {
-  "path": "person/Alice Chen.md",
-  "created": true
+  "raw": "Created person/Alice Chen.md"
 }
 ```
 
 ```json 400 Bad Request
 {
-  "error": "Invalid type 'unknown_type'. Must be one of: person, org, project, ..."
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "type and name are required"
+  }
 }
 ```
 
-```json 409 Conflict
+```json 401 Unauthorized
 {
-  "error": "Record already exists: person/Alice Chen.md"
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Unauthorized"
+  }
 }
 ```
 
-```json 403 Forbidden
+```json 500 Internal Server Error
 {
-  "error": "Scope 'janitor' does not allow create operations"
+  "error": {
+    "code": "EXEC_ERROR",
+    "message": "Command failed with exit code 1"
+  }
 }
 ```
 

@@ -1,10 +1,10 @@
 ---
 title: "Describe Schedule"
 description: "Get detailed information about a specific schedule"
-api: "GET https://alfred-acme.tailnet.ts.net:3100/api/v1/schedules/{schId}"
+api: "GET /api/v1/schedules/{schId}"
 ---
 
-Returns comprehensive details about a workflow schedule, including configuration, state, and recent execution history.
+Returns detailed information about a workflow schedule from `temporal schedule describe --output json`. If the output is a single JSON object, it is returned parsed. Otherwise, JSONL lines are parsed into an array.
 
 <ParamField path="schId" type="string" required>
   The schedule ID to describe
@@ -19,48 +19,35 @@ curl -X GET \
 </RequestExample>
 
 <ResponseExample>
-```json 200 OK
+```json 200
 {
-  "scheduleId": "curator-hourly",
-  "spec": {
-    "cron": "0 * * * *",
-    "timezone": "UTC"
-  },
-  "action": {
-    "workflowType": "CuratorWorkflow",
-    "taskQueue": "alfred-curator",
-    "input": {
-      "vault_path": "/app/data/vault",
-      "inbox_path": "/app/data/vault/inbox",
-      "sweep_interval": 3600
+  "schedule": {
+    "spec": {
+      "cronExpressions": ["0 * * * *"]
+    },
+    "action": {
+      "startWorkflow": {
+        "workflowType": {
+          "name": "CuratorWorkflow"
+        },
+        "taskQueue": {
+          "name": "alfred-curator"
+        }
+      }
+    },
+    "state": {
+      "paused": false,
+      "notes": ""
     }
-  },
-  "state": {
-    "paused": false,
-    "notes": "",
-    "remainingActions": null
   },
   "info": {
-    "createdAt": "2026-01-15T10:00:00.000Z",
-    "lastUpdatedAt": "2026-02-20T14:30:00.000Z",
-    "nextRunTime": "2026-02-26T15:00:00.000Z",
-    "recentRuns": 142,
-    "lastRunTime": "2026-02-26T14:00:00.000Z"
-  },
-  "recentActions": [
-    {
-      "workflowId": "curator-hourly-2026-02-26T14:00:00Z",
-      "runId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-      "startTime": "2026-02-26T14:00:00.123Z",
-      "status": "Completed"
-    },
-    {
-      "workflowId": "curator-hourly-2026-02-26T13:00:00Z",
-      "runId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-      "startTime": "2026-02-26T13:00:00.089Z",
-      "status": "Completed"
-    }
-  ]
+    "recentActions": [],
+    "nextActionTimes": ["2026-02-26T15:00:00Z"]
+  }
 }
 ```
 </ResponseExample>
+
+<Note>
+  The response structure is determined by the Temporal CLI's output. The exact fields may vary across Temporal versions.
+</Note>

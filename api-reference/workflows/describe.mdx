@@ -1,10 +1,10 @@
 ---
 title: "Describe Workflow"
 description: "Get detailed information about a specific workflow execution"
-api: "GET https://alfred-acme.tailnet.ts.net:3100/api/v1/workflows/{wfId}"
+api: "GET /api/v1/workflows/{wfId}"
 ---
 
-Returns comprehensive details about a workflow execution, including status, timing, and current state.
+Returns detailed information about a workflow execution from `temporal workflow describe --output json`. If the output is a single JSON object, it is returned parsed. Otherwise, JSONL lines are parsed into an array.
 
 <ParamField path="wfId" type="string" required>
   The workflow ID to describe
@@ -29,28 +29,28 @@ curl -X GET \
 </RequestExample>
 
 <ResponseExample>
-```json 200 OK
+```json 200
 {
-  "workflowId": "curator-sweep-20260226-143022",
-  "runId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-  "type": "CuratorWorkflow",
-  "status": "Running",
-  "startTime": "2026-02-26T14:30:22.154Z",
-  "executionTime": "PT2M15S",
-  "taskQueue": "alfred-curator",
-  "input": {
-    "vault_path": "/app/data/vault",
-    "inbox_path": "/app/data/vault/inbox",
-    "sweep_interval": 300
-  },
-  "pendingActivities": [
-    {
-      "activityId": "process-inbox-item-1",
-      "activityType": "ProcessInboxItemActivity",
-      "state": "Started",
-      "attempt": 1
+  "executionConfig": {
+    "taskQueue": {
+      "name": "alfred-curator"
     }
-  ]
+  },
+  "workflowExecutionInfo": {
+    "execution": {
+      "workflowId": "curator-sweep-20260226-143022",
+      "runId": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+    },
+    "type": {
+      "name": "CuratorWorkflow"
+    },
+    "startTime": "2026-02-26T14:30:22.154Z",
+    "status": "WORKFLOW_EXECUTION_STATUS_RUNNING"
+  }
 }
 ```
 </ResponseExample>
+
+<Note>
+  The response structure is determined by the Temporal CLI's output. The exact fields may vary across Temporal versions.
+</Note>

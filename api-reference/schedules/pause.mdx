@@ -1,7 +1,7 @@
 ---
 title: "Pause Schedule"
 description: "Pause a workflow schedule"
-api: "POST https://alfred-acme.tailnet.ts.net:3100/api/v1/schedules/{schId}/pause"
+api: "POST /api/v1/schedules/{schId}/pause"
 ---
 
 Pauses a workflow schedule. No new workflow executions will be started until the schedule is unpaused. Currently running workflows are not affected.
@@ -11,7 +11,7 @@ Pauses a workflow schedule. No new workflow executions will be started until the
 </ParamField>
 
 <ParamField body="reason" type="string" optional>
-  Human-readable reason for pausing. Will be stored in schedule metadata.
+  Human-readable reason for pausing. Passed to the Temporal CLI.
 </ParamField>
 
 <RequestExample>
@@ -27,12 +27,9 @@ curl -X POST \
 </RequestExample>
 
 <ResponseExample>
-```json 200 OK
+```json 200
 {
-  "success": true,
-  "scheduleId": "curator-hourly",
-  "paused": true,
-  "reason": "Paused during vault migration"
+  "message": "Schedule paused"
 }
 ```
 </ResponseExample>

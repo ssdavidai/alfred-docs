@@ -6,7 +6,7 @@ api: "PATCH /api/v1/vault/records/{path}"
 
 ## Overview
 
-Modifies an existing vault record. You can set or replace frontmatter fields, append to list fields, or append to the markdown body.
+Modifies an existing vault record. You can set or replace frontmatter fields, append to list fields, append to the markdown body, or replace the body entirely. The endpoint runs `alfred vault edit <path>` inside the Alfred container via `docker exec` and returns the CLI output.
 
 ## Path Parameters
 
@@ -17,19 +17,19 @@ Modifies an existing vault record. You can set or replace frontmatter fields, ap
 ## Body Parameters
 
 <ParamField body="set" type="object" optional>
-  Key-value pairs to set in frontmatter. Replaces existing values for these fields.
+  Key-value pairs to set in frontmatter. Each key-value pair is passed as `--set key=value` to the CLI. Replaces existing values for these fields.
 </ParamField>
 
 <ParamField body="append" type="object" optional>
-  Key-value pairs to append to list fields in frontmatter. Only works for fields defined as lists in the schema.
+  Key-value pairs to append to list fields in frontmatter. Each key-value pair is passed as `--append key=value` to the CLI.
 </ParamField>
 
 <ParamField body="body_append" type="string" optional>
-  Text to append to the markdown body.
+  Text to append to the markdown body. Passed as `--body-append` to the CLI.
 </ParamField>
 
 <ParamField body="body_stdin" type="string" optional>
-  Completely replace the markdown body with this text.
+  Replace the markdown body with this text. Passed as `--body-stdin` to the CLI.
 </ParamField>
 
 <ParamField body="scope" type="string" optional>
@@ -38,12 +38,10 @@ Modifies an existing vault record. You can set or replace frontmatter fields, ap
 
 ## Response
 
-<ResponseField name="path" type="string">
-  Path to the edited record
-</ResponseField>
+The response structure depends on the `alfred vault edit` CLI output. If the CLI returns valid JSON, it is passed through directly. Otherwise, the raw text output is wrapped in a `{ "raw": "..." }` object.
 
-<ResponseField name="updated" type="boolean">
-  Always `true` on success
+<ResponseField name="raw" type="string">
+  If the CLI output is not valid JSON, the raw text output is returned in this field.
 </ResponseField>
 
 ## Request Example
@@ -57,13 +55,13 @@ curl -X PATCH \
   -H "Content-Type: application/json" \
   -d '{
     "set": {
-      "status": "on_leave",
+      "status": "inactive",
       "updated": "2026-02-26T10:00:00Z"
     },
     "append": {
-      "projects": ["[[project/Infrastructure Audit]]"]
+      "project": "[[project/Infrastructure Audit]]"
     },
-    "body_append": "\n## Leave Note\n\nOut Feb 26 - Mar 15 for sabbatical."
+    "body_append": "\n## Status Note\n\nMarked inactive as of Feb 26."
   }'
 ```
 
@@ -79,13 +77,13 @@ const response = await fetch(`https://alfred-acme.tailnet.ts.net:3100/api/v1/vau
   },
   body: JSON.stringify({
     set: {
-      status: 'on_leave',
+      status: 'inactive',
       updated: '2026-02-26T10:00:00Z'
     },
     append: {
-      projects: ['[[project/Infrastructure Audit]]']
+      project: '[[project/Infrastructure Audit]]'
     },
-    body_append: '\n## Leave Note\n\nOut Feb 26 - Mar 15 for sabbatical.'
+    body_append: '\n## Status Note\n\nMarked inactive as of Feb 26.'
   })
 });
 
@@ -99,28 +97,36 @@ console.log(result);
 
 <ResponseExample>
 
-```json 200 OK
+```json 200 OK (raw text fallback)
 {
-  "path": "person/Alice Chen.md",
-  "updated": true
-}
-```
-
-```json 404 Not Found
-{
-  "error": "Record not found: person/Unknown Person.md"
+  "raw": "Edited person/Alice Chen.md"
 }
 ```
 
 ```json 400 Bad Request
 {
-  "error": "Cannot append to non-list field 'status'"
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Request body required"
+  }
 }
 ```
 
-```json 403 Forbidden
+```json 401 Unauthorized
 {
-  "error": "Scope 'distiller' does not allow editing entity types"
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Unauthorized"
+  }
+}
+```
+
+```json 500 Internal Server Error
+{
+  "error": {
+    "code": "EXEC_ERROR",
+    "message": "Command failed with exit code 1"
+  }
 }
 ```
 

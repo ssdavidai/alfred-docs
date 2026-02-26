@@ -1,10 +1,10 @@
 ---
 title: "Create Schedule"
 description: "Create a new workflow schedule"
-api: "POST https://alfred-acme.tailnet.ts.net:3100/api/v1/schedules"
+api: "POST /api/v1/schedules"
 ---
 
-Creates a new workflow schedule with the specified configuration. The schedule will begin executing immediately unless created in a paused state.
+Creates a new workflow schedule via `temporal schedule create`. Returns 201 with a confirmation message.
 
 <ParamField body="schedule_id" type="string" required>
   Unique identifier for this schedule. Must not conflict with existing schedules.
@@ -12,14 +12,10 @@ Creates a new workflow schedule with the specified configuration. The schedule w
 
 <ParamField body="workflow_type" type="string" required>
   The workflow type to execute on each schedule trigger.
-
-  Common types: `CuratorWorkflow`, `JanitorWorkflow`, `DistillerWorkflow`, `SurveyorWorkflow`
 </ParamField>
 
 <ParamField body="task_queue" type="string" required>
   The task queue where scheduled workflows will be executed.
-
-  Common queues: `alfred-curator`, `alfred-janitor`, `alfred-distiller`, `alfred-surveyor`
 </ParamField>
 
 <ParamField body="cron" type="string" required>
@@ -33,7 +29,7 @@ Creates a new workflow schedule with the specified configuration. The schedule w
 </ParamField>
 
 <ParamField body="input" type="any" optional>
-  Input data passed to each scheduled workflow execution. Structure depends on workflow type.
+  Input data passed to each scheduled workflow execution. Will be JSON-serialized.
 </ParamField>
 
 <ParamField body="overlap_policy" type="string" optional>
@@ -54,14 +50,10 @@ curl -X POST \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "schedule_id": "surveyor-daily",
-    "workflow_type": "SurveyorWorkflow",
-    "task_queue": "alfred-surveyor",
+    "schedule_id": "my-daily-schedule",
+    "workflow_type": "MyWorkflow",
+    "task_queue": "my-task-queue",
     "cron": "0 4 * * *",
-    "input": {
-      "vault_path": "/app/data/vault",
-      "full_reindex": false
-    },
     "overlap_policy": "Skip"
   }' \
   https://alfred-acme.tailnet.ts.net:3100/api/v1/schedules
@@ -69,11 +61,13 @@ curl -X POST \
 </RequestExample>
 
 <ResponseExample>
-```json 201 Created
+```json 201
 {
-  "scheduleId": "surveyor-daily",
-  "created": true,
-  "nextRunTime": "2026-02-27T04:00:00.000Z"
+  "message": "Schedule created"
 }
 ```
 </ResponseExample>
+
+<Note>
+  The response may include a `raw` field containing the Temporal CLI's stdout if there was any output from the create command.
+</Note>

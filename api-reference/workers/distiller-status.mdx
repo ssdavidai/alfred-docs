@@ -4,7 +4,7 @@ description: "Retrieve distiller extraction status and statistics"
 api: "GET /api/v1/workers/distiller/status"
 ---
 
-Returns the current status of the distiller daemon, including the most recent extraction run, candidate statistics, and extraction metrics.
+Returns the current status of the distiller daemon by running `alfred distiller status` inside the container.
 
 <RequestExample>
 
@@ -17,98 +17,24 @@ curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/v1/workers/distiller/sta
 
 <ResponseExample>
 
-```json Response
+```json Structured Response (if alfred outputs JSON)
 {
-  "status": "ok",
-  "daemon_running": true,
-  "last_run": {
-    "timestamp": "2026-02-26T09:00:00Z",
-    "duration_seconds": 142.5,
-    "records_scanned": 423,
-    "candidates_found": 8,
-    "learnings_extracted": 12,
-    "run_type": "auto"
-  },
-  "extraction_stats": {
-    "total_learnings": 87,
-    "by_type": {
-      "assumption": 23,
-      "decision": 31,
-      "constraint": 18,
-      "contradiction": 9,
-      "synthesis": 6
-    }
-  },
-  "current_candidates": {
-    "projects": 3,
-    "tasks": 2,
-    "issues": 2,
-    "notes": 1,
-    "total": 8
-  },
-  "next_run_in_seconds": 7200,
-  "timestamp": "2026-02-26T10:30:00Z"
+  "...": "Structure depends on alfred distiller status output"
+}
+```
+
+```json Raw Response (if alfred outputs text)
+{
+  "raw": "Distiller daemon: running\nLast run: 2026-02-26 09:00 (8 candidates, 12 learnings extracted)"
 }
 ```
 
 </ResponseExample>
 
-<ResponseField name="status" type="string">
-  Overall status: `ok` or `error`
-</ResponseField>
+<Note>
+  The response format depends on the `alfred distiller status` command output. If the command outputs valid JSON, it is returned as-is. Otherwise, the raw text output is returned in a `raw` field.
+</Note>
 
-<ResponseField name="daemon_running" type="boolean">
-  Whether the distiller daemon is currently running
-</ResponseField>
-
-<ResponseField name="last_run" type="object">
-  Information about the most recent extraction run
-
-  <ResponseField name="timestamp" type="string">
-    ISO 8601 timestamp when run started
-  </ResponseField>
-
-  <ResponseField name="duration_seconds" type="number">
-    How long the extraction took
-  </ResponseField>
-
-  <ResponseField name="records_scanned" type="number">
-    Number of vault records scanned for candidates
-  </ResponseField>
-
-  <ResponseField name="candidates_found" type="number">
-    Number of records identified as extraction candidates
-  </ResponseField>
-
-  <ResponseField name="learnings_extracted" type="number">
-    Number of learning records created
-  </ResponseField>
-
-  <ResponseField name="run_type" type="string">
-    Type of run: `auto` (daemon), `manual` (API), or `cli`
-  </ResponseField>
-</ResponseField>
-
-<ResponseField name="extraction_stats" type="object">
-  Cumulative extraction statistics
-
-  <ResponseField name="total_learnings" type="number">
-    Total number of learning records in vault
-  </ResponseField>
-
-  <ResponseField name="by_type" type="object">
-    Breakdown by learning type
-  </ResponseField>
-</ResponseField>
-
-<ResponseField name="current_candidates" type="object">
-  Breakdown of current extraction candidates by source type
-</ResponseField>
-
-<ResponseField name="next_run_in_seconds" type="number">
-  Seconds until the next automatic extraction (only present if daemon is running)
-</ResponseField>
-
-<ResponseField name="timestamp" type="string">
-  ISO 8601 timestamp of status check
+<ResponseField name="raw" type="string">
+  Raw text output from `alfred distiller status` when the output is not valid JSON. Only present when structured JSON parsing fails.
 </ResponseField>

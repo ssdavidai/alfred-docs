@@ -6,7 +6,7 @@ api: "POST /api/v1/vault/move"
 
 ## Overview
 
-Moves or renames a vault record. This operation also updates all wikilinks in other vault records that reference the moved record (if Obsidian CLI is available).
+Moves or renames a vault record. The endpoint runs `alfred vault move <from> <to>` inside the Alfred container via `docker exec` and returns the CLI output. If the Obsidian CLI is available, wikilinks in other vault records referencing the moved record may also be updated.
 
 ## Body Parameters
 
@@ -20,20 +20,10 @@ Moves or renames a vault record. This operation also updates all wikilinks in ot
 
 ## Response
 
-<ResponseField name="from" type="string">
-  Original path
-</ResponseField>
+The response structure depends on the `alfred vault move` CLI output. If the CLI returns valid JSON, it is passed through directly. Otherwise, the raw text output is wrapped in a `{ "raw": "..." }` object.
 
-<ResponseField name="to" type="string">
-  New path
-</ResponseField>
-
-<ResponseField name="moved" type="boolean">
-  Always `true` on success
-</ResponseField>
-
-<ResponseField name="links_updated" type="number" optional>
-  Number of wikilinks updated in other records (only present if Obsidian CLI is available)
+<ResponseField name="raw" type="string">
+  If the CLI output is not valid JSON, the raw text output is returned in this field.
 </ResponseField>
 
 ## Request Example
@@ -74,32 +64,36 @@ console.log(result);
 
 <ResponseExample>
 
-```json 200 OK
+```json 200 OK (raw text fallback)
 {
-  "from": "person/Alice.md",
-  "to": "person/Alice Chen.md",
-  "moved": true,
-  "links_updated": 7
+  "raw": "Moved person/Alice.md to person/Alice Chen.md"
 }
 ```
 
-```json 200 OK (No Obsidian CLI)
+```json 400 Bad Request
 {
-  "from": "person/Alice.md",
-  "to": "person/Alice Chen.md",
-  "moved": true
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "from and to are required"
+  }
 }
 ```
 
-```json 404 Not Found
+```json 401 Unauthorized
 {
-  "error": "Source record not found: person/Unknown.md"
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Unauthorized"
+  }
 }
 ```
 
-```json 409 Conflict
+```json 500 Internal Server Error
 {
-  "error": "Destination already exists: person/Alice Chen.md"
+  "error": {
+    "code": "EXEC_ERROR",
+    "message": "Command failed with exit code 1"
+  }
 }
 ```
 

@@ -52,17 +52,15 @@ The backup script stops all containers, runs `restic backup`, and restarts conta
 Trigger an immediate backup:
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/backup/create \
-  -H "X-API-Key: YOUR_API_KEY"
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/admin/backups/trigger \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 **Response (202 Accepted):**
 
 ```json
 {
-  "ok": true,
-  "message": "Backup started",
-  "job_id": "backup_20260226_153000"
+  "message": "Backup triggered"
 }
 ```
 
@@ -73,18 +71,18 @@ The backup runs asynchronously. The API returns immediately (202) without waitin
 Check backup status in logs:
 
 ```bash
-curl -N https://alfred-acme.tailnet.ts.net:3100/api/logs/stream?service=backup&tail=50 \
-  -H "X-API-Key: YOUR_API_KEY"
+curl -N https://alfred-acme.tailnet.ts.net/api/v1/logs?service=backup&tail=50 \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
-**Log output:**
+**Log output (SSE stream):**
 
 ```
-data: {"timestamp":"2026-02-26T15:30:00Z","service":"backup","level":"info","message":"Stopping containers..."}
-data: {"timestamp":"2026-02-26T15:30:05Z","service":"backup","level":"info","message":"Running restic backup..."}
-data: {"timestamp":"2026-02-26T15:32:30Z","service":"backup","level":"info","message":"Backup complete: 245 MB in 2m 30s"}
-data: {"timestamp":"2026-02-26T15:32:35Z","service":"backup","level":"info","message":"Restarting containers..."}
-data: {"timestamp":"2026-02-26T15:32:40Z","service":"backup","level":"info","message":"Backup finished successfully"}
+data: {"line":"Stopping containers..."}
+data: {"line":"Running restic backup..."}
+data: {"line":"Backup complete: 245 MB in 2m 30s"}
+data: {"line":"Restarting containers..."}
+data: {"line":"Backup finished successfully"}
 ```
 
 ## Listing Snapshots
@@ -92,44 +90,29 @@ data: {"timestamp":"2026-02-26T15:32:40Z","service":"backup","level":"info","mes
 Get all backup snapshots:
 
 ```bash
-curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/backup/snapshots \
-  -H "X-API-Key: YOUR_API_KEY"
+curl -X GET https://alfred-acme.tailnet.ts.net/api/v1/admin/backups/snapshots \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 **Response:**
 
+The response is passed through directly from `restic snapshots --json`. If the underlying restic command returns valid JSON, it is returned as-is (an array of snapshot objects). Otherwise, the output is returned as `{ "raw": "<text>" }`.
+
 ```json
-{
-  "ok": true,
-  "snapshots": [
-    {
-      "id": "a3f5b2c1",
-      "time": "2026-02-26T03:00:00Z",
-      "hostname": "alfred-acme",
-      "paths": ["/mnt/encrypted"],
-      "tags": ["automated"],
-      "size_mb": 245
-    },
-    {
-      "id": "b7d9e8f2",
-      "time": "2026-02-25T03:00:00Z",
-      "hostname": "alfred-acme",
-      "paths": ["/mnt/encrypted"],
-      "tags": ["automated"],
-      "size_mb": 243
-    },
-    {
-      "id": "c2a1f4e3",
-      "time": "2026-02-26T15:30:00Z",
-      "hostname": "alfred-acme",
-      "paths": ["/mnt/encrypted"],
-      "tags": ["manual"],
-      "size_mb": 246
-    }
-  ],
-  "total_snapshots": 18,
-  "total_size_gb": 4.3
-}
+[
+  {
+    "time": "2026-02-26T03:00:00Z",
+    "hostname": "alfred-acme",
+    "paths": ["/mnt/encrypted"],
+    "short_id": "a3f5b2c1"
+  },
+  {
+    "time": "2026-02-25T03:00:00Z",
+    "hostname": "alfred-acme",
+    "paths": ["/mnt/encrypted"],
+    "short_id": "b7d9e8f2"
+  }
+]
 ```
 
 ### Snapshot Tags
@@ -169,7 +152,7 @@ Restoration requires SSH access. The API does not provide restore endpoints (des
   </Step>
   <Step title="Stop all containers">
     ```bash
-    cd /opt/alfred
+    cd /opt/alfred/compose
     docker compose down
     ```
   </Step>
@@ -188,7 +171,7 @@ Restoration requires SSH access. The API does not provide restore endpoints (des
   <Step title="Verify restoration">
     ```bash
     ls -lh /mnt/encrypted/vault
-    cat /mnt/encrypted/.env
+    cat /opt/alfred/compose/.env
     ```
   </Step>
   <Step title="Restart containers">
@@ -198,8 +181,8 @@ Restoration requires SSH access. The API does not provide restore endpoints (des
   </Step>
   <Step title="Check health">
     ```bash
-    curl https://alfred-acme.tailnet.ts.net:3100/api/health \
-      -H "X-API-Key: YOUR_API_KEY"
+    curl https://alfred-acme.tailnet.ts.net/api/v1/admin/health \
+      -H "Authorization: Bearer YOUR_API_KEY"
     ```
   </Step>
 </Steps>
@@ -231,7 +214,7 @@ cp -r /tmp/restore/mnt/encrypted/vault/* /mnt/encrypted/vault/
   </Step>
   <Step title="Stop containers">
     ```bash
-    cd /opt/alfred
+    cd /opt/alfred/compose
     docker compose down
     ```
   </Step>
@@ -250,7 +233,7 @@ cp -r /tmp/restore/mnt/encrypted/vault/* /mnt/encrypted/vault/
   </Step>
   <Step title="Update .env with new instance details">
     ```bash
-    nano /mnt/encrypted/.env
+    nano /opt/alfred/compose/.env
     # Update TAILSCALE_HOSTNAME, AAS_API_KEY, etc.
     ```
   </Step>
@@ -268,8 +251,8 @@ cp -r /tmp/restore/mnt/encrypted/vault/* /mnt/encrypted/vault/
 <Steps>
   <Step title="Identify the last good snapshot">
     ```bash
-    curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/backup/snapshots \
-      -H "X-API-Key: YOUR_API_KEY"
+    curl -X GET https://alfred-acme.tailnet.ts.net/api/v1/admin/backups/snapshots \
+      -H "Authorization: Bearer YOUR_API_KEY"
     ```
   </Step>
   <Step title="SSH and restore">
@@ -277,8 +260,8 @@ cp -r /tmp/restore/mnt/encrypted/vault/* /mnt/encrypted/vault/
   </Step>
   <Step title="Verify vault integrity">
     ```bash
-    curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/workers/janitor/scan \
-      -H "X-API-Key: YOUR_API_KEY"
+    curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/workers/janitor/scan \
+      -H "Authorization: Bearer YOUR_API_KEY"
     ```
   </Step>
 </Steps>
@@ -296,19 +279,19 @@ If `AAS_API_KEY` is lost and you can't access the API:
   <Step title="Regenerate the API key">
     ```bash
     NEW_KEY=$(openssl rand -hex 32)
-    echo "AAS_API_KEY=$NEW_KEY" >> /mnt/encrypted/.env
+    echo "AAS_API_KEY=$NEW_KEY" >> /opt/alfred/compose/.env
     ```
   </Step>
   <Step title="Restart AAS">
     ```bash
-    cd /opt/alfred
+    cd /opt/alfred/compose
     docker compose restart alfred-aas
     ```
   </Step>
   <Step title="Test the new key">
     ```bash
-    curl https://alfred-acme.tailnet.ts.net:3100/api/health \
-      -H "X-API-Key: $NEW_KEY"
+    curl https://alfred-acme.tailnet.ts.net/api/v1/admin/health \
+      -H "Authorization: Bearer $NEW_KEY"
     ```
   </Step>
 </Steps>
@@ -341,8 +324,8 @@ Test backups monthly:
 <Steps>
   <Step title="List snapshots">
     ```bash
-    curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/backup/snapshots \
-      -H "X-API-Key: YOUR_API_KEY"
+    curl -X GET https://alfred-acme.tailnet.ts.net/api/v1/admin/backups/snapshots \
+      -H "Authorization: Bearer YOUR_API_KEY"
     ```
   </Step>
   <Step title="Verify snapshot integrity">
@@ -377,8 +360,8 @@ Test backups monthly:
 Check logs:
 
 ```bash
-curl -N https://alfred-acme.tailnet.ts.net:3100/api/logs/stream?service=backup&tail=100 \
-  -H "X-API-Key: YOUR_API_KEY"
+curl -N https://alfred-acme.tailnet.ts.net/api/v1/logs?service=backup&tail=100 \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 Common errors:

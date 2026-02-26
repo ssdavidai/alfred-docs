@@ -4,12 +4,12 @@ description: "Get Temporal cluster information and configuration"
 api: "GET /api/v1/admin/temporal/cluster"
 ---
 
-Retrieve information about the Temporal cluster, including cluster metadata, configuration, and health. Returns the output of `temporal operator cluster describe`.
+Retrieve information about the Temporal cluster, including cluster metadata, configuration, and health. Runs `temporal operator cluster describe --output json` inside the temporal container and returns the parsed output.
 
 <RequestExample>
 
 ```bash curl
-curl -H "X-API-Key: YOUR_API_KEY" \
+curl -H "Authorization: Bearer YOUR_API_KEY" \
   https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/temporal/cluster
 ```
 
@@ -42,5 +42,5 @@ curl -H "X-API-Key: YOUR_API_KEY" \
 </ResponseExample>
 
 <Note>
-  The Alfred Temporal instance runs in development mode with SQLite persistence. This is suitable for single-node deployments but should be migrated to PostgreSQL for production workloads or high-volume operations.
+  The response structure depends on the Temporal CLI's output. If it outputs non-JSON text, the response will be `{ "raw": "..." }` instead. The Alfred Temporal instance runs in development mode with SQLite persistence.
 </Note>

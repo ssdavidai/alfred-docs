@@ -4,63 +4,33 @@ description: "List all available OpenClaw agent skills"
 api: "GET /api/v1/openclaw/skills"
 ---
 
-Returns a list of all available skills that can be used by OpenClaw agents, including their definitions, parameters, and descriptions.
-
-<ParamField header="Authorization" type="string" required>
-  Bearer token for API authentication. Use `Bearer YOUR_API_KEY`.
-</ParamField>
+Returns the output of `openclaw skills` run inside the container. If the CLI outputs valid JSON, it is returned parsed. Otherwise, the raw text is returned in a `raw` field.
 
 <RequestExample>
 
 ```bash cURL
-curl --request GET \
-  --url https://alfred-acme.tailnet.ts.net:3100/api/v1/openclaw/skills \
-  --header 'Authorization: Bearer YOUR_API_KEY'
+curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/v1/openclaw/skills \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 </RequestExample>
 
 <ResponseExample>
 
-```json Response
+```json Structured Response (if openclaw outputs JSON)
 {
-  "skills": [
-    {
-      "id": "vault-curator",
-      "name": "Vault Curator",
-      "description": "Process inbox items and create structured vault records",
-      "version": "1.0.0",
-      "scope": "curator",
-      "parameters": {
-        "inbox_path": {
-          "type": "string",
-          "required": true,
-          "description": "Path to inbox directory"
-        }
-      },
-      "enabled": true
-    },
-    {
-      "id": "vault-janitor",
-      "name": "Vault Janitor",
-      "description": "Scan and fix vault structural issues",
-      "version": "1.0.0",
-      "scope": "janitor",
-      "parameters": {},
-      "enabled": true
-    },
-    {
-      "id": "vault-distiller",
-      "name": "Vault Distiller",
-      "description": "Extract latent knowledge from vault records",
-      "version": "1.0.0",
-      "scope": "distiller",
-      "parameters": {},
-      "enabled": true
-    }
-  ],
-  "total": 3
+  "...": "Structure depends on openclaw skills output"
+}
+```
+
+```json Raw Response (if openclaw outputs text)
+{
+  "raw": "vault-curator, vault-janitor, vault-distiller"
 }
 ```
 
 </ResponseExample>
+
+<Note>
+  The response format depends on the `openclaw skills` command output. If the command outputs valid JSON, it is returned as-is. Otherwise, the raw text output is returned in a `raw` field.
+</Note>

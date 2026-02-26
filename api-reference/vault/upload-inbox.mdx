@@ -6,26 +6,26 @@ api: "POST /api/v1/vault/inbox"
 
 ## Overview
 
-Uploads a single file to the vault's inbox directory. Files in the inbox are processed by Alfred's Curator daemon, which converts raw inputs into structured vault records.
+Uploads a single file to the vault's inbox directory at `/mnt/encrypted/vault/inbox/`. Files in the inbox are processed by Alfred's Curator daemon, which converts raw inputs into structured vault records. The filename is sanitized to remove dangerous characters before writing.
 
 ## Body Parameters
 
 <ParamField body="filename" type="string" required>
-  Name of the file to create in the inbox (e.g., `meeting-notes-2026-02-26.md`, `resume.pdf`)
+  Name of the file to create in the inbox (e.g., `meeting-notes-2026-02-26.md`, `contact-info.txt`)
 </ParamField>
 
 <ParamField body="content" type="string" required>
-  File contents as a string. For binary files, use base64 encoding.
+  File contents as a string.
 </ParamField>
 
 ## Response
 
-<ResponseField name="path" type="string">
-  Path to the uploaded file in the inbox
+<ResponseField name="message" type="string">
+  Confirmation message (e.g., `"Uploaded meeting-notes-2026-02-26.md to inbox"`)
 </ResponseField>
 
-<ResponseField name="uploaded" type="boolean">
-  Always `true` on success
+<ResponseField name="filename" type="string">
+  The sanitized filename that was written to the inbox
 </ResponseField>
 
 ## Request Example
@@ -68,20 +68,35 @@ console.log(result);
 
 ```json 201 Created
 {
-  "path": "inbox/meeting-notes-2026-02-26.md",
-  "uploaded": true
-}
-```
-
-```json 409 Conflict
-{
-  "error": "File already exists: inbox/meeting-notes-2026-02-26.md"
+  "message": "Uploaded meeting-notes-2026-02-26.md to inbox",
+  "filename": "meeting-notes-2026-02-26.md"
 }
 ```
 
 ```json 400 Bad Request
 {
-  "error": "Missing required field: filename"
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "filename and content are required"
+  }
+}
+```
+
+```json 400 Bad Request (invalid filename)
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid filename"
+  }
+}
+```
+
+```json 401 Unauthorized
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Unauthorized"
+  }
 }
 ```
 

@@ -46,28 +46,28 @@ The double-firewall approach (Hetzner Cloud Firewall + UFW) provides redundancy.
 ### Network Diagram
 
 ```
-┌─────────────────────────────────────────────┐
-│ Tailscale Mesh Network (encrypted)         │
-│                                             │
-│  ┌─────────────────────────────────────┐   │
-│  │ Alfred Instance                     │   │
-│  │                                     │   │
-│  │  ┌──────────────────────────────┐  │   │
-│  │  │ Tailscale Serve (HTTPS)      │  │   │
-│  │  │ *.ts.net                      │  │   │
-│  │  └────────┬─────────────────────┘  │   │
-│  │           │                         │   │
-│  │  ┌────────▼─────────────────────┐  │   │
-│  │  │ localhost:3000 (AAS API)     │  │   │
-│  │  │ localhost:8080 (Temporal UI) │  │   │
-│  │  │ localhost:8000 (OpenClaw)    │  │   │
-│  │  └──────────────────────────────┘  │   │
-│  └─────────────────────────────────────┘   │
-└─────────────────────────────────────────────┘
-         │
-         │ SSH (port 22)
-         │ ICMP (ping)
-         ▼
++---------------------------------------------+
+| Tailscale Mesh Network (encrypted)          |
+|                                             |
+|  +-------------------------------------+   |
+|  | Alfred Instance                      |   |
+|  |                                      |   |
+|  |  +------------------------------+   |   |
+|  |  | Tailscale Serve (HTTPS)      |   |   |
+|  |  | *.ts.net                     |   |   |
+|  |  +-----------+------------------+   |   |
+|  |              |                      |   |
+|  |  +-----------v------------------+   |   |
+|  |  | localhost:3100 (AAS API)     |   |   |
+|  |  | localhost:8233 (Temporal UI) |   |   |
+|  |  | localhost:3000 (OpenClaw)    |   |   |
+|  |  +------------------------------+   |   |
+|  +-------------------------------------+   |
++---------------------------------------------+
+         |
+         | SSH (port 22)
+         | ICMP (ping)
+         v
     Public Internet (Hetzner Cloud Firewall)
 ```
 
@@ -82,13 +82,7 @@ All HTTP services are exposed via Tailscale Serve, which provides:
 - HTTPS-only (HTTP is not exposed)
 - Domain format: `https://<instance-name>.tail<hash>.ts.net`
 
-Example configuration (`/etc/systemd/system/tailscale-serve.service`):
-
-```bash
-tailscale serve https:443 http://127.0.0.1:3000 &
-tailscale serve --bg https:8443 http://127.0.0.1:8080 &
-tailscale serve --bg https:8000 http://127.0.0.1:8000 &
-```
+The AAS API runs on port 3100 internally and is exposed via Tailscale Serve on the default HTTPS port (443).
 
 ### SSH Access
 
@@ -106,7 +100,7 @@ Private keys are stored in alfred-ctrl at `data/ssh_keys/<instance_id>/id_ed2551
 
 ### API Key Authentication
 
-The Alfred API (AAS) requires a **bearer token** for all requests:
+The Alfred API (AAS) requires a **Bearer token** for all requests:
 
 **Environment Variable**:
 ```bash
@@ -123,6 +117,17 @@ Authorization: Bearer <random-token>
 - API refuses to start if `AAS_API_KEY` is not set
 - 401 Unauthorized returned for missing or invalid tokens
 
+**Error Response** (missing or invalid token):
+
+```json
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Missing or malformed Authorization header"
+  }
+}
+```
+
 <Warning>
 The API will **not start** if `AAS_API_KEY` is unset. This prevents accidental exposure of an unauthenticated API.
 </Warning>
@@ -132,15 +137,16 @@ The API will **not start** if `AAS_API_KEY` is unset. This prevents accidental e
 To rotate the API key:
 
 1. Generate a new random token (e.g., `openssl rand -hex 32`)
-2. Update `AAS_API_KEY` in `/mnt/encrypted/secrets/api.env`
-3. Restart the AAS service: `docker compose restart alfred-api`
+2. Update `AAS_API_KEY` in `/opt/alfred/compose/.env`
+3. Restart the AAS container: `docker compose restart alfred-aas`
 4. Update clients with the new key
 
 ### API Key Confidentiality
 
 The API key is protected from self-exposure:
 
-- **Filtered from `GET /admin/config/env` responses** (returns `***FILTERED***`)
+- **Filtered from `GET /api/v1/admin/config/env` responses** (key is omitted entirely)
+- **Cannot be modified via `PATCH /api/v1/admin/config/env`** (returns VALIDATION_ERROR)
 - Never logged or included in error messages
 - Not accessible to vault operations or agent backends
 
@@ -148,16 +154,38 @@ The API key is protected from self-exposure:
 
 The vault operations layer enforces **scope-based authorization**:
 
-| Scope | Create | Read | Edit | Delete | Notes |
-|-------|--------|------|------|--------|-------|
-| `curator` | ✅ | ✅ | ✅ | ❌ | Can create/edit entity types, cannot delete |
-| `janitor` | ❌ | ✅ | ✅ | ✅ | Can edit/delete, cannot create |
-| `distiller` | ✅ (learning types only) | ✅ | ❌ | ❌ | Can only create learning types |
-| `api` | ✅ | ✅ | ✅ | ✅ | Full access (used by tenant API) |
+| Scope | Create | Read | Edit | Move | Delete | Notes |
+|-------|--------|------|------|------|--------|-------|
+| `curator` | all types | all | all types | inbox only | -- | Can create/edit, move from inbox only, cannot delete |
+| `janitor` | -- | all | all types | -- | all types | Can edit/delete, cannot create or move |
+| `distiller` | learning types only | all | -- | -- | -- | Can only create learning types |
+| `api` (default) | all types | all | all types | all types | all types | Full access (used by tenant API) |
 
 <Note>
 Scope enforcement prevents the AI agent backends from performing unauthorized operations. For example, the Curator agent cannot delete records, even if it tries.
 </Note>
+
+## Error Format
+
+All API errors return a consistent JSON structure:
+
+```json
+{
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable description",
+    "details": {}
+  }
+}
+```
+
+Error codes used:
+- `UNAUTHORIZED` (401) -- missing or invalid API key
+- `VALIDATION_ERROR` (400) -- invalid request parameters
+- `NOT_FOUND` (404) -- route or resource not found
+- `CONFLICT` (409) -- resource conflict
+- `EXEC_ERROR` (500) -- command execution failed (includes `stderr` in details)
+- `INTERNAL_ERROR` (500) -- unexpected server error
 
 ## Command Execution Safety
 
@@ -271,7 +299,7 @@ Backups use **Restic** with encryption:
 - **Backend**: Hetzner S3 (Object Storage)
 - **Encryption**: AES-256 with per-repository password
 - **Deduplication**: Content-defined chunking
-- **Retention**: 7 daily, 4 weekly, 12 monthly
+- **Retention**: 7 daily, 4 weekly, 6 monthly
 
 Backup credentials are stored in `/mnt/encrypted/secrets/restic.env` and backed up to alfred-ctrl at `data/ssh_keys/<instance_id>/restic.env`.
 
@@ -283,20 +311,20 @@ Even if the S3 bucket is compromised, backup data is encrypted and cannot be rea
 
 ### In Scope
 
-✅ Unauthorized API access (requires valid API key)
-✅ Network eavesdropping (encrypted via Tailscale)
-✅ Shell injection attacks (array-based execFile)
-✅ Secrets in metadata service (secrets uploaded post-provision)
-✅ Data at rest exfiltration (LUKS encryption)
-✅ Brute-force SSH attacks (fail2ban, key-only auth)
+- Unauthorized API access (requires valid API key with constant-time comparison)
+- Network eavesdropping (encrypted via Tailscale WireGuard mesh)
+- Shell injection attacks (array-based execFile, no shell interpretation)
+- Secrets in metadata service (secrets uploaded post-provision, never in cloud-init)
+- Data at rest exfiltration (LUKS2 encryption)
+- Brute-force SSH attacks (fail2ban, key-only auth)
 
 ### Out of Scope
 
-❌ Compromised Hetzner Cloud account (attacker has root access)
-❌ Compromised alfred-ctrl control plane (holds all instance keys)
-❌ Compromised Tailscale account (attacker joins mesh network)
-❌ Physical server access (Hetzner datacenter security)
-❌ Side-channel attacks (timing, cache, speculative execution)
+- Compromised Hetzner Cloud account (attacker has root access)
+- Compromised alfred-ctrl control plane (holds all instance keys)
+- Compromised Tailscale account (attacker joins mesh network)
+- Physical server access (Hetzner datacenter security)
+- Side-channel attacks (timing, cache, speculative execution)
 
 ## Security Checklist
 
@@ -304,7 +332,7 @@ When deploying Alfred instances:
 
 <AccordionGroup>
 <Accordion title="Pre-Provision" icon="clipboard-check">
-- [ ] Generate strong `AAS_API_KEY` (≥32 bytes random)
+- [ ] Generate strong `AAS_API_KEY` (32+ bytes random hex)
 - [ ] Rotate `TAILSCALE_AUTH_KEY` (use ephemeral or reusable keys, not permanent)
 - [ ] Verify `HETZNER_API_TOKEN` has minimum required scopes
 - [ ] Review firewall rules in `src/infra/firewall.ts`
@@ -312,7 +340,7 @@ When deploying Alfred instances:
 
 <Accordion title="Post-Provision" icon="server">
 - [ ] Verify Tailscale connectivity: `tailscale status`
-- [ ] Verify HTTPS endpoints: `curl https://<instance>.ts.net/health`
+- [ ] Verify HTTPS endpoints: `curl https://<instance>.ts.net/api/v1/admin/health -H "Authorization: Bearer <key>"`
 - [ ] Verify API authentication: `curl -H "Authorization: Bearer <key>" https://<instance>.ts.net/api/v1/vault/schema`
 - [ ] Verify encrypted volume: `lsblk` (check for `crypt` device)
 - [ ] Verify SSH key-only auth: `ssh deploy@<instance-ip>` (should require key)
@@ -353,4 +381,4 @@ Planned enhancements (not yet implemented):
 - [ ] Certificate pinning for Tailscale Serve
 - [ ] Anomaly detection in audit logs (ML-based)
 
-For detailed security findings and remediation priorities, see `/Users/administrator/c/alfred/alfred-ctrl/SECURITY.md`.
+For detailed security findings and remediation priorities, see `SECURITY.md` in the alfred-ctrl repository.

@@ -16,11 +16,11 @@ Start a stopped container in the Alfred stack. This is useful for restarting con
 
 ```bash curl
 # Start the Alfred worker
-curl -X POST -H "X-API-Key: YOUR_API_KEY" \
+curl -X POST -H "Authorization: Bearer YOUR_API_KEY" \
   https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/containers/worker/start
 
 # Start OpenClaw gateway
-curl -X POST -H "X-API-Key: YOUR_API_KEY" \
+curl -X POST -H "Authorization: Bearer YOUR_API_KEY" \
   https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/containers/openclaw/start
 ```
 
@@ -30,7 +30,7 @@ curl -X POST -H "X-API-Key: YOUR_API_KEY" \
 
 ```json
 {
-  "message": "Container worker started"
+  "message": "Container \"worker\" started"
 }
 ```
 

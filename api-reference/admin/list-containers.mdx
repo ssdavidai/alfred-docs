@@ -4,12 +4,12 @@ description: "List all Docker Compose containers and their status"
 api: "GET /api/v1/admin/containers"
 ---
 
-Retrieve the status of all Docker Compose containers running in the Alfred stack.
+Retrieve the status of all Docker Compose containers in the Alfred stack. Returns the parsed JSONL output of `docker compose ps --format json` as a JSON array.
 
 <RequestExample>
 
 ```bash curl
-curl -H "X-API-Key: YOUR_API_KEY" \
+curl -H "Authorization: Bearer YOUR_API_KEY" \
   https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/containers
 ```
 

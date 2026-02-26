@@ -14,19 +14,19 @@ Retrieve historical logs from a specific container. This endpoint returns a snap
 
 ## Query Parameters
 
-<ParamField query="tail" type="number" optional default="100">
-  Number of log lines to retrieve from the end of the log file.
+<ParamField query="tail" type="string" optional default="100">
+  Number of log lines to retrieve from the end of the log. Must be a numeric string.
 </ParamField>
 
 <RequestExample>
 
 ```bash curl
 # Get last 100 lines from worker logs (default)
-curl -H "X-API-Key: YOUR_API_KEY" \
+curl -H "Authorization: Bearer YOUR_API_KEY" \
   https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/containers/worker/logs
 
 # Get last 500 lines from OpenClaw logs
-curl -H "X-API-Key: YOUR_API_KEY" \
+curl -H "Authorization: Bearer YOUR_API_KEY" \
   "https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/containers/openclaw/logs?tail=500"
 ```
 

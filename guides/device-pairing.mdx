@@ -30,83 +30,29 @@ OpenClaw devices (mobile, desktop, web clients) connect to your Alfred instance 
 Get both pending and paired devices:
 
 ```bash
-curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/devices \
-  -H "X-API-Key: YOUR_API_KEY"
+curl -X GET https://alfred-acme.tailnet.ts.net/api/v1/devices \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 **Response:**
 
-```json
-{
-  "ok": true,
-  "devices": {
-    "pending": [
-      {
-        "requestId": "req_abc123",
-        "deviceName": "Alice's iPhone",
-        "platform": "ios",
-        "model": "iPhone 14 Pro",
-        "timestamp": "2026-02-26T15:30:00Z"
-      }
-    ],
-    "paired": [
-      {
-        "deviceId": "dev_xyz789",
-        "deviceName": "Bob's MacBook",
-        "platform": "macos",
-        "model": "MacBook Pro M2",
-        "pairedAt": "2026-02-20T10:00:00Z",
-        "lastSeen": "2026-02-26T14:00:00Z"
-      }
-    ]
-  }
-}
-```
-
-### List Pending Only
-
-```bash
-curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/devices/pending \
-  -H "X-API-Key: YOUR_API_KEY"
-```
-
-**Response:**
+The response is the parsed JSON output from the `openclaw devices list --json` command. The exact shape depends on the OpenClaw version, but typically includes `pending` and `paired` arrays:
 
 ```json
 {
-  "ok": true,
   "pending": [
     {
       "requestId": "req_abc123",
-      "deviceName": "Alice's iPhone",
-      "platform": "ios",
-      "model": "iPhone 14 Pro",
-      "timestamp": "2026-02-26T15:30:00Z"
+      "displayName": "Alice's iPhone",
+      "platform": "ios"
     }
-  ]
-}
-```
-
-### List Paired Only
-
-```bash
-curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/devices/paired \
-  -H "X-API-Key: YOUR_API_KEY"
-```
-
-**Response:**
-
-```json
-{
-  "ok": true,
+  ],
   "paired": [
     {
       "deviceId": "dev_xyz789",
-      "deviceName": "Bob's MacBook",
+      "displayName": "Bob's MacBook",
       "platform": "macos",
-      "model": "MacBook Pro M2",
-      "pairedAt": "2026-02-20T10:00:00Z",
-      "lastSeen": "2026-02-26T14:00:00Z"
+      "role": "user"
     }
   ]
 }
@@ -114,54 +60,41 @@ curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/devices/paired \
 
 ## Approving Devices
 
-Approve a pending pairing request:
+Approve a pending pairing request using the `requestId`:
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/approve \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "requestId": "req_abc123"
-  }'
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/devices/req_abc123/approve \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
+
+You can also pass `{"latest": true}` in the body to approve the latest pending request.
 
 **Response:**
 
 ```json
 {
-  "ok": true,
-  "message": "Device approved",
-  "device": {
-    "deviceId": "dev_def456",
-    "deviceName": "Alice's iPhone",
-    "token": "aas_token_xyz789..."
-  }
+  "message": "Device approved"
 }
 ```
 
 <Note>
-The token is only returned once during approval. The device must save it securely. If lost, the device must re-pair.
+Approve and reject operations use the `:requestId` path parameter (from the pending device's `requestId` field).
 </Note>
 
 ## Rejecting Devices
 
-Reject a pending pairing request:
+Reject a pending pairing request using the `requestId`:
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/reject \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "requestId": "req_abc123"
-  }'
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/devices/req_abc123/reject \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 **Response:**
 
 ```json
 {
-  "ok": true,
-  "message": "Device pairing request rejected"
+  "message": "Device rejected"
 }
 ```
 
@@ -169,22 +102,17 @@ The request is permanently discarded. The device must initiate a new pairing req
 
 ## Removing Paired Devices
 
-Revoke access for a paired device:
+Remove a paired device using the `deviceId` (HTTP DELETE):
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/remove \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "deviceId": "dev_xyz789"
-  }'
+curl -X DELETE https://alfred-acme.tailnet.ts.net/api/v1/devices/dev_xyz789 \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 **Response:**
 
 ```json
 {
-  "ok": true,
   "message": "Device removed"
 }
 ```
@@ -199,14 +127,14 @@ Removing a device is permanent. The device must re-pair to regain access.
 
 ### Rotating Tokens
 
-Rotate a device's access token:
+Rotate a device's access token using the `deviceId`:
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/rotate-token \
-  -H "X-API-Key: YOUR_API_KEY" \
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/devices/dev_xyz789/rotate \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "deviceId": "dev_xyz789"
+    "role": "user"
   }'
 ```
 
@@ -214,28 +142,28 @@ curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/rotate-token \
 
 ```json
 {
-  "ok": true,
-  "message": "Token rotated",
-  "newToken": "aas_token_new123..."
+  "message": "Token rotated"
 }
 ```
 
-The old token is invalidated immediately. The device must update to the new token within a grace period (typically 5 minutes) or lose access.
+<Note>
+The `role` field is required for token rotation. You can optionally include a `scope` field.
+</Note>
 
 <Tip>
 Rotate tokens periodically (every 90 days) for security. The device should support token refresh.
 </Tip>
 
-### Revoking Tokens
+### Revoking Access
 
-Revoke a token without removing the device (device can request a new token):
+Revoke a device's access using the `deviceId`:
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/revoke-token \
-  -H "X-API-Key: YOUR_API_KEY" \
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/devices/dev_xyz789/revoke \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "deviceId": "dev_xyz789"
+    "role": "user"
   }'
 ```
 
@@ -243,68 +171,70 @@ curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/revoke-token \
 
 ```json
 {
-  "ok": true,
-  "message": "Token revoked"
+  "message": "Access revoked"
 }
 ```
 
-The device remains in the paired list but has no valid token. It must request a new token via the pairing flow.
+<Note>
+The `role` field is required for revocation.
+</Note>
 
 ## Bulk Operations
 
-### Clear All Pending Requests
+### Clear Devices
 
-Reject all pending pairing requests at once:
+Clear all devices, or only pending requests:
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/clear-pending \
-  -H "X-API-Key: YOUR_API_KEY"
+# Clear all devices
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/devices/clear \
+  -H "Authorization: Bearer YOUR_API_KEY"
+
+# Clear pending requests only
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/devices/clear \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"pending_only": true}'
 ```
 
 **Response:**
 
 ```json
 {
-  "ok": true,
-  "message": "All pending requests cleared",
-  "count": 3
-}
-```
-
-### Remove All Paired Devices
-
-Revoke access for all paired devices:
-
-```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/clear-paired \
-  -H "X-API-Key: YOUR_API_KEY"
-```
-
-**Response:**
-
-```json
-{
-  "ok": true,
-  "message": "All paired devices removed",
-  "count": 5
+  "message": "Devices cleared"
 }
 ```
 
 <Warning>
-This revokes all device tokens immediately. Use with caution. Typically used during security incidents or instance resets.
+Clearing all devices revokes all device tokens immediately. Use with caution. Typically used during security incidents or instance resets.
 </Warning>
 
-## When to Use Each Operation
+## Endpoint Summary
 
-| Operation | Use Case |
-|-----------|----------|
-| **Approve** | Normal pairing flow — you recognize the device |
-| **Reject** | Unknown device or accidental pairing request |
-| **Remove** | Device lost/stolen, user left organization, or decommissioned |
-| **Rotate Token** | Periodic security maintenance (every 90 days) |
-| **Revoke Token** | Suspected token compromise without removing device record |
-| **Clear Pending** | Cleanup after testing or mass rejection |
-| **Clear Paired** | Security incident, instance reset, or decommissioning |
+| Operation | Method | Path | Identifier |
+|-----------|--------|------|------------|
+| **List** | GET | `/api/v1/devices` | -- |
+| **Approve** | POST | `/api/v1/devices/:requestId/approve` | `requestId` |
+| **Reject** | POST | `/api/v1/devices/:requestId/reject` | `requestId` |
+| **Remove** | DELETE | `/api/v1/devices/:deviceId` | `deviceId` |
+| **Rotate** | POST | `/api/v1/devices/:deviceId/rotate` | `deviceId` |
+| **Revoke** | POST | `/api/v1/devices/:deviceId/revoke` | `deviceId` |
+| **Clear** | POST | `/api/v1/devices/clear` | -- |
+
+## Error Handling
+
+All errors follow a consistent format:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "role is required"
+  }
+}
+```
+
+Error codes: `UNAUTHORIZED` (401), `VALIDATION_ERROR` (400), `NOT_FOUND` (404), `EXEC_ERROR` (500), `INTERNAL_ERROR` (500).
 
 ## Example Workflows
 
@@ -316,16 +246,14 @@ This revokes all device tokens immediately. Use with caution. Typically used dur
   </Step>
   <Step title="Admin checks pending requests">
     ```bash
-    curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/devices/pending \
-      -H "X-API-Key: YOUR_API_KEY"
+    curl -X GET https://alfred-acme.tailnet.ts.net/api/v1/devices \
+      -H "Authorization: Bearer YOUR_API_KEY"
     ```
   </Step>
   <Step title="Admin approves the device">
     ```bash
-    curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/approve \
-      -H "X-API-Key: YOUR_API_KEY" \
-      -H "Content-Type: application/json" \
-      -d '{"requestId": "req_abc123"}'
+    curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/devices/req_abc123/approve \
+      -H "Authorization: Bearer YOUR_API_KEY"
     ```
   </Step>
   <Step title="Device receives token and connects">
@@ -341,20 +269,18 @@ This revokes all device tokens immediately. Use with caution. Typically used dur
   </Step>
   <Step title="Admin identifies the device">
     ```bash
-    curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/devices/paired \
-      -H "X-API-Key: YOUR_API_KEY"
+    curl -X GET https://alfred-acme.tailnet.ts.net/api/v1/devices \
+      -H "Authorization: Bearer YOUR_API_KEY"
     ```
   </Step>
   <Step title="Admin removes the device">
     ```bash
-    curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/remove \
-      -H "X-API-Key: YOUR_API_KEY" \
-      -H "Content-Type: application/json" \
-      -d '{"deviceId": "dev_xyz789"}'
+    curl -X DELETE https://alfred-acme.tailnet.ts.net/api/v1/devices/dev_xyz789 \
+      -H "Authorization: Bearer YOUR_API_KEY"
     ```
   </Step>
   <Step title="Confirm revocation">
-    Check that the device no longer appears in paired list
+    Check that the device no longer appears in the paired list
   </Step>
 </Steps>
 
@@ -363,20 +289,20 @@ This revokes all device tokens immediately. Use with caution. Typically used dur
 Periodic token rotation for all devices:
 
 ```bash
-# List all paired devices
-curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/devices/paired \
-  -H "X-API-Key: YOUR_API_KEY"
+# List all devices
+curl -X GET https://alfred-acme.tailnet.ts.net/api/v1/devices \
+  -H "Authorization: Bearer YOUR_API_KEY"
 
 # Rotate each device token
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/rotate-token \
-  -H "X-API-Key: YOUR_API_KEY" \
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/devices/dev_abc123/rotate \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"deviceId": "dev_abc123"}'
+  -d '{"role": "user"}'
 
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/rotate-token \
-  -H "X-API-Key: YOUR_API_KEY" \
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/devices/dev_def456/rotate \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"deviceId": "dev_def456"}'
+  -d '{"role": "user"}'
 ```
 
 <Tip>
@@ -388,28 +314,30 @@ Automate token rotation with a cron job. Notify users via email when their token
 Clear all test devices:
 
 ```bash
-# Clear pending requests
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/clear-pending \
-  -H "X-API-Key: YOUR_API_KEY"
+# Clear pending requests only
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/devices/clear \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"pending_only": true}'
 
-# Clear paired devices
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/clear-paired \
-  -H "X-API-Key: YOUR_API_KEY"
+# Or clear all devices
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/devices/clear \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 ## Troubleshooting
 
 ### Device Can't Pair
 
-Check pending requests:
+List devices and check if the request arrived:
 
 ```bash
-curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/devices/pending \
-  -H "X-API-Key: YOUR_API_KEY"
+curl -X GET https://alfred-acme.tailnet.ts.net/api/v1/devices \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 If no request appears:
-- Ensure OpenClaw gateway is running (check `alfred-openclaw` container status)
+- Ensure OpenClaw gateway is running (check `openclaw` container status)
 - Check OpenClaw logs for pairing errors
 
 ### Token Not Working
@@ -417,8 +345,8 @@ If no request appears:
 Verify the device is still paired:
 
 ```bash
-curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/devices/paired \
-  -H "X-API-Key: YOUR_API_KEY"
+curl -X GET https://alfred-acme.tailnet.ts.net/api/v1/devices \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 If missing, the device was removed. Re-pair required.
@@ -426,10 +354,10 @@ If missing, the device was removed. Re-pair required.
 If present, rotate the token:
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/rotate-token \
-  -H "X-API-Key: YOUR_API_KEY" \
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/devices/dev_xyz789/rotate \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"deviceId": "dev_xyz789"}'
+  -d '{"role": "user"}'
 ```
 
 ### Multiple Pending Requests from Same Device
@@ -437,10 +365,8 @@ curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/rotate-token \
 This happens if the device retries pairing. Reject duplicates:
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/devices/reject \
-  -H "X-API-Key: YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"requestId": "req_old123"}'
+curl -X POST https://alfred-acme.tailnet.ts.net/api/v1/devices/req_old123/reject \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 Then approve the most recent request.

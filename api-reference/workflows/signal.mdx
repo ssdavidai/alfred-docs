@@ -1,7 +1,7 @@
 ---
 title: "Signal Workflow"
 description: "Send a signal to a running workflow"
-api: "POST https://alfred-acme.tailnet.ts.net:3100/api/v1/workflows/{wfId}/signal"
+api: "POST /api/v1/workflows/{wfId}/signal"
 ---
 
 Sends a signal to a running workflow. Signals allow external systems to communicate with workflows, triggering actions or passing data.
@@ -12,12 +12,10 @@ Sends a signal to a running workflow. Signals allow external systems to communic
 
 <ParamField body="signal_name" type="string" required>
   The name of the signal to send. Must match a signal handler defined in the workflow.
-
-  Common signals: `pause`, `resume`, `update_config`, `force_sweep`
 </ParamField>
 
 <ParamField body="input" type="any" optional>
-  Data to pass with the signal. Structure depends on the signal handler.
+  Data to pass with the signal. Will be JSON-serialized.
 </ParamField>
 
 <ParamField body="run_id" type="string" optional>
@@ -41,13 +39,9 @@ curl -X POST \
 </RequestExample>
 
 <ResponseExample>
-```json 200 OK
+```json 200
 {
-  "success": true,
-  "workflowId": "curator-sweep-20260226-143022",
-  "runId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-  "signalName": "update_config",
-  "delivered": true
+  "message": "Signal sent"
 }
 ```
 </ResponseExample>

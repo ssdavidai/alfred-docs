@@ -6,28 +6,32 @@ api: "POST /api/v1/devices/{requestId}/approve"
 
 Approves a pending device pairing request, allowing the device to connect to the OpenClaw gateway.
 
+<Warning>
+  This endpoint uses `requestId` in the URL path, not `deviceId`. The request ID is the identifier of the pending pairing request, which is different from the device ID assigned after pairing.
+</Warning>
+
 <ParamField path="requestId" type="string" required>
   The unique identifier of the pending pairing request to approve.
 </ParamField>
 
-<ParamField header="Authorization" type="string" required>
-  Bearer token for API authentication. Use `Bearer YOUR_API_KEY`.
-</ParamField>
-
-<ParamField body="latest" type="boolean" default={false}>
-  If true, approve only if this is the most recent request from this device. Prevents approval of stale requests.
+<ParamField body="latest" type="boolean" optional default={false}>
+  If true, passes `--latest` flag to approve only the most recent request from this device. Prevents approval of stale requests.
 </ParamField>
 
 <RequestExample>
 
 ```bash cURL
-curl --request POST \
-  --url https://alfred-acme.tailnet.ts.net:3100/api/v1/devices/req_7k9m3p2q1/approve \
-  --header 'Authorization: Bearer YOUR_API_KEY' \
-  --header 'Content-Type: application/json' \
-  --data '{
+curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/v1/devices/req_7k9m3p2q1/approve \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
     "latest": true
   }'
+```
+
+```bash Without Options
+curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/v1/devices/req_7k9m3p2q1/approve \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 </RequestExample>
@@ -36,10 +40,12 @@ curl --request POST \
 
 ```json Response
 {
-  "message": "Device approved successfully",
-  "deviceId": "dev_n5m4k3j2h1",
-  "requestId": "req_7k9m3p2q1"
+  "message": "Device approved"
 }
 ```
 
 </ResponseExample>
+
+<ResponseField name="message" type="string">
+  Human-readable status message. Contains the stdout from `openclaw devices approve`, or `"Device approved"` if stdout is empty.
+</ResponseField>

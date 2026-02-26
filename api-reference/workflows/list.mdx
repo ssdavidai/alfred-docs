@@ -1,15 +1,15 @@
 ---
 title: "List Workflows"
 description: "Retrieve a list of workflows with optional filtering"
-api: "GET https://alfred-acme.tailnet.ts.net:3100/api/v1/workflows"
+api: "GET /api/v1/workflows"
 ---
 
-Returns a list of workflows in the Temporal namespace. Supports optional filtering using Temporal query syntax.
+Returns a list of workflows in the Temporal namespace. Runs `temporal workflow list --output json` inside the temporal container; the JSONL output is parsed into an array. Supports optional filtering using Temporal query syntax.
 
 <ParamField query="query" type="string" optional>
-  Temporal query string for filtering workflows. Examples:
+  Temporal visibility query string for filtering workflows. Uses Temporal's SQL-like query syntax. Examples:
   - `ExecutionStatus='Running'`
-  - `WorkflowType='CuratorWorkflow' AND ExecutionStatus='Completed'`
+  - `WorkflowType='MyWorkflow' AND ExecutionStatus='Completed'`
   - `StartTime > '2026-01-01T00:00:00Z'`
 </ParamField>
 
@@ -28,26 +28,35 @@ curl -X GET \
 </RequestExample>
 
 <ResponseExample>
-```json 200 OK
-{
-  "workflows": [
-    {
+```json 200
+[
+  {
+    "execution": {
       "workflowId": "curator-sweep-20260226-143022",
-      "type": "CuratorWorkflow",
-      "status": "Running",
-      "startTime": "2026-02-26T14:30:22.154Z",
       "runId": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
     },
-    {
+    "type": {
+      "name": "CuratorWorkflow"
+    },
+    "startTime": "2026-02-26T14:30:22.154Z",
+    "status": "WORKFLOW_EXECUTION_STATUS_RUNNING"
+  },
+  {
+    "execution": {
       "workflowId": "janitor-scan-20260226-120000",
-      "type": "JanitorWorkflow",
-      "status": "Completed",
-      "startTime": "2026-02-26T12:00:00.000Z",
-      "closeTime": "2026-02-26T12:05:13.442Z",
       "runId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-    }
-  ],
-  "count": 2
-}
+    },
+    "type": {
+      "name": "JanitorWorkflow"
+    },
+    "startTime": "2026-02-26T12:00:00.000Z",
+    "closeTime": "2026-02-26T12:05:13.442Z",
+    "status": "WORKFLOW_EXECUTION_STATUS_COMPLETED"
+  }
+]
 ```
 </ResponseExample>
+
+<Note>
+  The response is a JSON array where each element is a workflow execution object from the Temporal CLI's JSONL output. The exact field names and structure are determined by the Temporal CLI version.
+</Note>

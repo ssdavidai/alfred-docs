@@ -9,7 +9,7 @@ Read the current OpenClaw configuration from `/mnt/encrypted/openclaw/openclaw.j
 <RequestExample>
 
 ```bash curl
-curl -H "X-API-Key: YOUR_API_KEY" \
+curl -H "Authorization: Bearer YOUR_API_KEY" \
   https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/config/openclaw
 ```
 
@@ -47,5 +47,5 @@ curl -H "X-API-Key: YOUR_API_KEY" \
 </ResponseExample>
 
 <Note>
-  The OpenClaw configuration includes gateway settings, approved devices, and registry credentials. Changes to this file require restarting the openclaw container to take effect.
+  Returns the raw parsed contents of `/mnt/encrypted/openclaw/openclaw.json`. If the file does not exist or cannot be read, an empty object `{}` is returned. The exact structure depends on the OpenClaw version and configuration.
 </Note>

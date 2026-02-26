@@ -57,7 +57,7 @@ curl -s https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/schema \
   -H "Authorization: Bearer YOUR_API_KEY" | jq .known_types
 ```
 
-This returns the 25 record types Alfred manages — from `person` and `project` to `assumption` and `decision`.
+This returns the 20 record types Alfred manages — from `person` and `project` to `assumption` and `decision`.
 
 ## Step 3: Drop your first file into the inbox
 
@@ -78,13 +78,13 @@ curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/inbox \
 Wait a few seconds for the Curator to process, then list records:
 
 <CodeGroup>
-```bash List meetings
-curl -s https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/list/meeting \
+```bash List people
+curl -s https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/list/person \
   -H "Authorization: Bearer YOUR_API_KEY" | jq .
 ```
 
-```bash List people
-curl -s https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/list/person \
+```bash List tasks
+curl -s https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/list/task \
   -H "Authorization: Bearer YOUR_API_KEY" | jq .
 ```
 
@@ -94,7 +94,7 @@ curl -s https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/list/decision \
 ```
 </CodeGroup>
 
-The Curator will have created records for the meeting, the people mentioned, any tasks, decisions, and projects — all linked together with wikilinks.
+The Curator will have created records for the people mentioned, any tasks, decisions, and projects — all linked together with wikilinks.
 
 ## Step 5: Check worker status
 

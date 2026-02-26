@@ -1,10 +1,10 @@
 ---
 title: "List Schedules"
 description: "Retrieve all workflow schedules"
-api: "GET https://alfred-acme.tailnet.ts.net:3100/api/v1/schedules"
+api: "GET /api/v1/schedules"
 ---
 
-Returns a list of all workflow schedules configured in the Temporal namespace.
+Returns a list of all workflow schedules from `temporal schedule list --output json`. The JSONL output is parsed into an array.
 
 <RequestExample>
 ```bash cURL
@@ -15,38 +15,36 @@ curl -X GET \
 </RequestExample>
 
 <ResponseExample>
-```json 200 OK
-{
-  "schedules": [
-    {
-      "scheduleId": "curator-hourly",
-      "workflowType": "CuratorWorkflow",
-      "cron": "0 * * * *",
-      "state": "Active",
-      "nextRunTime": "2026-02-26T15:00:00.000Z",
-      "lastRunTime": "2026-02-26T14:00:00.000Z",
-      "recentRuns": 142
-    },
-    {
-      "scheduleId": "janitor-daily",
-      "workflowType": "JanitorWorkflow",
-      "cron": "0 2 * * *",
-      "state": "Active",
-      "nextRunTime": "2026-02-27T02:00:00.000Z",
-      "lastRunTime": "2026-02-26T02:00:00.000Z",
-      "recentRuns": 26
-    },
-    {
-      "scheduleId": "distiller-weekly",
-      "workflowType": "DistillerWorkflow",
-      "cron": "0 3 * * 0",
-      "state": "Paused",
-      "pauseNote": "Paused for maintenance",
-      "lastRunTime": "2026-02-23T03:00:00.000Z",
-      "recentRuns": 4
+```json 200
+[
+  {
+    "scheduleId": "curator-hourly",
+    "info": {
+      "spec": {
+        "cronExpressions": ["0 * * * *"]
+      },
+      "workflowType": {
+        "name": "CuratorWorkflow"
+      },
+      "paused": false
     }
-  ],
-  "count": 3
-}
+  },
+  {
+    "scheduleId": "janitor-daily",
+    "info": {
+      "spec": {
+        "cronExpressions": ["0 2 * * *"]
+      },
+      "workflowType": {
+        "name": "JanitorWorkflow"
+      },
+      "paused": false
+    }
+  }
+]
 ```
 </ResponseExample>
+
+<Note>
+  The response is a JSON array parsed from the Temporal CLI's JSONL output. The exact field names and structure are determined by the Temporal CLI version.
+</Note>

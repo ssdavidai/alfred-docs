@@ -6,40 +6,22 @@ api: "GET /api/v1/vault/list/{type}"
 
 ## Overview
 
-Returns a list of all records for a given type. The type must be one of the 25 known entity or learning types.
+Returns a list of all records for a given type. The type must be one of the 20 types hardcoded in the API. The endpoint runs `alfred vault list <type>` inside the Alfred container via `docker exec` and returns the CLI output.
 
 ## Path Parameters
 
 <ParamField path="type" type="string" required>
   The record type to list. Must be one of:
-  - Entity types: `person`, `org`, `project`, `task`, `meeting`, `document`, `resource`, `tool`, `skill`, `goal`, `milestone`, `event`, `location`, `asset`, `product`, `service`, `process`, `policy`, `standard`, `metric`
+  - Entity types: `person`, `org`, `project`, `task`, `event`, `note`, `location`, `process`, `account`, `asset`, `conversation`, `input`, `run`, `session`, `thread`
   - Learning types: `assumption`, `decision`, `constraint`, `contradiction`, `synthesis`
 </ParamField>
 
 ## Response
 
-<ResponseField name="type" type="string">
-  The requested record type
-</ResponseField>
+The response structure depends on the `alfred vault list` CLI output. If the CLI returns valid JSON, it is passed through directly. Otherwise, the raw text output is wrapped in a `{ "raw": "..." }` object.
 
-<ResponseField name="records" type="array">
-  Array of record objects
-  <ResponseField name="path" type="string">
-    Relative path to the record file
-  </ResponseField>
-  <ResponseField name="name" type="string">
-    Display name of the record (from frontmatter or filename)
-  </ResponseField>
-  <ResponseField name="status" type="string">
-    Current status (varies by type, e.g., `active`, `completed`, `archived`)
-  </ResponseField>
-  <ResponseField name="created" type="string">
-    ISO 8601 creation timestamp
-  </ResponseField>
-</ResponseField>
-
-<ResponseField name="count" type="number">
-  Number of records returned
+<ResponseField name="raw" type="string">
+  If the CLI output is not valid JSON, the raw text output is returned in this field.
 </ResponseField>
 
 ## Request Example
@@ -72,36 +54,27 @@ console.log(data);
 
 <ResponseExample>
 
-```json 200 OK
+```json 200 OK (raw text fallback)
 {
-  "type": "person",
-  "records": [
-    {
-      "path": "person/Alice Chen.md",
-      "name": "Alice Chen",
-      "status": "active",
-      "created": "2025-12-15T10:30:00Z"
-    },
-    {
-      "path": "person/Bob Martinez.md",
-      "name": "Bob Martinez",
-      "status": "active",
-      "created": "2025-11-20T14:22:00Z"
-    },
-    {
-      "path": "person/Carol Zhang.md",
-      "name": "Carol Zhang",
-      "status": "inactive",
-      "created": "2024-06-10T09:15:00Z"
-    }
-  ],
-  "count": 3
+  "raw": "person/Alice Chen.md\nperson/Bob Martinez.md\nperson/Carol Zhang.md"
 }
 ```
 
 ```json 400 Bad Request
 {
-  "error": "Invalid type 'unknown_type'. Must be one of: person, org, project, ..."
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Unknown vault type: unknown_type. Known types: person, org, project, task, event, note, location, process, account, asset, conversation, input, run, session, thread, decision, assumption, constraint, contradiction, synthesis"
+  }
+}
+```
+
+```json 401 Unauthorized
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Unauthorized"
+  }
 }
 ```
 

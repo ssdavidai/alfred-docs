@@ -6,7 +6,7 @@ api: "GET /api/v1/vault/records/{path}"
 
 ## Overview
 
-Returns the full contents of a vault record, including parsed frontmatter (YAML metadata) and markdown body.
+Returns the contents of a vault record. The endpoint runs `alfred vault read <path>` inside the Alfred container via `docker exec` and returns the CLI output. If the CLI returns valid JSON (e.g., parsed frontmatter and body), it is passed through directly. Otherwise, the raw text output is wrapped in a `{ "raw": "..." }` object.
 
 ## Path Parameters
 
@@ -16,28 +16,10 @@ Returns the full contents of a vault record, including parsed frontmatter (YAML 
 
 ## Response
 
-<ResponseField name="path" type="string">
-  Relative path to the record
-</ResponseField>
+The response structure depends on the `alfred vault read` CLI output. If the CLI returns valid JSON, it is passed through directly. Otherwise, the raw text output is wrapped in a `{ "raw": "..." }` object.
 
-<ResponseField name="frontmatter" type="object">
-  Parsed YAML frontmatter as key-value pairs
-  <ResponseField name="type" type="string">
-    Record type
-  </ResponseField>
-  <ResponseField name="status" type="string">
-    Current status
-  </ResponseField>
-  <ResponseField name="created" type="string">
-    ISO 8601 creation timestamp
-  </ResponseField>
-  <ResponseField name="updated" type="string">
-    ISO 8601 last update timestamp
-  </ResponseField>
-</ResponseField>
-
-<ResponseField name="body" type="string">
-  Markdown body content (everything after the frontmatter block)
+<ResponseField name="raw" type="string">
+  If the CLI output is not valid JSON, the raw text output is returned in this field.
 </ResponseField>
 
 ## Request Example
@@ -71,26 +53,27 @@ console.log(record);
 
 <ResponseExample>
 
-```json 200 OK
+```json 200 OK (raw text fallback)
 {
-  "path": "person/Alice Chen.md",
-  "frontmatter": {
-    "type": "person",
-    "status": "active",
-    "role": "ML Engineer",
-    "org": "[[org/Acme Corp]]",
-    "skills": ["python", "pytorch", "kubernetes"],
-    "projects": ["[[project/ML Pipeline Redesign]]", "[[project/NLP Research]]"],
-    "created": "2025-12-15T10:30:00Z",
-    "updated": "2026-02-20T16:45:00Z"
-  },
-  "body": "## Background\n\nAlice joined Acme in December 2025 as a senior ML engineer. She leads the ML infrastructure team.\n\n## Current Focus\n\n- Redesigning training pipeline for distributed GPU clusters\n- Mentoring junior engineers on model deployment best practices\n\n## Notes\n\nPrefers async communication. Timezone: US Pacific."
+  "raw": "---\ntype: person\nrole: ML Engineer\norg: \"[[org/Acme Corp]]\"\nstatus: active\n---\n\n## Background\n\nAlice joined Acme in December 2025 as a senior ML engineer."
 }
 ```
 
-```json 404 Not Found
+```json 401 Unauthorized
 {
-  "error": "Record not found: person/Unknown Person.md"
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Unauthorized"
+  }
+}
+```
+
+```json 500 Internal Server Error
+{
+  "error": {
+    "code": "EXEC_ERROR",
+    "message": "Command failed with exit code 1"
+  }
 }
 ```
 

@@ -9,7 +9,7 @@ Regenerate the TLS certificate for this instance's Tailscale hostname. The hostn
 <RequestExample>
 
 ```bash curl
-curl -X POST -H "X-API-Key: YOUR_API_KEY" \
+curl -X POST -H "Authorization: Bearer YOUR_API_KEY" \
   https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/tailscale/cert
 ```
 
@@ -29,6 +29,6 @@ curl -X POST -H "X-API-Key: YOUR_API_KEY" \
   Tailscale certificates are automatically renewed before expiration. Manual regeneration is only needed if you encounter certificate errors or if the certificate was accidentally deleted.
 </Note>
 
-<Warning>
-  The new certificate will be written to `/var/lib/tailscale/certs/`. Ensure the AAS service is configured to use certificates from this directory.
-</Warning>
+<Note>
+  The hostname is automatically detected from `tailscale status --json` by reading the `Self.DNSName` field with the trailing dot removed.
+</Note>

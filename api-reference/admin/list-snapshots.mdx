@@ -9,7 +9,7 @@ List all backup snapshots stored in the restic repository. This shows the histor
 <RequestExample>
 
 ```bash curl
-curl -H "X-API-Key: YOUR_API_KEY" \
+curl -H "Authorization: Bearer YOUR_API_KEY" \
   https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/backups/snapshots
 ```
 
@@ -73,7 +73,7 @@ curl -H "X-API-Key: YOUR_API_KEY" \
 </ResponseExample>
 
 <Note>
-  Snapshots are sorted by time (newest first). Automated backups are tagged with "automated", while manual backups (triggered via the API) are tagged with "manual".
+  If restic outputs non-JSON text, the response will be `{ "raw": "..." }` instead of an array of snapshots.
 </Note>
 
 <Tip>

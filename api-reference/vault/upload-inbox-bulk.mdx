@@ -6,7 +6,7 @@ api: "POST /api/v1/vault/inbox/bulk"
 
 ## Overview
 
-Uploads multiple files to the vault's inbox directory in a single request. Files in the inbox are processed by Alfred's Curator daemon, which converts raw inputs into structured vault records.
+Uploads multiple files to the vault's inbox directory at `/mnt/encrypted/vault/inbox/` in a single request. Files in the inbox are processed by Alfred's Curator daemon, which converts raw inputs into structured vault records. Each filename is sanitized before writing. If any file has an invalid filename or missing content, the entire request fails.
 
 ## Body Parameters
 
@@ -16,31 +16,18 @@ Uploads multiple files to the vault's inbox directory in a single request. Files
     Name of the file to create in the inbox
   </ParamField>
   <ParamField body="content" type="string" required>
-    File contents as a string. For binary files, use base64 encoding.
+    File contents as a string.
   </ParamField>
 </ParamField>
 
 ## Response
 
-<ResponseField name="uploaded" type="number">
-  Number of files successfully uploaded
+<ResponseField name="message" type="string">
+  Confirmation message (e.g., `"Uploaded 3 files to inbox"`)
 </ResponseField>
 
-<ResponseField name="files" type="array">
-  Array of uploaded file paths
-  <ResponseField name="path" type="string">
-    Path to each uploaded file in the inbox
-  </ResponseField>
-</ResponseField>
-
-<ResponseField name="errors" type="array" optional>
-  Array of errors for files that failed to upload (only present if some uploads failed)
-  <ResponseField name="filename" type="string">
-    Name of the file that failed
-  </ResponseField>
-  <ResponseField name="error" type="string">
-    Error message
-  </ResponseField>
+<ResponseField name="filenames" type="array">
+  Array of sanitized filenames that were written to the inbox
 </ResponseField>
 
 ## Request Example
@@ -107,40 +94,39 @@ console.log(result);
 
 ```json 201 Created
 {
-  "uploaded": 3,
-  "files": [
-    "inbox/meeting-notes-2026-02-26.md",
-    "inbox/project-idea.md",
-    "inbox/contact-info.txt"
-  ]
-}
-```
-
-```json 207 Multi-Status (Partial Success)
-{
-  "uploaded": 2,
-  "files": [
-    "inbox/meeting-notes-2026-02-26.md",
-    "inbox/project-idea.md"
-  ],
-  "errors": [
-    {
-      "filename": "contact-info.txt",
-      "error": "File already exists: inbox/contact-info.txt"
-    }
+  "message": "Uploaded 3 files to inbox",
+  "filenames": [
+    "meeting-notes-2026-02-26.md",
+    "project-idea.md",
+    "contact-info.txt"
   ]
 }
 ```
 
 ```json 400 Bad Request
 {
-  "error": "Missing required field: files"
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "files array is required"
+  }
 }
 ```
 
-```json 400 Bad Request
+```json 400 Bad Request (invalid file entry)
 {
-  "error": "files must be a non-empty array"
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Each file must have filename and content"
+  }
+}
+```
+
+```json 401 Unauthorized
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Unauthorized"
+  }
 }
 ```
 

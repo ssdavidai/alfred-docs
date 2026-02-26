@@ -1,7 +1,7 @@
 ---
 title: "Cancel Workflow"
 description: "Request graceful cancellation of a workflow"
-api: "POST https://alfred-acme.tailnet.ts.net:3100/api/v1/workflows/{wfId}/cancel"
+api: "POST /api/v1/workflows/{wfId}/cancel"
 ---
 
 Requests graceful cancellation of a workflow. Unlike terminate, this allows the workflow to execute cleanup logic before stopping.
@@ -25,13 +25,9 @@ curl -X POST \
 </RequestExample>
 
 <ResponseExample>
-```json 200 OK
+```json 200
 {
-  "success": true,
-  "workflowId": "curator-sweep-20260226-143022",
-  "runId": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-  "cancelRequested": true,
-  "note": "Workflow will complete current activity before stopping"
+  "message": "Workflow cancelled"
 }
 ```
 </ResponseExample>

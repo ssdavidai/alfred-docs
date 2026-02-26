@@ -6,19 +6,12 @@ api: "GET /api/v1/vault/inbox"
 
 ## Overview
 
-Returns a list of all files currently in the vault's inbox directory. These are files waiting to be processed by Alfred's Curator daemon.
+Returns a list of all files currently in the vault's inbox directory at `/mnt/encrypted/vault/inbox/`. These are files waiting to be processed by Alfred's Curator daemon. Hidden files (starting with `.`) are excluded. If the inbox directory does not exist yet, an empty array is returned.
 
 ## Response
 
 <ResponseField name="files" type="array">
-  Array of filenames in the inbox
-  <ResponseField name="file" type="string">
-    Name of each file (e.g., `meeting-notes-2026-02-26.md`)
-  </ResponseField>
-</ResponseField>
-
-<ResponseField name="count" type="number">
-  Number of files in the inbox
+  Array of filenames in the inbox (e.g., `["meeting-notes-2026-02-26.md", "project-idea.md"]`)
 </ResponseField>
 
 ## Request Example
@@ -57,15 +50,22 @@ console.log(inbox);
     "contact-info.txt",
     "resume-alice-chen.pdf",
     "slack-export-2026-02.json"
-  ],
-  "count": 5
+  ]
 }
 ```
 
 ```json 200 OK (Empty Inbox)
 {
-  "files": [],
-  "count": 0
+  "files": []
+}
+```
+
+```json 401 Unauthorized
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Unauthorized"
+  }
 }
 ```
 

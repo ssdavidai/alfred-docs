@@ -6,7 +6,7 @@ api: "GET /api/v1/vault/search"
 
 ## Overview
 
-Search for vault records using file glob patterns or full-text content search. Both search methods can be combined.
+Search for vault records using file glob patterns or full-text content search. Both search methods can be combined. The endpoint runs `alfred vault search` inside the Alfred container via `docker exec` and returns the CLI output.
 
 ## Query Parameters
 
@@ -20,15 +20,10 @@ Search for vault records using file glob patterns or full-text content search. B
 
 ## Response
 
-<ResponseField name="results" type="array">
-  Array of matching file paths
-  <ResponseField name="path" type="string">
-    Relative path to the record (e.g., `person/Alice.md`)
-  </ResponseField>
-</ResponseField>
+The response structure depends on the `alfred vault search` CLI output. If the CLI returns valid JSON, it is passed through directly. Otherwise, the raw text output is wrapped in a `{ "raw": "..." }` object.
 
-<ResponseField name="count" type="number">
-  Number of matching results
+<ResponseField name="raw" type="string">
+  If the CLI output is not valid JSON, the raw text output is returned in this field.
 </ResponseField>
 
 ## Request Example
@@ -64,21 +59,27 @@ console.log(results);
 
 <ResponseExample>
 
-```json 200 OK
+```json 200 OK (raw text fallback)
 {
-  "results": [
-    "project/ML Pipeline Redesign.md",
-    "project/Customer Segmentation Model.md",
-    "project/NLP Research Initiative.md"
-  ],
-  "count": 3
+  "raw": "project/ML Pipeline Redesign.md\nproject/Customer Segmentation Model.md\nproject/NLP Research Initiative.md"
 }
 ```
 
-```json 200 OK (No Results)
+```json 401 Unauthorized
 {
-  "results": [],
-  "count": 0
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Unauthorized"
+  }
+}
+```
+
+```json 500 Internal Server Error
+{
+  "error": {
+    "code": "EXEC_ERROR",
+    "message": "Command failed with exit code 1"
+  }
 }
 ```
 

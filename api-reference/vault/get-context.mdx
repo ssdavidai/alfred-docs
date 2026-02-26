@@ -1,41 +1,19 @@
 ---
 title: "Get Vault Context"
-description: "Returns a summary of vault structure and contents"
+description: "Returns the output of the alfred vault context CLI command"
 api: "GET /api/v1/vault/context"
 ---
 
 ## Overview
 
-Returns a high-level summary of the vault's structure and contents, including record counts by type, recent activity, and vault statistics.
+Returns the output of `alfred vault context`, executed inside the Alfred container via `docker exec`. If the CLI returns valid JSON, it is passed through directly. Otherwise, the raw text output is wrapped in a `{ "raw": "..." }` object.
 
 ## Response
 
-<ResponseField name="summary" type="string">
-  Human-readable summary of vault contents
-</ResponseField>
+The response structure depends on the `alfred vault context` CLI output.
 
-<ResponseField name="counts" type="object">
-  Record counts by type
-  <ResponseField name="person" type="number">
-    Number of person records
-  </ResponseField>
-  <ResponseField name="org" type="number">
-    Number of organization records
-  </ResponseField>
-  <ResponseField name="project" type="number">
-    Number of project records
-  </ResponseField>
-  <ResponseField name="task" type="number">
-    Number of task records
-  </ResponseField>
-</ResponseField>
-
-<ResponseField name="total_records" type="number">
-  Total number of records across all types
-</ResponseField>
-
-<ResponseField name="vault_path" type="string">
-  Absolute path to the vault directory
+<ResponseField name="raw" type="string">
+  If the CLI output is not valid JSON, the raw text output is returned in this field. If the CLI does return valid JSON, the parsed JSON is returned directly instead (structure varies).
 </ResponseField>
 
 ## Request Example
@@ -66,22 +44,27 @@ console.log(context);
 
 <ResponseExample>
 
-```json 200 OK
+```json 200 OK (raw text fallback)
 {
-  "summary": "Vault contains 127 records across 18 types. Most recent activity: 3 tasks updated today, 2 people added this week.",
-  "counts": {
-    "person": 23,
-    "org": 8,
-    "project": 12,
-    "task": 45,
-    "meeting": 18,
-    "decision": 7,
-    "assumption": 9,
-    "constraint": 3,
-    "document": 2
-  },
-  "total_records": 127,
-  "vault_path": "/home/deploy/vault"
+  "raw": "Vault path: /mnt/encrypted/vault\n\n127 records across 18 types.\n\nMost recent activity: 3 tasks updated today, 2 people added this week."
+}
+```
+
+```json 401 Unauthorized
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Unauthorized"
+  }
+}
+```
+
+```json 500 Internal Server Error
+{
+  "error": {
+    "code": "EXEC_ERROR",
+    "message": "Command failed with exit code 1"
+  }
 }
 ```
 
