@@ -6,12 +6,12 @@ api: "GET /api/v1/vault/schema"
 
 ## Overview
 
-Returns the vault schema as hardcoded in the API server. This includes all 20 known record types, status values by type, list fields, required fields, name fields, and directory mappings. This endpoint does not call the Alfred CLI -- it returns the API's own static schema data.
+Returns the vault schema as hardcoded in the API server. This includes all 19 known record types, status values by type, list fields, required fields, name fields, and directory mappings. This endpoint does not call the Alfred CLI -- it returns the API's own static schema data.
 
 ## Response
 
 <ResponseField name="known_types" type="array">
-  List of all 20 valid record types (15 entity types + 5 learning types)
+  List of all 19 valid record types (14 entity types + 5 learning types)
 </ResponseField>
 
 <ResponseField name="status_by_type" type="object">
@@ -31,7 +31,7 @@ Returns the vault schema as hardcoded in the API server. This includes all 20 kn
 </ResponseField>
 
 <ResponseField name="type_directory" type="object">
-  Map of record type to its subdirectory in the vault. Types not listed here (e.g., `session`, `thread`, `input`) can be stored flexibly.
+  Map of record type to its subdirectory in the vault. Types not listed here (e.g., `session`, `input`) can be stored flexibly.
 </ResponseField>
 
 ## Request Example
@@ -67,14 +67,13 @@ console.log(schema);
   "known_types": [
     "person", "org", "project", "task", "event", "note", "location",
     "process", "account", "asset", "conversation", "input", "run",
-    "session", "thread", "decision",
+    "session", "decision",
     "assumption", "constraint", "contradiction", "synthesis"
   ],
   "status_by_type": {
     "project": ["active", "paused", "completed", "abandoned", "proposed"],
     "task": ["todo", "active", "blocked", "done", "cancelled"],
     "session": ["active", "completed"],
-    "thread": ["active", "waiting", "closed"],
     "input": ["unprocessed", "processed", "deferred"],
     "person": ["active", "inactive"],
     "org": ["active", "inactive"],
@@ -85,7 +84,7 @@ console.log(schema);
     "run": ["active", "completed", "blocked", "cancelled"],
     "account": ["active", "suspended", "closed", "pending"],
     "asset": ["active", "retired", "maintenance", "disposed"],
-    "conversation": ["active", "waiting", "resolved", "archived"],
+    "conversation": ["active", "waiting", "resolved", "closed", "archived"],
     "assumption": ["active", "challenged", "invalidated", "confirmed"],
     "constraint": ["active", "expired", "waived", "superseded"],
     "contradiction": ["unresolved", "resolved", "accepted"],

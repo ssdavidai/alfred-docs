@@ -6,7 +6,7 @@ icon: "shapes"
 
 ## Overview
 
-Alfred supports 20 distinct record types organized into two categories: **Entity Types** (15) for operational records and **Learning Types** (5) for extracted knowledge.
+Alfred supports 19 distinct record types organized into two categories: **Entity Types** (14) for operational records and **Learning Types** (5) for extracted knowledge.
 
 ## Entity Types
 
@@ -331,7 +331,7 @@ tags: [infrastructure, database]
 
 **Purpose**: Represents conversations, discussions, or dialogue threads.
 
-**Status Values**: `active`, `waiting`, `resolved`, `archived`
+**Status Values**: `active`, `waiting`, `resolved`, `closed`, `archived`
 
 **Name Field**: Uses `subject` instead of `name`.
 
@@ -341,7 +341,7 @@ tags: [infrastructure, database]
 
 **Optional Fields**:
 - `subject`: Conversation subject line
-- `status`: One of `active`, `waiting`, `resolved`, `archived`
+- `status`: One of `active`, `waiting`, `resolved`, `closed`, `archived`
 - `participants`: List of participants (wikilinks)
 - `tags`: Array of tags
 - `related`: Related records
@@ -449,38 +449,6 @@ created: 2026-02-26
 name: Morning focus block
 status: completed
 tags: [deep-work]
----
-```
-</Accordion>
-
-<Accordion title="thread - Discussion Threads" icon="message">
-**Directory**: `vault/thread/`
-
-**Purpose**: Represents discussion threads or ongoing topic-specific exchanges.
-
-**Status Values**: `active`, `waiting`, `closed`
-
-**Required Fields**:
-- `type`: `thread`
-- `created`: Creation date
-
-**Optional Fields**:
-- `name`: Thread name
-- `status`: One of `active`, `waiting`, `closed`
-- `participants`: List of participants (wikilinks)
-- `tags`: Array of tags
-- `related`: Related records
-
-**Example**:
-```yaml
----
-type: thread
-created: 2026-02-26
-name: API versioning discussion
-status: active
-participants:
-  - "[[person/Alice Smith]]"
-tags: [api, architecture]
 ---
 ```
 </Accordion>

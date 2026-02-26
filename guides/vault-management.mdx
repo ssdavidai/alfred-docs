@@ -8,9 +8,9 @@ The vault API provides full CRUD operations on structured Obsidian records. All 
 
 ## Understanding the Vault
 
-Alfred's vault contains 20 record types organized by directory:
+Alfred's vault contains 19 record types organized by directory:
 
-- **15 entity types**: person, org, project, task, event, note, location, process, account, asset, conversation, input, run, session, thread
+- **14 entity types**: person, org, project, task, event, note, location, process, account, asset, conversation, input, run, session
 - **5 learning types**: assumption, decision, constraint, contradiction, synthesis
 
 Each record is a Markdown file with YAML frontmatter.
@@ -31,14 +31,13 @@ curl -X GET https://alfred-acme.tailnet.ts.net/api/v1/vault/schema \
   "known_types": [
     "person", "org", "project", "task", "event", "note",
     "location", "process", "account", "asset", "conversation",
-    "input", "run", "session", "thread",
-    "assumption", "decision", "constraint", "contradiction", "synthesis"
+    "input", "run", "session", "decision",
+    "assumption", "constraint", "contradiction", "synthesis"
   ],
   "status_by_type": {
     "project": ["active", "paused", "completed", "abandoned", "proposed"],
     "task": ["todo", "active", "blocked", "done", "cancelled"],
     "session": ["active", "completed"],
-    "thread": ["active", "waiting", "closed"],
     "input": ["unprocessed", "processed", "deferred"],
     "person": ["active", "inactive"],
     "org": ["active", "inactive"],
@@ -48,14 +47,14 @@ curl -X GET https://alfred-acme.tailnet.ts.net/api/v1/vault/schema \
     "run": ["active", "completed", "blocked", "cancelled"],
     "account": ["active", "suspended", "closed", "pending"],
     "asset": ["active", "retired", "maintenance", "disposed"],
-    "conversation": ["active", "waiting", "resolved", "archived"],
+    "conversation": ["active", "waiting", "resolved", "closed", "archived"],
     "location": ["active", "inactive"],
     "assumption": ["active", "challenged", "invalidated", "confirmed"],
     "constraint": ["active", "expired", "waived", "superseded"],
     "contradiction": ["unresolved", "resolved", "accepted"],
     "synthesis": ["draft", "active", "superseded"]
   },
-  "required_fields": {},
+  "required_fields": ["type", "created"],
   "name_field_by_type": {
     "conversation": "subject",
     "input": "subject"

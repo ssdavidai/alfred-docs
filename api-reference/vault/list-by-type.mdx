@@ -6,13 +6,13 @@ api: "GET /api/v1/vault/list/{type}"
 
 ## Overview
 
-Returns a list of all records for a given type. The type must be one of the 20 types hardcoded in the API. The endpoint runs `alfred vault list <type>` inside the Alfred container via `docker exec` and returns the CLI output.
+Returns a list of all records for a given type. The type must be one of the 19 types hardcoded in the API. The endpoint runs `alfred vault list <type>` inside the Alfred container via `docker exec` and returns the CLI output.
 
 ## Path Parameters
 
 <ParamField path="type" type="string" required>
   The record type to list. Must be one of:
-  - Entity types: `person`, `org`, `project`, `task`, `event`, `note`, `location`, `process`, `account`, `asset`, `conversation`, `input`, `run`, `session`, `thread`
+  - Entity types: `person`, `org`, `project`, `task`, `event`, `note`, `location`, `process`, `account`, `asset`, `conversation`, `input`, `run`, `session`
   - Learning types: `assumption`, `decision`, `constraint`, `contradiction`, `synthesis`
 </ParamField>
 
@@ -64,7 +64,7 @@ console.log(data);
 {
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "Unknown vault type: unknown_type. Known types: person, org, project, task, event, note, location, process, account, asset, conversation, input, run, session, thread, decision, assumption, constraint, contradiction, synthesis"
+    "message": "Unknown vault type: unknown_type. Known types: person, org, project, task, event, note, location, process, account, asset, conversation, input, run, session, decision, assumption, constraint, contradiction, synthesis"
   }
 }
 ```

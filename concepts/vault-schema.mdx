@@ -31,9 +31,9 @@ The vault is the source of truth for all data. State files are just bookkeeping 
 
 ## Record Types
 
-Alfred supports 20 distinct record types, organized into two categories:
+Alfred supports 19 distinct record types, organized into two categories:
 
-### Entity Types (15)
+### Entity Types (14)
 
 Core operational records representing people, projects, tasks, and other tangible entities:
 
@@ -53,7 +53,6 @@ Core operational records representing people, projects, tasks, and other tangibl
 | `input` | Incoming items to be processed | `vault/input/` |
 | `run` | Execution runs and operations | `vault/run/` |
 | `session` | Working sessions | `vault/session/` |
-| `thread` | Discussion threads | `vault/thread/` |
 
 ### Learning Types (5)
 
@@ -99,7 +98,7 @@ Most record types have a `status` field with type-specific valid values:
 | `assumption` | `active`, `challenged`, `invalidated`, `confirmed` |
 | `constraint` | `active`, `expired`, `waived`, `superseded` |
 | `contradiction` | `unresolved`, `resolved`, `accepted` |
-| `conversation` | `active`, `waiting`, `resolved`, `archived` |
+| `conversation` | `active`, `waiting`, `resolved`, `closed`, `archived` |
 | `decision` | `draft`, `final`, `superseded`, `reversed` |
 | `event` | _(no status constraint)_ |
 | `input` | `unprocessed`, `processed`, `deferred` |
@@ -113,7 +112,6 @@ Most record types have a `status` field with type-specific valid values:
 | `session` | `active`, `completed` |
 | `synthesis` | `draft`, `active`, `superseded` |
 | `task` | `todo`, `active`, `blocked`, `done`, `cancelled` |
-| `thread` | `active`, `waiting`, `closed` |
 
 ## Required Fields
 
@@ -165,7 +163,7 @@ curl -H "Authorization: Bearer $AAS_API_KEY" \
 ```
 
 This returns a JSON object with:
-- All 20 record types
+- All 19 record types
 - Valid status values per type
 - Directory mappings
 - List field definitions
