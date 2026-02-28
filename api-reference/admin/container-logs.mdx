@@ -1,10 +1,10 @@
 ---
-title: "Get Container Logs"
-description: "Retrieve logs from a specific container (non-streaming)"
+title: "Service Logs"
+description: "Get logs from a specific service"
 api: "GET /api/v1/admin/containers/{service}/logs"
 ---
 
-Retrieve historical logs from a specific container. This endpoint returns a snapshot of recent logs and does not stream updates.
+Retrieve recent logs from a specific service. This endpoint returns a snapshot of log history and does not stream updates.
 
 ## Path Parameters
 
@@ -22,12 +22,12 @@ Retrieve historical logs from a specific container. This endpoint returns a snap
 
 ```bash curl
 # Get last 100 lines from worker logs (default)
-curl -H "Authorization: Bearer YOUR_API_KEY" \
-  https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/containers/worker/logs
+curl -H "Authorization: Bearer alf_your_key_here" \
+  /api/v1/admin/containers/worker/logs
 
 # Get last 500 lines from OpenClaw logs
-curl -H "Authorization: Bearer YOUR_API_KEY" \
-  "https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/containers/openclaw/logs?tail=500"
+curl -H "Authorization: Bearer alf_your_key_here" \
+  "/api/v1/admin/containers/openclaw/logs?tail=500"
 ```
 
 </RequestExample>

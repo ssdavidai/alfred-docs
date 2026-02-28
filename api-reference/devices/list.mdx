@@ -1,20 +1,16 @@
 ---
 title: "List Devices"
-description: "Retrieve all pending and paired devices in the OpenClaw gateway"
+description: "Retrieve all pending and paired devices"
 api: "GET /api/v1/devices"
 ---
 
-Returns a list of all devices associated with the OpenClaw gateway by running `openclaw devices list --json` inside the container. The JSON output is parsed and returned directly.
-
-<Note>
-  Unlike most other endpoints, this endpoint does not have a raw text fallback. The `openclaw devices list --json` output must be valid JSON. If parsing fails, the API will return a 500 error.
-</Note>
+Returns a list of all devices associated with your Alfred instance, including both pending pairing requests and already-paired devices.
 
 <RequestExample>
 
 ```bash cURL
-curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/v1/devices \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl -X GET /api/v1/devices \
+  -H "Authorization: Bearer alf_your_key_here"
 ```
 
 </RequestExample>
@@ -23,12 +19,8 @@ curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/v1/devices \
 
 ```json Response
 {
-  "...": "Structure depends on openclaw devices list --json output"
+  "devices": []
 }
 ```
 
 </ResponseExample>
-
-<Note>
-  The response structure is parsed directly from `openclaw devices list --json` output. The exact fields depend on the OpenClaw version.
-</Note>

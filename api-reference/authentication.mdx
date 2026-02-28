@@ -1,106 +1,81 @@
 ---
 title: "Authentication"
-description: "How to authenticate with the Alfred tenant API."
+description: "How to authenticate with the Alfred Black API."
 icon: "key"
 ---
 
 ## Overview
 
-Every API request must include a Bearer token in the `Authorization` header. The token is a secret API key provided during instance provisioning.
-
-<Warning>
-  The standalone API server requires the `AAS_API_KEY` environment variable to be set and will exit with a fatal error if it is missing. However, the authentication middleware itself allows open access if no key is configured — when `AAS_API_KEY` is absent at the middleware level, all requests are accepted without a token.
-</Warning>
-
-All endpoints (except OPTIONS for CORS preflight) are subject to authentication when a key is configured.
+Every API request must include a Bearer token in the `Authorization` header. Your token is an API key created in your Alfred Black dashboard.
 
 ## Getting your API key
 
-Your API key is generated during instance provisioning and stored in the instance's `.env` file. You can retrieve it using the control plane CLI:
+1. Go to your [Alfred Black dashboard](https://app.alfred.black)
+2. Navigate to **Settings → API Keys**
+3. Click **Create** and give it a descriptive name
+4. Copy the key immediately — it's shown only once
 
-```bash
-# On the control plane (where alfred-ctrl is running)
-aas api-key <instance-name>
+API keys use the format `alf_` followed by 32 hex characters:
+
 ```
-
-Or by SSH'ing into the instance and reading the environment:
-
-```bash
-ssh deploy@alfred-acme.tailnet.ts.net
-grep AAS_API_KEY /opt/alfred/compose/.env
+alf_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
 ```
 
 ## Making authenticated requests
 
-Include the API key as a Bearer token in the `Authorization` header:
+Include the API key as a Bearer token in every request:
 
 <CodeGroup>
 ```bash cURL
-curl https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/context \
-  -H "Authorization: Bearer your_api_key_here"
+curl /api/v1/vault/context \
+  -H "Authorization: Bearer alf_your_key_here"
 ```
 
-```javascript JavaScript (fetch)
-const response = await fetch('https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/context', {
+```javascript JavaScript
+const response = await fetch('/api/v1/vault/context', {
   headers: {
-    'Authorization': 'Bearer your_api_key_here'
+    'Authorization': 'Bearer alf_your_key_here'
   }
 });
-
 const data = await response.json();
 ```
 
-```python Python (requests)
+```python Python
 import requests
 
 response = requests.get(
-    'https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/context',
-    headers={'Authorization': 'Bearer your_api_key_here'}
+    '/api/v1/vault/context',
+    headers={'Authorization': 'Bearer alf_your_key_here'}
 )
-
 data = response.json()
 ```
 
-```typescript TypeScript (axios)
+```typescript TypeScript
 import axios from 'axios';
 
-const response = await axios.get(
-  'https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/context',
-  {
-    headers: {
-      'Authorization': 'Bearer your_api_key_here'
-    }
+const response = await axios.get('/api/v1/vault/context', {
+  headers: {
+    'Authorization': 'Bearer alf_your_key_here'
   }
-);
-
+});
 const data = response.data;
 ```
 </CodeGroup>
 
-## Security
+## Best practices
 
-<Note>
-  Token comparison uses `crypto.timingSafeEqual` for constant-time comparison, making the API resistant to timing attacks.
-</Note>
-
-### Best practices
-
-- Store API keys in environment variables or secret management systems — never hardcode them
-- Rotate keys periodically by updating `AAS_API_KEY` in the instance's `.env` and restarting the API container
-- Use Tailscale ACLs to restrict which devices can reach the API (default: all devices in your tailnet)
-- The API serves over HTTPS using Tailscale's auto-generated certificates
-
-### Network security
-
-The API is only accessible via Tailscale. Even with the API key, requests from outside your tailnet will fail (no route to host). This provides defense-in-depth:
-
-1. Network boundary (Tailscale mesh)
-2. Transport security (HTTPS/TLS)
-3. Application authentication (Bearer token)
+- **Store keys in environment variables** — never hardcode them in source code
+  ```bash
+  export ALFRED_API_KEY="alf_your_key_here"
+  curl /api/v1/vault/context -H "Authorization: Bearer $ALFRED_API_KEY"
+  ```
+- **Rotate periodically** — create a new key and revoke the old one every few months
+- **Use descriptive names** — name keys after their purpose so you know which to revoke
+- **Revoke unused keys** — clean up keys for integrations you no longer use
 
 ## Error responses
 
-Missing or invalid authentication returns a 401 status with the `UNAUTHORIZED` error code:
+Missing or invalid authentication returns a 401 status:
 
 <ResponseExample>
 ```json Missing or malformed header
@@ -122,18 +97,16 @@ Missing or invalid authentication returns a 401 status with the `UNAUTHORIZED` e
 ```
 </ResponseExample>
 
-The first error is returned when the `Authorization` header is absent or does not start with `Bearer `. The second is returned when the token is present but does not match the configured key.
-
 ## Testing authentication
 
-Use the `/api/v1/admin/health` endpoint to verify your credentials:
+Use the health endpoint to verify your credentials:
 
 ```bash
-curl https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/health \
-  -H "Authorization: Bearer your_api_key_here"
+curl /api/v1/admin/health \
+  -H "Authorization: Bearer alf_your_key_here"
 ```
 
-A successful response confirms authentication is working. The health endpoint runs `/opt/alfred/healthcheck.sh` on the instance and returns its output, so the response format depends on what the script produces (it may be raw text or JSON).
+A successful response confirms your API key is valid and your instance is reachable.
 
 ## Next steps
 
@@ -142,6 +115,6 @@ A successful response confirms authentication is working. The health endpoint ru
     Start with vault operations
   </Card>
   <Card title="Workers endpoints" icon="gears" href="/api-reference/workers/status">
-    Control Alfred daemons
+    Control your AI agents
   </Card>
 </Columns>

@@ -1,16 +1,16 @@
 ---
-title: "Get System Information"
-description: "Retrieve system uptime, disk, and memory information"
+title: "System Info"
+description: "Get system information and resource usage for your instance"
 api: "GET /api/v1/admin/system/info"
 ---
 
-Get basic system information including uptime, disk usage, and memory statistics. Each field contains raw text output from the respective system command (`uptime -p`, `df -h /mnt/encrypted`, `free -m`). If any command fails, the corresponding field will contain `"unknown"`.
+Get system information for your Alfred instance including uptime, disk usage, and memory statistics. If any metric is unavailable, the corresponding field will contain `"unknown"`.
 
 <RequestExample>
 
 ```bash curl
-curl -H "Authorization: Bearer YOUR_API_KEY" \
-  https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/system/info
+curl -H "Authorization: Bearer alf_your_key_here" \
+  /api/v1/admin/system/info
 ```
 
 </RequestExample>
@@ -20,7 +20,7 @@ curl -H "Authorization: Bearer YOUR_API_KEY" \
 ```json
 {
   "uptime": "up 5 days, 3 hours, 42 minutes",
-  "disk": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/mapper/encrypted  200G   85G  115G  43% /mnt/encrypted",
+  "disk": "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1  200G   85G  115G  43% /data",
   "memory": "              total        used        free      shared  buff/cache   available\nMem:           7982        4915        1228         256        1838        2810\nSwap:          2047         512        1535"
 }
 ```
@@ -28,5 +28,5 @@ curl -H "Authorization: Bearer YOUR_API_KEY" \
 </ResponseExample>
 
 <Note>
-  All three fields contain raw text output from the respective system commands. If any command fails, its field will contain `"unknown"`. The disk output shows usage for `/mnt/encrypted`, the encrypted data volume containing all Alfred data.
+  All three fields contain raw text output from system commands. If any command fails, its field will contain `"unknown"`.
 </Note>

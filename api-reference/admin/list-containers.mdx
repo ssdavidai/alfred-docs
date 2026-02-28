@@ -1,16 +1,16 @@
 ---
-title: "List Containers"
-description: "List all Docker Compose containers and their status"
+title: "List Services"
+description: "List all services running on your instance"
 api: "GET /api/v1/admin/containers"
 ---
 
-Retrieve the status of all Docker Compose containers in the Alfred stack. Returns the parsed JSONL output of `docker compose ps --format json` as a JSON array.
+Retrieve the status of all services running on your Alfred instance. Returns an array of service objects with their current state.
 
 <RequestExample>
 
 ```bash curl
-curl -H "Authorization: Bearer YOUR_API_KEY" \
-  https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/containers
+curl -H "Authorization: Bearer alf_your_key_here" \
+  /api/v1/admin/containers
 ```
 
 </RequestExample>
@@ -60,5 +60,5 @@ curl -H "Authorization: Bearer YOUR_API_KEY" \
 </ResponseExample>
 
 <Note>
-  Container field names use PascalCase (matching Docker Compose JSON output). The init container typically shows `State: "exited"` with `ExitCode: 0` after successful vault initialization.
+  Field names use PascalCase. The init service typically shows `State: "exited"` with `ExitCode: 0` after successful vault initialization.
 </Note>

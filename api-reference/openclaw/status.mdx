@@ -1,29 +1,31 @@
 ---
 title: "Gateway Status"
-description: "Get detailed OpenClaw gateway status information"
+description: "Get agent gateway status"
 api: "GET /api/v1/openclaw/status"
 ---
 
-Returns detailed status information about the OpenClaw gateway by running `openclaw gateway status` inside the container. If the CLI outputs valid JSON, it is returned parsed. Otherwise, the raw text is returned in a `raw` field.
+Get detailed status information about your instance's agent gateway, including uptime, version, and current configuration.
+
+The response is returned as structured JSON when available, or as raw text in a `raw` field.
 
 <RequestExample>
 
 ```bash cURL
-curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/v1/openclaw/status \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl -X GET /api/v1/openclaw/status \
+  -H "Authorization: Bearer alf_your_key_here"
 ```
 
 </RequestExample>
 
 <ResponseExample>
 
-```json Structured Response (if openclaw outputs JSON)
+```json Structured Response
 {
-  "...": "Structure depends on openclaw gateway status output"
+  "...": "Structure depends on gateway status output"
 }
 ```
 
-```json Raw Response (if openclaw outputs text)
+```json Raw Response
 {
   "raw": "Gateway status: running"
 }
@@ -32,5 +34,5 @@ curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/v1/openclaw/status \
 </ResponseExample>
 
 <Note>
-  The response format depends on the `openclaw gateway status` command output. If the command outputs valid JSON, it is returned as-is. Otherwise, the raw text output is returned in a `raw` field.
+  The response format depends on the gateway's output. If the gateway returns valid JSON, it is passed through as-is. Otherwise, the raw text is returned in a `raw` field.
 </Note>

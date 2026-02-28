@@ -1,36 +1,41 @@
 ---
 title: "Quickstart"
-description: "Get your Alfred instance up and running in 5 minutes."
+description: "Get up and running with Alfred Black in 5 minutes."
 icon: "rocket"
 ---
 
 import AuthHeader from "/snippets/auth-header.mdx";
 import BaseUrl from "/snippets/base-url.mdx";
 
-<BaseUrl />
-
 ## Prerequisites
 
 Before you begin, make sure you have:
 
-- Your **Tailscale hostname** (e.g., `alfred-acme.tailnet.ts.net`)
-- Your **API key** (provided during onboarding)
-- [Tailscale](https://tailscale.com) installed on your device and connected to the same tailnet
+- An **Alfred Black account** with an active subscription at [app.alfred.black](https://app.alfred.black)
+- An **API key** (we'll create one in Step 1)
 - `curl` or any HTTP client
 
-## Step 1: Verify connectivity
+## Step 1: Create an API key
 
-Confirm your device can reach the instance through Tailscale:
+Go to your [Alfred Black dashboard](https://app.alfred.black), navigate to **Settings → API Keys**, click **Create**, give it a name, and copy the key. It starts with `alf_` and is shown only once.
+
+<Warning>
+  Copy your API key immediately — you won't be able to see it again. Store it somewhere safe.
+</Warning>
+
+## Step 2: Test connectivity
+
+Confirm your API key works by checking your instance health:
 
 <CodeGroup>
 ```bash cURL
-curl -s https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/health \
-  -H "Authorization: Bearer YOUR_API_KEY" | jq .
+curl -s https://app.alfred.black/api/v1/admin/health \
+  -H "Authorization: Bearer alf_your_key_here" | jq .
 ```
 
 ```javascript JavaScript
-const res = await fetch('https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/health', {
-  headers: { 'Authorization': 'Bearer YOUR_API_KEY' }
+const res = await fetch('https://app.alfred.black/api/v1/admin/health', {
+  headers: { 'Authorization': 'Bearer alf_your_key_here' }
 });
 console.log(await res.json());
 ```
@@ -39,33 +44,33 @@ console.log(await res.json());
 import requests
 
 res = requests.get(
-    'https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/health',
-    headers={'Authorization': 'Bearer YOUR_API_KEY'}
+    'https://app.alfred.black/api/v1/admin/health',
+    headers={'Authorization': 'Bearer alf_your_key_here'}
 )
 print(res.json())
 ```
 </CodeGroup>
 
-You should see a JSON response with container statuses, disk usage, and memory usage. If you get a connection error, verify Tailscale is connected: `tailscale status`.
+You should see a JSON response with health status information.
 
-## Step 2: Explore the vault schema
+## Step 3: Explore your vault schema
 
-See what record types are available:
+See what record types Alfred manages:
 
 ```bash
-curl -s https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/schema \
-  -H "Authorization: Bearer YOUR_API_KEY" | jq .known_types
+curl -s https://app.alfred.black/api/v1/vault/schema \
+  -H "Authorization: Bearer alf_your_key_here" | jq .known_types
 ```
 
-This returns the 19 record types Alfred manages — from `person` and `project` to `assumption` and `decision`.
+This returns all 19 record types -- from `person` and `project` to `assumption` and `decision`.
 
-## Step 3: Drop your first file into the inbox
+## Step 4: Drop your first item into the inbox
 
-Upload a raw document (meeting notes, conversation, etc.) to the inbox. The Curator will process it automatically.
+Upload a meeting note to the inbox. You can do this from your dashboard (**Inbox** page) or via the API:
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/inbox \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+curl -X POST https://app.alfred.black/api/v1/vault/inbox \
+  -H "Authorization: Bearer alf_your_key_here" \
   -H "Content-Type: application/json" \
   -d '{
     "filename": "standup-2026-02-26.md",
@@ -73,74 +78,65 @@ curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/inbox \
   }'
 ```
 
-## Step 4: Check what the Curator produced
+## Step 5: Check what the Curator produced
 
 Wait a few seconds for the Curator to process, then list records:
 
 <CodeGroup>
 ```bash List people
-curl -s https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/list/person \
-  -H "Authorization: Bearer YOUR_API_KEY" | jq .
+curl -s https://app.alfred.black/api/v1/vault/list/person \
+  -H "Authorization: Bearer alf_your_key_here" | jq .
 ```
 
 ```bash List tasks
-curl -s https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/list/task \
-  -H "Authorization: Bearer YOUR_API_KEY" | jq .
+curl -s https://app.alfred.black/api/v1/vault/list/task \
+  -H "Authorization: Bearer alf_your_key_here" | jq .
 ```
 
 ```bash List decisions
-curl -s https://alfred-acme.tailnet.ts.net:3100/api/v1/vault/list/decision \
-  -H "Authorization: Bearer YOUR_API_KEY" | jq .
+curl -s https://app.alfred.black/api/v1/vault/list/decision \
+  -H "Authorization: Bearer alf_your_key_here" | jq .
 ```
 </CodeGroup>
 
-The Curator will have created records for the people mentioned, any tasks, decisions, and projects — all linked together with wikilinks.
+The Curator will have created records for the people mentioned, any tasks, decisions, and projects — all linked together.
 
-## Step 5: Check worker status
+## Step 6: Check worker status
 
-See which Alfred workers are running:
+See which agents are running:
 
 ```bash
-curl -s https://alfred-acme.tailnet.ts.net:3100/api/v1/workers/status \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl -s https://app.alfred.black/api/v1/workers/status \
+  -H "Authorization: Bearer alf_your_key_here"
 ```
 
-## Step 6: Run a vault health scan
+## Step 7: Run a Janitor scan
 
-Ask the Janitor to check for structural issues:
+Ask the Janitor to check your vault for structural issues:
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/v1/workers/janitor/scan \
-  -H "Authorization: Bearer YOUR_API_KEY" | jq .
+curl -X POST https://app.alfred.black/api/v1/workers/janitor/scan \
+  -H "Authorization: Bearer alf_your_key_here" | jq .
 ```
 
 If issues are found, fix them:
 
 ```bash
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/v1/workers/janitor/fix \
-  -H "Authorization: Bearer YOUR_API_KEY" | jq .
-```
-
-## Step 7: Stream logs
-
-Watch what's happening in real time (this is an SSE stream — press Ctrl+C to stop):
-
-```bash
-curl -N https://alfred-acme.tailnet.ts.net:3100/api/v1/logs?service=alfred \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl -X POST https://app.alfred.black/api/v1/workers/janitor/fix \
+  -H "Authorization: Bearer alf_your_key_here" | jq .
 ```
 
 ## What's next?
 
 <Columns cols={2}>
-  <Card title="Inbox Workflow" icon="inbox" href="/guides/inbox-workflow">
+  <Card title="Using the Inbox" icon="inbox" href="/guides/using-the-inbox">
     Learn the full inbox-to-record pipeline
   </Card>
-  <Card title="Vault Management" icon="vault" href="/guides/vault-management">
-    Master CRUD operations on vault records
+  <Card title="Browsing Your Vault" icon="vault" href="/guides/browsing-your-vault">
+    Explore and search your vault records
   </Card>
-  <Card title="Worker Operations" icon="gears" href="/guides/worker-operations">
-    Control the Curator, Janitor, and Distiller
+  <Card title="Your AI Agents" icon="gears" href="/guides/your-ai-agents">
+    Control the Curator, Janitor, Distiller, and Surveyor
   </Card>
   <Card title="API Reference" icon="code" href="/api-reference/introduction">
     Full endpoint documentation

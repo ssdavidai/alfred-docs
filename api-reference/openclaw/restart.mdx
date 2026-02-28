@@ -1,16 +1,18 @@
 ---
 title: "Restart Gateway"
-description: "Restart the OpenClaw gateway container"
+description: "Restart the agent gateway"
 api: "POST /api/v1/openclaw/restart"
 ---
 
-Restarts the OpenClaw gateway container via `docker compose restart openclaw`. All active connections will be terminated and devices will need to reconnect.
+Restart your instance's agent gateway. This is useful when you need to pick up configuration changes or recover from an error state.
+
+All active agent connections will be terminated during the restart. Running sessions will need to reconnect once the gateway is back online.
 
 <RequestExample>
 
 ```bash cURL
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/v1/openclaw/restart \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl -X POST /api/v1/openclaw/restart \
+  -H "Authorization: Bearer alf_your_key_here"
 ```
 
 </RequestExample>

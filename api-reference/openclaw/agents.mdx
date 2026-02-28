@@ -1,29 +1,31 @@
 ---
 title: "List Agents"
-description: "List all managed OpenClaw agents"
+description: "List registered agents"
 api: "GET /api/v1/openclaw/agents"
 ---
 
-Returns the output of `openclaw agents` run inside the container. If the CLI outputs valid JSON, it is returned parsed. Otherwise, the raw text is returned in a `raw` field.
+List all agents registered with your instance's agent gateway. Agents are the AI backends that execute skills on behalf of Alfred tools like Curator, Janitor, Distiller, and Surveyor.
+
+The response is returned as structured JSON when available, or as raw text in a `raw` field.
 
 <RequestExample>
 
 ```bash cURL
-curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/v1/openclaw/agents \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl -X GET /api/v1/openclaw/agents \
+  -H "Authorization: Bearer alf_your_key_here"
 ```
 
 </RequestExample>
 
 <ResponseExample>
 
-```json Structured Response (if openclaw outputs JSON)
+```json Structured Response
 {
-  "...": "Structure depends on openclaw agents output"
+  "...": "Structure depends on gateway agents output"
 }
 ```
 
-```json Raw Response (if openclaw outputs text)
+```json Raw Response
 {
   "raw": "No agents configured"
 }
@@ -32,5 +34,5 @@ curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/v1/openclaw/agents \
 </ResponseExample>
 
 <Note>
-  The response format depends on the `openclaw agents` command output. If the command outputs valid JSON, it is returned as-is. Otherwise, the raw text output is returned in a `raw` field.
+  The response format depends on the gateway's output. If the gateway returns valid JSON, it is passed through as-is. Otherwise, the raw text is returned in a `raw` field.
 </Note>

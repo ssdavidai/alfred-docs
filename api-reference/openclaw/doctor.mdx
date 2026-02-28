@@ -1,29 +1,31 @@
 ---
 title: "Run Diagnostics"
-description: "Run health checks and auto-fixes for OpenClaw gateway"
+description: "Run diagnostics on the agent gateway"
 api: "POST /api/v1/openclaw/doctor"
 ---
 
-Runs `openclaw doctor` inside the container. This performs comprehensive health checks and attempts auto-fixes. If the CLI outputs valid JSON, it is returned parsed. Otherwise, the raw text is returned in a `raw` field.
+Run a comprehensive diagnostic check on your instance's agent gateway. This performs health checks across all gateway components and attempts to auto-fix common issues it finds.
+
+The response is returned as structured JSON when available, or as raw text in a `raw` field.
 
 <RequestExample>
 
 ```bash cURL
-curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/v1/openclaw/doctor \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl -X POST /api/v1/openclaw/doctor \
+  -H "Authorization: Bearer alf_your_key_here"
 ```
 
 </RequestExample>
 
 <ResponseExample>
 
-```json Structured Response (if openclaw outputs JSON)
+```json Structured Response
 {
-  "...": "Structure depends on openclaw doctor output"
+  "...": "Structure depends on gateway doctor output"
 }
 ```
 
-```json Raw Response (if openclaw outputs text)
+```json Raw Response
 {
   "raw": "All checks passed"
 }
@@ -32,5 +34,5 @@ curl -X POST https://alfred-acme.tailnet.ts.net:3100/api/v1/openclaw/doctor \
 </ResponseExample>
 
 <Note>
-  The response format depends on the `openclaw doctor` command output. If the command outputs valid JSON, it is returned as-is. Otherwise, the raw text output is returned in a `raw` field.
+  The response format depends on the gateway's output. If the gateway returns valid JSON, it is passed through as-is. Otherwise, the raw text is returned in a `raw` field.
 </Note>

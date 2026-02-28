@@ -1,16 +1,16 @@
 ---
-title: "Run Health Check"
-description: "Execute the healthcheck.sh script and return system health metrics"
+title: "Instance Health"
+description: "Check the overall health of your Alfred instance"
 api: "GET /api/v1/admin/health"
 ---
 
-Run the health check script (`/opt/alfred/healthcheck.sh`). The response format depends on what the script outputs -- if the output is valid JSON it is returned parsed, otherwise it is returned as `{ "raw": "..." }`.
+Check the health of your Alfred instance. Returns key metrics including service status, disk usage, and memory usage.
 
 <RequestExample>
 
 ```bash curl
-curl -H "Authorization: Bearer YOUR_API_KEY" \
-  https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/health
+curl -H "Authorization: Bearer alf_your_key_here" \
+  /api/v1/admin/health
 ```
 
 </RequestExample>
@@ -30,5 +30,5 @@ curl -H "Authorization: Bearer YOUR_API_KEY" \
 </ResponseExample>
 
 <Note>
-  The response structure depends entirely on the `healthcheck.sh` script's output. The example above is representative but may differ on your instance. If the script outputs non-JSON text, the response will be `{ "raw": "..." }` instead.
+  The response structure may vary depending on your instance configuration. The example above is representative but may differ. If the health check produces non-JSON output, the response will be `{ "raw": "..." }` instead.
 </Note>

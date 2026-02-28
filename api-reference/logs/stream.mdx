@@ -1,10 +1,10 @@
 ---
 title: "Stream Logs"
-description: "Stream real-time logs from Alfred services via Server-Sent Events"
+description: "Stream real-time logs from your instance services via Server-Sent Events"
 api: "GET /api/v1/logs"
 ---
 
-Stream logs from one or more services in real-time using Server-Sent Events (SSE). This is a long-lived connection that streams log lines as they are produced by `docker compose logs`.
+Stream logs from one or more services in real-time using Server-Sent Events (SSE). This is a long-lived connection that delivers log lines as they are produced.
 
 ## Query Parameters
 
@@ -45,18 +45,18 @@ data: {"error":"Stream terminated unexpectedly"}
 <RequestExample>
 
 ```bash Stream All Logs
-curl -N -H "Authorization: Bearer YOUR_API_KEY" \
-  https://alfred-acme.tailnet.ts.net:3100/api/v1/logs
+curl -N -H "Authorization: Bearer alf_your_key_here" \
+  /api/v1/logs
 ```
 
 ```bash Stream Specific Service
-curl -N -H "Authorization: Bearer YOUR_API_KEY" \
-  "https://alfred-acme.tailnet.ts.net:3100/api/v1/logs?service=alfred"
+curl -N -H "Authorization: Bearer alf_your_key_here" \
+  "/api/v1/logs?service=alfred"
 ```
 
 ```bash Stream with No History
-curl -N -H "Authorization: Bearer YOUR_API_KEY" \
-  "https://alfred-acme.tailnet.ts.net:3100/api/v1/logs?tail=0"
+curl -N -H "Authorization: Bearer alf_your_key_here" \
+  "/api/v1/logs?tail=0"
 ```
 
 ```javascript JavaScript (EventSource)
@@ -64,7 +64,7 @@ curl -N -H "Authorization: Bearer YOUR_API_KEY" \
 // Use a library like event-source-polyfill for Authorization header support,
 // or pass the token as a query parameter if your server supports it.
 const eventSource = new EventSource(
-  'https://alfred-acme.tailnet.ts.net:3100/api/v1/logs?service=openclaw'
+  '/api/v1/logs?service=openclaw'
 );
 
 eventSource.onmessage = (event) => {

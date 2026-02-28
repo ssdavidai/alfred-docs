@@ -1,29 +1,31 @@
 ---
 title: "List Sessions"
-description: "List all conversation sessions"
+description: "List agent sessions"
 api: "GET /api/v1/openclaw/sessions"
 ---
 
-Returns the output of `openclaw sessions` run inside the container. If the CLI outputs valid JSON, it is returned parsed. Otherwise, the raw text is returned in a `raw` field.
+List all agent sessions on your instance. Sessions represent active or recent conversations between your Alfred tools and the AI agent backend.
+
+The response is returned as structured JSON when available, or as raw text in a `raw` field.
 
 <RequestExample>
 
 ```bash cURL
-curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/v1/openclaw/sessions \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl -X GET /api/v1/openclaw/sessions \
+  -H "Authorization: Bearer alf_your_key_here"
 ```
 
 </RequestExample>
 
 <ResponseExample>
 
-```json Structured Response (if openclaw outputs JSON)
+```json Structured Response
 {
-  "...": "Structure depends on openclaw sessions output"
+  "...": "Structure depends on gateway sessions output"
 }
 ```
 
-```json Raw Response (if openclaw outputs text)
+```json Raw Response
 {
   "raw": "No active sessions"
 }
@@ -32,5 +34,5 @@ curl -X GET https://alfred-acme.tailnet.ts.net:3100/api/v1/openclaw/sessions \
 </ResponseExample>
 
 <Note>
-  The response format depends on the `openclaw sessions` command output. If the command outputs valid JSON, it is returned as-is. Otherwise, the raw text output is returned in a `raw` field.
+  The response format depends on the gateway's output. If the gateway returns valid JSON, it is passed through as-is. Otherwise, the raw text is returned in a `raw` field.
 </Note>

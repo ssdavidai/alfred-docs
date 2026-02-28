@@ -1,10 +1,10 @@
 ---
-title: "Start Container"
-description: "Start a stopped Docker Compose service container"
+title: "Start Service"
+description: "Start a specific service on your instance"
 api: "POST /api/v1/admin/containers/{service}/start"
 ---
 
-Start a stopped container in the Alfred stack. This is useful for restarting containers that were manually stopped or failed to start.
+Start a stopped service on your Alfred instance. Use this to bring back services that were previously stopped or failed to start.
 
 ## Path Parameters
 
@@ -16,12 +16,12 @@ Start a stopped container in the Alfred stack. This is useful for restarting con
 
 ```bash curl
 # Start the Alfred worker
-curl -X POST -H "Authorization: Bearer YOUR_API_KEY" \
-  https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/containers/worker/start
+curl -X POST -H "Authorization: Bearer alf_your_key_here" \
+  /api/v1/admin/containers/worker/start
 
 # Start OpenClaw gateway
-curl -X POST -H "Authorization: Bearer YOUR_API_KEY" \
-  https://alfred-acme.tailnet.ts.net:3100/api/v1/admin/containers/openclaw/start
+curl -X POST -H "Authorization: Bearer alf_your_key_here" \
+  /api/v1/admin/containers/openclaw/start
 ```
 
 </RequestExample>
@@ -37,5 +37,5 @@ curl -X POST -H "Authorization: Bearer YOUR_API_KEY" \
 </ResponseExample>
 
 <Note>
-  Starting a container that is already running has no effect and will return success. Check container status with the list containers endpoint first if needed.
+  Starting a service that is already running has no effect and will return success. Check service status with the list services endpoint first if needed.
 </Note>
