@@ -1,0 +1,176 @@
+---
+title: "Package — ctrl"
+description: "The dashboard backend, the four-store layer, and the promotion contract."
+---
+
+`packages/ctrl/` is the **dashboard backend** — a Node 22 HTTP server that
+binds to port 3100, holds the only write handles to the operational SQLite
+databases, and dispatches vault edits to the alfred-vault daemon. Every other
+service in the stack talks to ctrl-api over HTTP with a Bearer token; nothing
+else writes `alfred-state.db` or `ingest.db` directly.
+
+## Layout
+
+```
+packages/ctrl/
+├── build.mjs                 esbuild config → dist/api.mjs
+├── package.json              Node 22, zero runtime dependencies
+├── tsconfig.json
+├── CONTRACT.md               provides / requires
+├── docs/
+│   └── STORAGE-ARCHITECTURE.md   the four-store reference
+└── src/
+    ├── api/
+    │   ├── standalone.ts     server entrypoint
+    │   ├── server.ts         route registration
+    │   ├── helpers.ts        dockerExec, JSON helpers
+    │   ├── middleware/       auth, CORS, error handling
+    │   └── routes/           ~50 route modules
+    ├── db/
+    │   ├── schema.sql        alfred-state.db tables
+    │   ├── ingest-schema.sql ingest.db tables
+    │   ├── migrate.ts        PRAGMA user_version migration runner
+    │   ├── migrations/       0001_fix_pack.sql, 0002_alfred_journal.sql
+    │   └── promotionContract.ts  the canonical-12 enforcement
+    ├── templates/            vault-seed _templates/
+    └── tests/                node:test suite
+```
+
+## The four-store layer
+
+ctrl-api is the **sole writer** to four stores; every other service reads, or
+writes through HTTP *(packages/ctrl/docs/STORAGE-ARCHITECTURE.md)*.
+
+| # | Store | File | TTL | Purpose |
+|---|-------|------|-----|---------|
+| 1 | **Vault** | markdown under `/vault` | none | The principal's published surface — 12 canonical record types |
+| 2 | **`alfred-state.db`** | SQLite + WAL + sqlite-vec | 90d (signal/observation/routing), 365d (audit/link) → cold | Machine working memory: signals, observations, audit, links, embeddings, `vault_index` |
+| 3 | **`cold.db`** | SQLite with zstd-compressed blob rows | unbounded | Forensic long tail; rolled from hot store by the daily TTL compactor |
+| 4 | **`ingest.db`** | SQLite | hard 7-day | Raw inbound stream events; firehose isolated from working memory to avoid write-lock contention |
+
+At boot, `standalone.ts` opens all four databases in sequence, applies the
+PRAGMAs (`journal_mode=WAL`, `busy_timeout=5000`, `foreign_keys=ON`,
+`synchronous=NORMAL`), execs `schema.sql`, loads `sqlite-vec` if
+`SQLITE_VEC_PATH` is set, runs migrations gated on `PRAGMA user_version`,
+then reconciles the `vault_index` against the filesystem *(packages/ctrl/src/api/standalone.ts:57-66)*.
+
+## The promotion contract
+
+A single function — `assertCanonicalVaultPath()` — guards every vault write
+*(packages/ctrl/src/db/promotionContract.ts:149-178)*. It accepts only the
+twelve canonical record types:
+
+```
+matter  task  note  person  org  place  asset  chore  instinct  decision  briefing  daybook
+```
+
+Demoted types route to SQLite instead, and the error response tells the
+caller exactly where:
+
+| Demoted type | HTTP 422 destination |
+|---|---|
+| `signal-action`, `steward-action`, `desk-action`, `state-change`, `needs_attention_action`, `event` | `POST /api/v1/state/audit` |
+| `signal` | `POST /api/v1/state/signals` |
+| `observation`, `pattern_proposal`, `synthesis`, `contradiction`, `assumption`, `constraint` | `POST /api/v1/state/observations` |
+| `stream_event` | `POST /api/v1/ingest/events` |
+
+A non-canonical vault write returns HTTP 422 `PROMOTION_CONTRACT_VIOLATION`
+with a `suggestion` field pointing at the right endpoint
+*(packages/ctrl/src/db/promotionContract.ts:101-119)*. Bypass directories
+(`_templates/`, `_archive/`, `_migrated*/`, `_rescue/`, `_raw/`, `_migrate/`,
+`inbox/`, `needs_attention/`) and the singletons (`SOUL.md`, `RULES.md`,
+`CLAUDE.md`) skip the canonical-12 check.
+
+## Routes
+
+About fifty route modules under `src/api/routes/`. The notable surfaces:
+
+| Module | Surface |
+|---|---|
+| `vault.ts` | The promotion-contract-enforced vault CRUD. PATCH body must wrap fields in `{set:{…}}`, `{append:{…}}`, `{body_append:…}`, or `{json_set:{…}}` — bare field-keyed bodies are no-op *(packages/ctrl/src/api/routes/vault.ts:883-989)*. |
+| `decisions.ts` | The unified decision write path. Always mints `state: open` so DecisionRouter can close the loop. |
+| `attention.ts` | Legacy needs-attention surface. Mirrors decisions via `mintDecisionMirror` unless the caller passes `decision_origin` (the recursion guard). |
+| `matters.ts` | The matters aggregator. Reads `parent_matter` / `matter_ref` / `project` from task frontmatter, derives the roll-up `state`. |
+| `chores.ts` | List / pause / resume / delete / trigger. |
+| `settings.ts` | `GET/PUT /api/v1/settings[/:key]` for the three autonomy mode flags. Atomic write via temp+rename to `/alfred-data/settings.json`. |
+| `state.ts`, `stateChanges.ts`, `ingest.ts` | The demoted-type write paths the promotion contract redirects to. |
+| `admin.ts` | Health, container control, audit feed, system info, backup triggers. |
+| `hermes.ts`, `plane.ts`, `sure.ts`, `vaultwarden.ts` | HTTP proxies the MCP stdio bundle calls back into. |
+
+All routes require `Authorization: Bearer ${AAS_API_KEY}` *(packages/ctrl/src/api/middleware/)* — the key is generated by `scripts/bootstrap.sh` and shared with every other container via `.env`.
+
+## Settings precedence
+
+The three autonomy flags resolve with a three-level precedence
+*(packages/ctrl/src/api/routes/settings.ts:135-150)*:
+
+1. Environment variable (operator override — for emergencies)
+2. `/alfred-data/settings.json` (the UI toggle persists here)
+3. Registered default — **`live`** for all three *(packages/ctrl/src/api/routes/settings.ts:55-72)*
+
+| Key | Env override | Default |
+|---|---|---|
+| `signal_action_mode` | `STEWARD_SIGNAL_ACTION_LIVE_MODE` | `live` |
+| `state_mutator_mode` | `STEWARD_LIVE_MODE` | `live` |
+| `auto_task_create_mode` | `STEWARD_SIGNAL_AUTOCREATE_TASKS` | `live` |
+
+<Note>
+  Activities in `packages/learn/` carry their own per-activity defaults that
+  occasionally differ from ctrl-api's registered defaults — see
+  [Package — learn](/development/packages-learn) for the actual mode-gate
+  behaviour observed by the Temporal worker.
+</Note>
+
+## Build, run, test
+
+<Tabs>
+  <Tab title="Build">
+    ```sh
+    cd packages/ctrl
+    npm ci              # first time + after every dep bump
+    npm run build       # → dist/api.mjs
+    ```
+
+    `build.mjs` runs esbuild with Node 22 as the target, bundles everything
+    into one ESM file, marks `node:sqlite` and all Node builtins external,
+    and loads `.sql`, `.njk`, `.md`, `.yaml` files as text strings *(packages/ctrl/build.mjs:1-59)*.
+
+    The output `dist/api.mjs` is what `ssdavidai00/alfred-ctrl-api:latest`
+    ships — a single file Docker COPYs and runs.
+  </Tab>
+  <Tab title="Run">
+    ```sh
+    AAS_API_KEY=$(openssl rand -hex 32) \
+    STATE_DB_PATH=./data/alfred-state.db \
+    INGEST_DB_PATH=./data/ingest.db \
+    COLD_DB_PATH=./data/cold.db \
+    VAULT_PATH=./vault \
+    ALFRED_DATA_DIR=./alfred-data \
+    node dist/api.mjs
+    ```
+
+    Listens on `AAS_HOST:AAS_PORT` (default `127.0.0.1:3100`)
+    *(packages/ctrl/src/api/standalone.ts:14-30)*. The server exits 1 if
+    `AAS_API_KEY` is missing — there is no anonymous mode.
+
+    Graceful shutdown on SIGTERM/SIGINT closes all four databases cleanly
+    *(packages/ctrl/src/api/standalone.ts:83-93)*.
+  </Tab>
+  <Tab title="Test">
+    ```sh
+    npm test
+    ```
+
+    Runs ~440 node:test files covering vault CRUD, promotion contract
+    enforcement, the four-store boot sequence, settings precedence, the
+    decision mirror recursion guard, and the matters aggregator. The lane
+    gate's VERIFY hook runs this command before allowing a commit
+    *(scripts/hooks/check_lane.py)*.
+  </Tab>
+</Tabs>
+
+## Where to look next
+
+- The full four-store reference: `packages/ctrl/docs/STORAGE-ARCHITECTURE.md`
+- Frozen cross-package contracts ctrl participates in: `docs/FIX-CONTRACTS.md` (C1, C2, C5, C7, C11, C12, C18, C19)
+- The per-package contract surface: `packages/ctrl/CONTRACT.md`

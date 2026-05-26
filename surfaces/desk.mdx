@@ -1,0 +1,56 @@
+---
+title: "Desk"
+description: "Today's decision queue and the audit ledger — the canonical home."
+---
+
+`/desk` is where the principal lands every morning. It is a **single screen with three sections** — a decision queue, a local Backstage tray, and a merged audit ledger of every action Alfred has taken or recorded *(packages/web/src/dashboard/DeskPage.tsx:1-22)*.
+
+## The three sections
+
+**1. Decision queue.** A merge of three sources: `getNeedsAttention` (cards Alfred wants help on), `getPendingApprovals` (gated commands awaiting an OK), and `getPatternProposals` (standing rules the nightly reflection wants to adopt). The freshest unhandled decision is "featured" at the top; the rest sit in a collapsible "Also in the queue" band. Aging and stale cards (decayed by `DecayWatcherWorkflow`) drift below the fold under their own headings *(DeskPage.tsx:581-589)*.
+
+**2. Backstage.** A local "Do" tray — items the principal wants to handle themselves. Clicking *Do* on a card writes a `to_do/<ts>.md` record server-side via the `DecisionRouterWorkflow`, so the tray now survives navigation and reloads via `getMyTodos` *(DeskPage.tsx:257-263)*. The featured card vanishes from the queue and reappears in the tray within ~60s; an optimistic refetch closes the visible gap.
+
+**3. The Record.** A merged chronological ledger of `getRecentDecisions`, `getActivityFeed`, and `getRecentStewardActions`, sorted newest-first and capped at 80 rows *(DeskPage.tsx:472-571)*. Reversible entries get an *Undo* button wired to `reverseDecision`. The pagination defaults to 20 rows with a "Show more" affordance.
+
+## Eight parallel queries on first load
+
+The page fires eight `useQuery` calls in parallel on mount *(DeskPage.tsx:240-324)*:
+
+| Query | Purpose |
+|---|---|
+| `getNeedsAttention` | Cards Alfred wants help on |
+| `getPendingApprovals` | Gated agent commands awaiting OK |
+| `getPatternProposals` | Standing-rule proposals from nightly reflection |
+| `getActivityFeed` | Container activity from the `alfred` daemon |
+| `getRecentStewardActions` | `event/steward-action-*.md` writes |
+| `getMyTodos` | The persistent Backstage tray |
+| `getRecentDecisions` | Every Desk click since the cascade rolled out |
+| `getInFlightDecisions` | Decisions in `open` / `scheduled` / `executing` — polled every 10s |
+
+A separate pair of queries (`getBriefings` + `getBriefing`) pulls today's brief envelope so the principal reads the morning letter inline before scanning the queue *(DeskPage.tsx:302-316)*.
+
+## The four verbs
+
+Each decision card exposes four primary actions: **Delegate**, **Defer**, **Done**, **Take mine** (plus a one-tap **Noise** gesture that materialises a `signal_noise_pattern` to suppress future events of the same kind) *(DeskPage.tsx:73-78)*. Mapping per source:
+
+| Source | Delegate | Defer | Done | Take mine |
+|---|---|---|---|---|
+| `needs_attention` | dispatch | skip | done | local tray |
+| `approval` | `approveAction(instructions)` | skip (noop) | reject | local tray |
+| `pattern_proposal` | adopt | defer | reject | (n/a) |
+| `judgment` | tray-only — passive observation, no source mutation |
+
+A click writes a `decision/<ts>.md` record via `recordDecision` (POST `/api/v1/decisions`). That one server call writes the decision, mirrors the source NA flip synchronously, and indexes the record for the vault graph — all in a single request *(DeskPage.tsx:598-628)*.
+
+## The `synchronous_flip` pattern
+
+The cleanest source of bugs on `/desk` used to be a race: the principal clicked *Done*, ctrl-api wrote the decision, `DecisionRouterWorkflow` re-ran the action (flipping the source NA card again), and the agent fired twice — once from the synchronous flip, once from the cascade.
+
+The fix is a flag in the decision's `side_effects` envelope. When ctrl-api flips the source record synchronously inside the POST `/api/v1/decisions` handler, it stamps `side_effects.synchronous_flip: true` on the decision *(packages/ctrl/src/api/routes/decisions.ts:534)*. `DecisionRouterWorkflow` then reads that flag and skips every action path it would otherwise have re-run *(referenced in decisions.ts:560 and attention.ts:218-222)*.
+
+The one thing the router does **not** skip is `extract_observation_from_decision`. That call always fires — it is the loop closer that turns each Desk click into a learning-layer observation, which feeds tier promotion in the nightly `ReflectionWorkflow`. Without it, the system never learns.
+
+<Note>
+The legacy needs-attention endpoint (`POST /api/v1/admin/needs-attention/:id/{done,dispatch,skip}`) also mints a mirror decision with the same `synchronous_flip: true` stamp — except when the request body already carries `decision_origin`, which only the router itself passes. That guard prevents the router → mirror → router recursion that bit us once.
+</Note>

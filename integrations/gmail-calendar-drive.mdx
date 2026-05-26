@@ -1,0 +1,89 @@
+---
+title: "Gmail, Calendar, Drive"
+description: "The three Google integrations that drive most of Alfred's daily signal."
+---
+
+The three Google apps — **Gmail**, **Calendar**, and **Drive** — are reached the same way every other third-party app is: through Composio's [`composio_execute`](/integrations/composio) primitive. They get their own page because together they account for the majority of the inbound signal that shapes the Desk and the brief; if you're going to wire one third party into Alfred, wire these.
+
+## Authenticating
+
+Each Google toolkit has its own OAuth flow. The MCP catalogue exposes an `authenticate` tool family — `mcp__claude_ai_Gmail__authenticate`, `mcp__claude_ai_Google_Calendar__authenticate`, `mcp__claude_ai_Google_Drive__authenticate` — plus a matching `complete_authentication` that finalises the round-trip once Google's redirect lands.
+
+These are the discovery shape of `create_connection({toolkit_slug: 'gmail'})` at the protocol layer — when Hermes invokes the higher-level `execute` MCP tool, the underlying connector exposes per-toolkit authenticate methods so clients (claude.ai, Claude Desktop, Claude Code) can drive the OAuth handshake without leaving the MCP transport.
+
+The full flow:
+
+<Steps>
+  <Step title="Initiate">
+    From the Connections page (`/connections`) or from chat, trigger the connect flow for `gmail`, `googlecalendar`, or `googledrive`. The dashboard calls `create_connection({toolkit_slug})` which returns `{connect_url, connection_id}`. *(packages/web/src/integrations/ConnectionsPage.tsx:228–234)*
+  </Step>
+  <Step title="Authorise">
+    The principal opens `connect_url` in a popup, signs in to the Google account, and approves the requested scopes on Google's consent screen.
+  </Step>
+  <Step title="Complete">
+    Google redirects back to `connections?composio_callback=success&toolkit=<slug>` *(packages/web/src/integrations/ConnectionsPage.tsx:228)*. The dashboard polls `list_connections` until the new row's status flips to `ACTIVE` (12-second timeout, after which it surfaces a manual reconnect prompt).
+  </Step>
+  <Step title="Auto-config">
+    On `ACTIVE`, `autoConfigIntegration({connectionId})` runs — it scaffolds the per-toolkit skill file (`alfred-composio-gmail`, etc.) so Hermes has canonical payloads, and starts any background polling Alfred needs (email ingest, calendar event sync).
+  </Step>
+</Steps>
+
+## Scopes
+
+Composio requests the union of scopes needed by the actions in its catalogue for each toolkit. The exact list is visible on Google's consent screen at connect time. Practical scopes:
+
+| Toolkit | Typical scopes requested |
+|---|---|
+| **Gmail** | `gmail.readonly`, `gmail.send`, `gmail.modify`, `gmail.labels`, `gmail.compose` |
+| **Calendar** | `calendar`, `calendar.events`, `calendar.events.readonly` |
+| **Drive** | `drive`, `drive.file`, `drive.readonly`, `drive.metadata` |
+
+You can grant a narrower subset — the consent screen lets you toggle individual scopes. Actions that need a scope you didn't grant fail at execute time with an explicit `insufficient_permissions` error; reconnecting will re-prompt for the missing scope.
+
+<Note>
+Composio holds the OAuth tokens upstream — they never land on your VM. The only artefact Alfred stores locally is the connected_account id, used to scope subsequent `composio_execute` calls. Revoking the connection from `/connections` or from `accounts.google.com` invalidates both ends.
+</Note>
+
+## What each toolkit unlocks
+
+Once connected, every Composio action for the toolkit is available via `composio_execute({action, arguments})`. The common shapes:
+
+### Gmail
+
+- `GMAIL_SEND_EMAIL` — send a new message.
+- `GMAIL_FETCH_EMAILS` — search inbox, returns message ids + snippets.
+- `GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID` — full message body.
+- `GMAIL_REPLY_TO_THREAD` — reply inline to an existing thread.
+- `GMAIL_CREATE_LABEL`, `GMAIL_ADD_LABEL_TO_EMAIL` — labels for filing.
+
+Gmail also drives Alfred's primary inbound signal stream. Once connected, an `alfred-learn` workflow polls new messages, drops them into `ingest.db.stream_event`, and the signal pipeline extracts signals from them. This happens regardless of MCP — connect Gmail and Alfred will start producing signals at the next pipeline tick (every 5 minutes).
+
+### Calendar
+
+- `GOOGLECALENDAR_LIST_EVENTS` — fetch events in a date range, optionally filtered by calendar.
+- `GOOGLECALENDAR_CREATE_EVENT` — schedule a new event.
+- `GOOGLECALENDAR_UPDATE_EVENT` — patch an event (move time, add attendees).
+- `GOOGLECALENDAR_DELETE_EVENT` — cancel.
+- `GOOGLECALENDAR_QUICK_ADD_EVENT` — natural-language event creation.
+
+Calendar also feeds the signal pipeline — accepted meeting invites and event reminders surface on the Desk, and the daily brief pulls upcoming events when composing *"This week, on your plate."*
+
+### Drive
+
+- `GOOGLEDRIVE_FIND_FILE` — search by name, mime type, owner.
+- `GOOGLEDRIVE_DOWNLOAD_FILE` — fetch contents (text-readable files are extracted server-side).
+- `GOOGLEDRIVE_CREATE_FILE_FROM_TEXT` — write a new doc with text content.
+- `GOOGLEDRIVE_LIST_FOLDER_CONTENTS` — enumerate a folder.
+
+Drive is the one of the three Alfred uses most lightly — it's reach-only-when-asked rather than a background stream. Drive content does not populate `ingest.db`; you have to point Alfred at a file explicitly.
+
+## Reconnecting
+
+Google access tokens expire on the usual OAuth schedule. If `composio_execute` against Gmail / Calendar / Drive starts returning auth errors, or `list_connections` shows the row as `EXPIRED`:
+
+```json
+// reconnect_connection
+{ "id": "<connection-id>" }
+```
+
+…returns a fresh `redirect_url`. The connection id stays the same, so any references to it from other parts of the system (skills, background pollers) keep working.

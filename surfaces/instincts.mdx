@@ -1,0 +1,49 @@
+---
+title: "Instincts"
+description: "Asking, Confirming, Acting — the three tiers of learned patterns."
+---
+
+An **instinct** is a pattern Alfred has spotted in the principal's behaviour, written down, and is willing to act on. Instincts are not static rules. They have a confidence score that climbs as the principal confirms (or contradicts) the pattern, and they live in one of three tiers depending on how trusted they are *(packages/web/src/intuition/InstinctsPage.tsx:1-21)*.
+
+`/instincts` is the surface where the principal sees every learned pattern, the tier each one sits in, the evidence behind it, and a *Forget this pattern* affordance.
+
+## The three tiers
+
+The tier badge on each instinct card is not stored — it is **derived** from two inputs at render time *(InstinctsPage.tsx:88-112)*:
+
+1. The **effective discretion threshold** — the explicit `discretion_threshold` field if set, otherwise a value computed from the instinct's `observation_count`.
+2. The **observation-earned ceiling** — a hard cap that prevents a seeded threshold from over-promoting an instinct that hasn't accumulated enough evidence.
+
+| Tier | Effective threshold | Observation-earned ceiling | Butler line |
+|---|---|---|---|
+| **Asking** | `≥ 0.95` (or `status: proposed`) | `obs_count < 5` | *"I'd ask before acting on this."* |
+| **Confirming** | `0.85 ≤ thr < 0.95` | `5 ≤ obs_count < 20` | *"I'd rather confirm before acting."* / *"I'm fairly certain — quiet confirm."* |
+| **Acting** | `< 0.85` | `obs_count ≥ 20` | *"I've seen this enough times to handle it."* / *"Routine — I handle it automatically."* |
+
+The displayed tier is the **lower** of (threshold tier, observation ceiling), so a fresh instinct seeded with `discretion_threshold: 0.80` still renders as Asking until it has earned twenty observations *(InstinctsPage.tsx:74-78, 105-111)*.
+
+The discretion table is a literal mirror of `packages/learn/src/matching/discretion.py`, the runtime authority that decides whether a matched signal score passes the autonomous-action gate. The instinct page only visualises what the runtime already enforces.
+
+## Where confidence comes from
+
+Tier promotion is **clerk-driven**, not page-driven. The page never writes `observation_count`, `confidence_score`, or `tier` — those fields are owned by the daily `ReflectionWorkflow` *(02:00 UTC)* which feeds accumulated observations to the heavy-profile model. The model proposes `apply_instinct_change` calls; that activity is the sole writer of those three fields.
+
+Each Desk click writes a `decision/<ts>.md` record. `DecisionRouterWorkflow` then runs `extract_observation_from_decision` (with no `synchronous_flip` guard — see [Desk](/surfaces/desk)), which writes an `observation` row to `alfred-state.db` tagged with the `instinct_ref` that originally matched. Twenty-four hours later, those observations are the input to the next tier-promotion pass.
+
+## What the page shows per instinct
+
+Each card carries:
+
+- The instinct's **readable name** — preferring `display_name`, then the first clause of `rule`, then the first sentence of `description`, then a title-cased slug *(InstinctsPage.tsx:128-174)*.
+- The current **tier badge** and the **butler line** that matches the effective threshold.
+- The **observation count** (`obs_count`) and **confidence_score**.
+- A **timeline** of recent observations and judgments — each row showing the human-readable `fact` field rather than the boilerplate body *(InstinctsPage.tsx:193-206)*.
+- A *Forget this pattern* button that calls `updateInstinct` with `status: disabled`. Disabled instincts stop matching but stay on disk as audit history; `deprecated` collapses the row off the index entirely.
+
+## The master toggle
+
+The page header carries a single master switch wired to `enableIntuition` / `disableIntuition`. When disabled, the entire intuition loop stops: `SignalRouterWorkflow` still extracts signals but does not match them against instincts, so nothing is ever autonomously dispatched. The principal can keep using `/desk` to handle signals manually; they just lose the *"this looks like the same pattern as last week"* assist.
+
+<Note>
+The matcher does **not** filter on `status: active`. A common bug we shipped briefly was the matcher only loading instincts in the `active` status — leaving freshly-created `unconfirmed` instincts invisible. The fix at `_load_active_instincts` accepts every non-deprecated instinct; the discretion threshold is the real safety belt for low-observation-count patterns.
+</Note>

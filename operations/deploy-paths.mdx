@@ -1,0 +1,96 @@
+---
+title: "Deploy paths"
+description: "Where every file lives on the VM — repo, config, volumes."
+---
+
+A live Alfred Black VM has two filesystems you care about: the repo checkout (configuration) and the Docker volumes (data). This page maps every path to its purpose.
+
+---
+
+## The repo — `/opt/alfred/`
+
+`docker compose` operates from the directory holding `docker-compose.yaml`. The convention is `/opt/alfred/` *(`.env.example:131-136`)*, which is the default for `COMPOSE_DIR_HOST` and the path that ctrl-api bind-mounts back into itself so it can rewrite `.env` and shell out to `docker compose`.
+
+| Path | What | Owner |
+|------|------|-------|
+| `/opt/alfred/docker-compose.yaml` | The active compose file (rsync'd from repo on deploys, or `git pull` if you cloned in place) | host operator |
+| `/opt/alfred/.env` | All env vars — both filled-in required values and bootstrap-generated secrets *(`scripts/bootstrap.sh`)* | host operator (initially), `bootstrap.sh` appends |
+| `/opt/alfred/caddy/Caddyfile` | Caddy reverse-proxy config *(`caddy/Caddyfile`)* | host operator |
+| `/opt/alfred/caddy/plane-proxy.Caddyfile` | Plane sub-proxy override *(`docker-compose.yaml:1061`)* | host operator |
+| `/opt/alfred/scripts/bootstrap.sh` | One-time `.env` validator + secret generator | host operator |
+| `/opt/alfred/scripts/hooks/` | Pre-commit gate scripts (lane enforcement); only relevant if you develop on the box | host operator |
+
+<Note>
+On a SaaS-deployed host you usually `rsync` the compose file, Caddyfile, and bootstrap script down from the repo on every deploy; you don't keep a full `git clone` on the VM. On a self-hosted box, a flat `git clone https://github.com/ssdavidai/alfred /opt/alfred` is fine.
+</Note>
+
+---
+
+## Docker volumes — `/var/lib/docker/volumes/`
+
+Every persisted store lives in a Docker named volume mounted under `/var/lib/docker/volumes/alfred-black_<name>/_data/` *(`docker-compose.yaml:1491-1514`)*. The `alfred-black_` prefix comes from `COMPOSE_PROJECT_NAME=alfred-black` *(`docker-compose.yaml:404`)*.
+
+### Principal data (back these up)
+
+| Path | What | Sole writer |
+|------|------|-------------|
+| `…/alfred-black_vault_data/_data/` | The vault — every matter, task, note, decision, briefing as markdown *(`docker-compose.yaml:1492`)* | `init` for scaffolding; `ctrl-api` for all subsequent writes |
+| `…/alfred-black_caddy_data/_data/` | Let's Encrypt certs + ACME state *(`docker-compose.yaml:1498`)* | `caddy` |
+| `…/alfred-black_state_data/_data/` | `alfred-state.db` (signals, observations, audit, embeddings) + WAL *(`docker-compose.yaml:1502`)* | `ctrl-api` |
+| `…/alfred-black_ingest_data/_data/` | `ingest.db` (raw inbound stream events, 7-day TTL) + WAL *(`docker-compose.yaml:1503`)* | `ctrl-api` |
+
+### Runtime state (recoverable but useful)
+
+| Path | What |
+|------|------|
+| `…/alfred-black_hermes_data/_data/` | `$HERMES_HOME` — three profile dirs (`main`, `workers`, `heavy`), each with `config.yaml`, `.env`, `auth.json`, sessions, plugins; plus the consolidated `SOUL.md` and memory files *(`docker-compose.yaml:1493`)* |
+| `…/alfred-black_alfred_data/_data/` | Shared scratch — `.gateway-token`, `settings.json`, `.composio-user-id`, `user-chores/`, `chore-snapshots/`, Sure/Plane bootstrap inputs *(`docker-compose.yaml:1494`)* |
+| `…/alfred-black_cold_data/_data/` | DuckDB/Parquet forensic long-tail (>90 days, ctrl-api Store 3) *(`docker-compose.yaml:1504`)* |
+| `…/alfred-black_temporal_data/_data/` | Temporal workflow history (SQLite) *(`docker-compose.yaml:1495`)* |
+| `…/alfred-black_caddy_config/_data/` | Caddy runtime state *(`docker-compose.yaml:1499`)* |
+| `…/alfred-black_ollama_data/_data/` | Local embeddings model cache (`nomic-embed-text`) *(`docker-compose.yaml:1496`)* |
+| `…/alfred-black_mcp_server_data/_data/` | MCP server runtime state *(`docker-compose.yaml:1501`)* |
+| `…/alfred-black_vaultwarden_data/_data/` | Vaultwarden secrets vault DB *(`docker-compose.yaml:1500`)* |
+| `…/alfred-black_web_db_data/_data/` | Wasp dashboard Postgres data *(`docker-compose.yaml:1497`)* |
+
+### Sidecar datastores
+
+The Plane, Sure, and Vexa stacks each own a small fleet of their own volumes — see [volumes](/operations/volumes) for the full catalog. They live under the same `/var/lib/docker/volumes/alfred-black_*` prefix.
+
+---
+
+## Bind mounts
+
+A small number of services bind-mount host paths so they can interact with the host directly. These are the only places where Docker volumes are *not* the source of truth.
+
+| Bind | Service | Why |
+|------|---------|-----|
+| `/opt/alfred:/srv/alfred-black:rw` | `ctrl-api` *(`docker-compose.yaml:393`)* | The API needs to read `.env` (to read provider keys / vexa toggle), write credential updates back to it, and shell out to `docker compose` for stack control. |
+| `/var/run/docker.sock:/var/run/docker.sock:rw` | `ctrl-api` *(`docker-compose.yaml:394`)* | Same — `ctrl-api` triggers compose pulls/restarts when the dashboard asks. |
+| `/root/.ssh/authorized_keys:/root/.ssh/authorized_keys:ro` | `ctrl-api` *(`docker-compose.yaml:397`)* | Read-only — `GET /api/v1/system/ssh-info` surfaces the host's authorised public key on the `/channels` Terminal card so the principal can `ssh` into the box. |
+| `./caddy/Caddyfile:/etc/caddy/Caddyfile:ro` | `caddy` *(`docker-compose.yaml:42`)* | Edit the Caddyfile in the repo, `docker compose restart caddy`, and Caddy reloads. |
+| `/var/run/docker.sock` (vexa-runtime-api) | `vexa-runtime-api` *(`docker-compose.yaml:1376`)*; profile `vexa` only | Vexa spawns transcription-bot containers as Docker children. |
+
+---
+
+## Inside each container
+
+Mount points inside the containers map cleanly to their volumes. The big shared ones are:
+
+| Container path | Volume |
+|---------------|--------|
+| `/vault` | `vault_data` (markdown record store) |
+| `/alfred-data` | `alfred_data` (shared scratch) |
+| `/hermes-state` (= `$HERMES_HOME`) | `hermes_data` (Hermes runtime) |
+| `/state` | `state_data` (alfred-state.db) |
+| `/ingest` | `ingest_data` (ingest.db) |
+| `/cold` | `cold_data` (forensic archive) |
+| `/data` (caddy) | `caddy_data` (TLS certs) |
+
+When you exec into a container and see `/vault/matter/inbox.md`, that's the same byte stream as `/var/lib/docker/volumes/alfred-black_vault_data/_data/matter/inbox.md` on the host.
+
+---
+
+## Logs
+
+Docker logs live under `/var/lib/docker/containers/<id>/` by default. `docker compose logs -f <service>` is the supported way to read them. The stack doesn't write its own log files outside Docker's normal log stream — debug/trace output goes to stdout/stderr.

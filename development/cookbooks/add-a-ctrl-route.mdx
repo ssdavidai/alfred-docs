@@ -1,0 +1,171 @@
+---
+title: "Cookbook — add a ctrl-api route"
+description: "Add a new HTTP endpoint to the tenant API server on :3100."
+---
+
+`ctrl-api` is the tenant's HTTP API server: 40+ route surfaces, all
+mounted under `/api/v1/*`. It's the only process with write handles to
+`alfred-state.db` and `ingest.db`, and the canonical proxy target for
+MCP tools, the web dashboard, and Alfred's own agents.
+
+This cookbook walks the recipe for adding a new route, using the
+`settings.ts` surface as the worked example
+*(packages/ctrl/src/api/routes/settings.ts:176-244)*.
+
+<Steps>
+  <Step title="Create the route file">
+    One file per surface under `packages/ctrl/src/api/routes/`. Pick a
+    name that names the resource, not the verb — `settings.ts`,
+    `decisions.ts`, `matters.ts`. Each file exports a single
+    `registerXRoutes()` function the server invokes once at boot
+    *(packages/ctrl/src/api/server.ts:53,168)*.
+
+    Inside, use the shared `addRoute` helper from `../server.js`
+    *(packages/ctrl/src/api/routes/settings.ts:37)*. It takes a method,
+    a path pattern, and an async handler:
+
+    ```ts
+    import { addRoute } from "../server.js";
+    import { sendJson, ValidationError } from "../errors.js";
+
+    export function registerWidgetsRoutes(): void {
+      addRoute("GET", "/api/v1/widgets", async ({ res }) => {
+        sendJson(res, 200, { widgets: [] });
+      });
+
+      addRoute("GET", "/api/v1/widgets/:id", async ({ res, params }) => {
+        const id = params.id;  // path params parsed by the router
+        if (!id) throw new ValidationError("missing id");
+        sendJson(res, 200, { id, status: "ok" });
+      });
+
+      addRoute("PUT", "/api/v1/widgets/:id", async ({ res, params, body }) => {
+        // body is the parsed JSON request body (or undefined on no-body)
+        sendJson(res, 200, { id: params.id, applied: body });
+      });
+    }
+    ```
+
+    Handlers receive `{req, res, params, query, body}`. They can write
+    directly via `sendJson(res, status, data)` or throw a typed error
+    like `ValidationError` — the server's central error handler
+    converts those to JSON 4xx responses.
+  </Step>
+
+  <Step title="Register in api/server.ts">
+    `api/server.ts` is the **single registration site** for every
+    route module *(packages/ctrl/src/api/server.ts:5-65)*. Add two
+    lines:
+
+    ```ts
+    // top of file, with the other imports:
+    import { registerWidgetsRoutes } from "./routes/widgets.js";
+
+    // inside the boot sequence:
+    registerWidgetsRoutes();
+    ```
+
+    <Warning>
+    `packages/ctrl/src/api/server.ts` is in the **forbidden zone**
+    *(scripts/hooks/lanes.json:8)*. A Lane I commit that touches it
+    is rejected by the [commit gate](/development/commit-gate). The
+    orchestrator (phase0) edits it as part of merging your route PR;
+    do not try to push through it from a lane.
+    </Warning>
+
+    The route file itself (`packages/ctrl/src/api/routes/widgets.ts`)
+    is fine for Lane I — it's under `packages/ctrl/**`.
+  </Step>
+
+  <Step title="Write a node:test">
+    Tests live under `packages/ctrl/tests/<surface>.test.ts` and use
+    `node:test` + `node:assert/strict`. The pattern (see
+    `packages/ctrl/tests/admin.test.ts` for a fully worked example):
+
+    1. `mock.module(...)` to stub `node:child_process`, `node:fs`, etc.
+       so the test can drive route handlers without touching the
+       filesystem or running `docker exec`.
+    2. Boot the server on an ephemeral port and grab the `AddressInfo`
+       for `http://127.0.0.1:<port>`.
+    3. Hit the route with `http.request` and assert status + body
+       shape.
+
+    Existing surfaces have small `tests/<surface>.test.ts` files; copy
+    the closest one rather than starting from scratch.
+
+    Run locally with `cd packages/ctrl && npm test`, which uses
+    `node --test --import ./tests/text-loader.mjs tests/`. CI runs
+    the same suite via `ci-check.yml`'s `build-ctrl` job
+    *(see /development/ci-workflows)*.
+  </Step>
+
+  <Step title="Rebuild the bundle">
+    ctrl-api ships as a single esbuild bundle at `dist/api.mjs`
+    *(packages/ctrl/Dockerfile)*. Local dev:
+
+    ```bash
+    cd packages/ctrl
+    npm ci          # first time only
+    npm run build   # → dist/api.mjs
+    ```
+
+    `.sql`, `.njk`, `.md`, and `.yaml` files load as text strings
+    through esbuild's `text` loader configured in
+    `packages/ctrl/build.mjs`. `node:sqlite` is an esbuild external
+    (it's a built-in module on Node 22).
+
+    The next push to `main` triggers `build-ctrl-api.yml`
+    *(see /development/ci-workflows#the-nine-image-builders)*, which
+    publishes `ssdavidai00/alfred-ctrl-api:latest` and the operator
+    deploys with `docker compose pull && docker compose up -d`.
+  </Step>
+
+  <Step title="If you need a new state.db table">
+    If your route persists data, it likely needs a column or a table
+    in `alfred-state.db`. Migrations live under
+    `packages/ctrl/src/db/migrations/` as numbered SQL files
+    *(packages/ctrl/src/db/migrate.ts:1-30)*. They are:
+
+    - **Append-only.** Never edit a merged migration. Add the next
+      number — `0003_widgets.sql` after `0002_alfred_journal.sql`
+      *(packages/ctrl/src/db/migrate.ts:27-30)*.
+    - **Transactional.** Each migration runs in its own
+      `BEGIN`/`COMMIT` and bumps `PRAGMA user_version`
+      *(packages/ctrl/src/db/migrate.ts:44-58)*.
+    - **Idempotent in the runner.** Re-running `runMigrations` on an
+      up-to-date DB is a no-op; the table-create SQL itself should
+      use `CREATE TABLE IF NOT EXISTS` so a partial recovery still
+      works.
+    - **Imported by the runner.** Add `import m0003 from
+      "./migrations/0003_widgets.sql";` plus the array entry in
+      `MIGRATIONS` *(packages/ctrl/src/db/migrate.ts:19-30)*.
+
+    <Warning>
+    `packages/ctrl/src/db/{schema.sql,migrations/**,migrate.ts}` are
+    all in the **forbidden zone**
+    *(scripts/hooks/lanes.json:4-6)*. Migrations are orchestrator-only
+    edits. A Lane I commit that touches any of these three is
+    rejected by the [commit gate](/development/commit-gate); pair
+    your PR with the orchestrator so the migration lands first
+    (providers before consumers), then your route consuming the new
+    column lands second.
+    </Warning>
+
+    Once the migration is in, your handler can open the DB via
+    `getStateDb()` and run prepared statements against it. Reads
+    that span hot + cold storage (90+ day windows) use the
+    cross-tier helpers in `packages/ctrl/src/db/` rather than
+    raw SQL.
+  </Step>
+</Steps>
+
+## What to read next
+
+<CardGroup cols={2}>
+  <Card title="Add an MCP tool" href="/development/cookbooks/add-an-mcp-tool">
+    Expose your new ctrl-api route to the agents through the MCP bundle.
+  </Card>
+  <Card title="The lane protocol" href="/development/lane-protocol">
+    Why server.ts and the migration runner are forbidden-zone files.
+  </Card>
+</CardGroup>

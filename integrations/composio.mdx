@@ -1,0 +1,68 @@
+---
+title: "Composio"
+description: "One execute primitive over ~1000 third-party apps."
+---
+
+Composio is the external surface for almost every third-party app Alfred touches that does *not* live in your compose stack — Gmail, GitHub, Notion, Slack, Calendar, Drive, Linear, Zoom, LinkedIn, YouTube, Stripe, and the long tail. Alfred reaches Composio through one MCP app called `execute`, and that app exposes one primitive: `composio_execute(action, arguments)` *(packages/mcp-server/src/tools/execute.ts:64–81)*.
+
+Why one tool instead of one tool per app? Because Composio itself models the world that way. Every operation runs through a single handler with the action submitted as a parameter — `GMAIL_SEND_EMAIL`, `GITHUB_CREATE_AN_ISSUE`, `NOTION_CREATE_PAGE`, and so on. Mirroring that shape inside MCP keeps the tool catalogue small and lets Alfred onboard a new toolkit the moment Composio adds support, with no code change on our side.
+
+## The six tools
+
+The `execute` app ships exactly six tools *(packages/mcp-server/src/tools/execute.ts:41–142)*:
+
+| Tool | Purpose |
+|---|---|
+| `composio_execute` | Run one action. Takes `action` (UPPER_SNAKE_CASE slug) and `arguments` (per-action JSON). Returns `{action, toolkit, result}`. **Not idempotent on writes** — re-running creates duplicates. |
+| `list_composio_tools` | Discovery. No args → list connected toolkits with status. Pass `{toolkit}` → enumerate that toolkit's actions. |
+| `list_connections` | Active connected accounts on this tenant. Returns id, toolkit, display name, status (`ACTIVE` / `DISABLED` / `EXPIRED`), auth scheme, created_at. |
+| `create_connection` | Start OAuth for a new toolkit. Returns `{redirect_url, connection_id}` — the principal opens the URL in a browser, completes third-party auth, and the connection lands as `ACTIVE`. |
+| `reconnect_connection` | In-place credential refresh for an expired or broken connection. Returns a fresh `redirect_url`; the `connection_id` stays the same. |
+| `delete_connection` | Disconnect. Revokes the OAuth grant (where supported), removes the connected_account record, and deletes the auto-generated `alfred-composio-<toolkit>` skill if no other connection on the tenant uses it. |
+
+All six route through ctrl-api's `/api/v1/integrations/*` endpoints *(packages/mcp-server/src/tools/execute.ts:7–10)*; ctrl-api holds the `COMPOSIO_API_KEY` and resolves the connection-id-per-toolkit at execute time, so Hermes never sees the third-party tokens.
+
+## Discovery, then execute
+
+The canonical flow Alfred uses inside a conversation:
+
+<Steps>
+  <Step title="Discover the toolkit">
+    Call `list_composio_tools` with no arguments. Returns the connected toolkits on this tenant — pick one.
+  </Step>
+  <Step title="Discover the action">
+    Call `list_composio_tools({toolkit: 'gmail'})`. Returns the list of action slugs (`GMAIL_SEND_EMAIL`, `GMAIL_FETCH_EMAILS`, …) with their JSON-schema shape.
+  </Step>
+  <Step title="Execute">
+    Call `composio_execute({action: 'GMAIL_SEND_EMAIL', arguments: { recipient_email: '…', subject: '…', body: '…' }})`. Returns `{action, toolkit, result}`.
+  </Step>
+</Steps>
+
+For common toolkits the dashboard auto-generates a per-toolkit skill file (`alfred-composio-gmail`, `alfred-composio-slack`, …) so the model already knows canonical payloads without needing discovery on every call.
+
+## How `/connections` drives this
+
+The Connections page in the dashboard is the principal's window onto Composio. It lists every available toolkit (Composio's catalogue), the toolkits already connected, and lets the principal start, reconnect, or revoke connections without going through chat *(packages/web/src/integrations/ConnectionsPage.tsx)*.
+
+Clicking **Connect** on a toolkit:
+
+1. Calls the dashboard query that wraps `create_connection({toolkit_slug})` against ctrl-api *(packages/web/src/integrations/ConnectionsPage.tsx:228–234)*.
+2. Receives `{connect_url}` and opens it in a popup named `composio-connect` *(line 247)*.
+3. Polls `list_connections` until the new row lands as `ACTIVE` (12-second timeout) *(line 257–282)*.
+4. Fires `autoConfigIntegration({connectionId})` so ctrl-api can scaffold the per-toolkit skill, set up any background polling, and refresh the dashboard.
+
+Clicking **Disconnect** calls the dashboard's revoke action, which runs `disconnectIntegration` *(packages/web/src/integrations/connectionsRevokeCore.ts)*. The action revokes the OAuth grant upstream where supported, then deletes the local connected_account record.
+
+The same surface is reachable from claude.ai conversations through the `create_connection` / `reconnect_connection` / `delete_connection` tools, so an agent can suggest *"connect Gmail"* and have the principal complete the flow without leaving chat.
+
+## Connections are per-tenant, per-user
+
+Composio scopes connections by `COMPOSIO_USER_ID`, which `bootstrap.sh` sets to `alfred-owner-<4-byte-hex>` on first run *(scripts/bootstrap.sh:174–193)*. The script enforces a non-empty, non-`default` value — two installs on the same Composio account stay isolated. The user id is added to `.env`; never change it after install, or the connections become unreachable.
+
+## Costs and limits
+
+Composio's free tier covers most personal use. Heavier flows — large Gmail backfills, ongoing Slack polling, GitHub webhook ingest — push into paid tiers; consult [Composio pricing](https://composio.dev/pricing). Action latency varies by toolkit (Gmail ~500ms, GitHub ~1s, Slack ~700ms typical). The MCP server itself adds one HTTP hop through ctrl-api; total round-trip is dominated by the upstream third-party.
+
+<Warning>
+`composio_execute` is **not idempotent on writes**. Re-running `GMAIL_SEND_EMAIL` after a timeout will send a second email. Read your toolkit's `list_*` action before retrying, or wait for the upstream to surface the duplicate.
+</Warning>

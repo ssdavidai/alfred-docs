@@ -1,0 +1,215 @@
+---
+title: "Cookbook — add a chore"
+description: "End-to-end: write the workflow class, drop the vault record, watch the quarantine."
+---
+
+A **chore** is a recurring job Alfred runs on the principal's behalf —
+a weekly money brief, a daily inbox sweep, a Tuesday digest. Each chore
+is two artefacts that move together:
+
+- A **Temporal workflow class** (Python) that says *what to do*.
+- A **vault record** under `vault/chore/<slug>.md` (markdown +
+  frontmatter) that says *when to do it* and exposes the chore on the
+  principal's `/chores` page.
+
+This cookbook walks the recipe for adding a new chore, using the
+existing `WeeklyMoneyDayBriefWorkflow` as the worked example
+*(packages/learn/src/workflows/chores/weekly_money_day.py:81-154)*.
+
+<Steps>
+  <Step title="Write the workflow class">
+    Generated chores land in `/alfred-data/user-chores/` (the
+    persistent volume) and are scanned at worker startup by the
+    dynamic loader *(packages/learn/src/workflows/chores/_dynamic_loader.py:580-720)*.
+    Static, repo-shipped chores live in
+    `packages/learn/src/workflows/chores/`.
+
+    A chore module must:
+
+    1. Import only from the whitelist — `dataclasses`, `datetime`,
+       `typing`, `json`, `temporalio.*`, `src.workflows.chores._base`,
+       `src.activities.chore_actions` *(packages/learn/src/workflows/chores/_dynamic_loader.py:88-100)*.
+       Any other import is rejected by the validator at boot.
+    2. Define **exactly one** class decorated with `@workflow.defn(...)`,
+       containing **exactly one** `@workflow.run` method
+       *(packages/learn/src/workflows/chores/_dynamic_loader.py:307-330)*.
+    3. Call activities by *name reference*, not string —
+       `workflow.execute_activity(record_chore_run, ...)`, never
+       `workflow.execute_activity("record_chore_run", ...)` — so the
+       import whitelist actually constrains what runs
+       *(packages/learn/src/workflows/chores/_dynamic_loader.py:374-389)*.
+
+    Skeleton:
+
+    ```python
+    from __future__ import annotations
+    from dataclasses import dataclass
+    from datetime import timedelta
+
+    from temporalio import workflow
+    from temporalio.common import RetryPolicy
+
+    with workflow.unsafe.imports_passed_through():
+        from src.workflows.chores._base import (
+            decrement_quarantine_remaining,
+            is_quarantined,
+            load_chore_context,
+            record_chore_run,
+        )
+        from src.activities.chore_actions import call_self
+
+
+    @dataclass
+    class MyChoreInput:
+        chore_slug: str
+
+
+    @workflow.defn(name="MyChoreWorkflow")
+    class MyChoreWorkflow:
+        @workflow.run
+        async def run(self, input: MyChoreInput) -> dict:
+            ctx = await workflow.execute_activity(
+                load_chore_context,
+                args=[input.chore_slug],
+                start_to_close_timeout=timedelta(seconds=15),
+            )
+            if ctx.get("status") != "active":
+                return {"notes": "chore not active"}
+
+            if is_quarantined(ctx):
+                await workflow.execute_activity(
+                    record_chore_run,
+                    args=[input.chore_slug, "quarantine dry-run", True],
+                    start_to_close_timeout=timedelta(seconds=15),
+                )
+                await workflow.execute_activity(
+                    decrement_quarantine_remaining,
+                    args=[input.chore_slug],
+                    start_to_close_timeout=timedelta(seconds=30),
+                )
+                return {"notes": "dry-run"}
+
+            # Real work goes here — call activities, never reach for
+            # the filesystem or network directly.
+
+            await workflow.execute_activity(
+                record_chore_run,
+                args=[input.chore_slug, "ok"],
+                start_to_close_timeout=timedelta(seconds=15),
+            )
+            return {"notes": "ok"}
+    ```
+  </Step>
+
+  <Step title="Register the vault record">
+    Create `vault/chore/<slug>.md`. The frontmatter binds the workflow
+    class to its schedule and quarantine state:
+
+    ```yaml
+    ---
+    type: chore
+    name: My Chore
+    slug: my-chore
+    status: active
+    workflow_class_name: MyChoreWorkflow
+    schedule_cron: "0 7 * * 2"     # Tuesdays at 07:00 UTC
+    quarantine: true
+    quarantine_remaining: 3
+    params:
+      preview_only: false
+    ---
+
+    Short prose describing what this chore does for the principal.
+    ```
+
+    <Warning>
+    **`workflow_class_name` must match the `name=...` on the
+    `@workflow.defn` decorator exactly** — capitalization included.
+    Temporal looks up the workflow by this string at schedule-fire
+    time *(packages/learn/src/workflows/chores/_dynamic_loader.py:569-577)*.
+    Misalignment shows up as the chore "running" every minute but
+    never actually executing — Temporal logs an
+    `ApplicationError: workflow not registered` and moves on.
+    </Warning>
+
+    The `schedule_cron` field is standard cron, evaluated in the
+    tenant's local timezone. Use plain weekday names where you can;
+    `chore_generation._autocorrect_cron_dow_for_description` rewrites
+    common natural-language variants before validation.
+  </Step>
+
+  <Step title="Quarantine: three dry-runs first">
+    A fresh chore starts with `quarantine: true` and
+    `quarantine_remaining: 3` *(packages/learn/src/workflows/chores/_base.py:114-128)*.
+    On each scheduled fire, the workflow checks `is_quarantined(ctx)`
+    *(packages/learn/src/workflows/chores/_base.py:134-149)*. If true:
+
+    1. The workflow calls `record_chore_run(slug, summary, dry_run=True)`
+       to log what it *would* have done.
+    2. It calls `decrement_quarantine_remaining(slug)` which patches
+       the vault frontmatter — `quarantine_remaining` decrements, and
+       when it hits 0 the `quarantine` flag flips to `false`
+       *(packages/learn/src/workflows/chores/_base.py:352-410)*.
+    3. The workflow returns early — no real side effects.
+
+    On the fourth scheduled run, `is_quarantined()` returns false and
+    the chore goes live.
+
+    This buys you three operator-visible dry-runs to confirm the
+    schedule fires when expected and the chore picks up the right
+    context. Skipping quarantine on a new chore is how Sir's first
+    "weekly digest" sent fourteen briefings the moment it deployed.
+  </Step>
+
+  <Step title="Understand record_chore_run">
+    `record_chore_run` is the canonical side-effect for every chore
+    fire — call it whether the chore did real work, dry-ran, or
+    no-op'd *(packages/learn/src/workflows/chores/_base.py:180-247)*.
+    It writes to **two destinations**:
+
+    1. **The chore's vault record body** — appends `\n- <iso-ts>:
+       <result_summary>` to the markdown body, and patches the
+       frontmatter `last_run` / `last_result` fields so the `/chores`
+       page shows the most-recent outcome.
+    2. **`/alfred-data/chore-run-history.jsonl`** — one JSONL line
+       per run with `{timestamp, chore_slug, result_summary,
+       was_dry_run}`. This file is what the weekly
+       `ChorePromotionReflectionWorkflow` analyses to decide whether
+       a generated chore has earned a place in the standard library.
+
+    Both writes are best-effort — if the vault is briefly
+    unreachable, the chore's main work is not failed.
+  </Step>
+
+  <Step title="Deploy and watch">
+    For a repo-shipped chore (under
+    `packages/learn/src/workflows/chores/`), the next `build-learn`
+    image build picks it up *(see /development/ci-workflows)*. For a
+    generated chore dropped into `/alfred-data/user-chores/`, the
+    dynamic loader picks it up on the next `alfred-learn` worker
+    restart *(packages/learn/src/workflows/chores/_dynamic_loader.py:580-720)*.
+
+    Validation errors don't crash the worker — the loader logs
+    `dynamic_loader: validation failed for <file>: <reason>` and
+    skips the file. Tail `docker logs alfred-learn` after a restart
+    to see whether your chore loaded.
+
+    Once the schedule fires, watch:
+
+    - The Temporal UI at `:8233` for the workflow execution.
+    - `/chores/<slug>` in the dashboard for the run-log line and
+      `last_run` timestamp.
+    - `/alfred-data/chore-run-history.jsonl` for the JSONL line.
+  </Step>
+</Steps>
+
+## What to read next
+
+<CardGroup cols={2}>
+  <Card title="Add an MCP tool" href="/development/cookbooks/add-an-mcp-tool">
+    Surface a new capability to the agents through the MCP bundle.
+  </Card>
+  <Card title="Add a ctrl-api route" href="/development/cookbooks/add-a-ctrl-route">
+    Expose a new HTTP endpoint to the dashboard or to MCP tools.
+  </Card>
+</CardGroup>

@@ -1,0 +1,74 @@
+---
+title: "SSH access"
+description: "Connecting to the VM, the 1Password SSH-agent gotcha."
+---
+
+`ssh` into the Alfred Black VM the normal way — there's no Tailscale, no bastion, no custom keyfile location. The VM uses standard OpenSSH and the host operator's `~/.ssh/authorized_keys`.
+
+---
+
+## The basic recipe
+
+```bash
+ssh root@<VM-IP>
+```
+
+That's it for a stock machine. If you're scripting an SSH session against the VM from CI or another tool, the longer form below is what we use in practice.
+
+---
+
+## The 1Password / agent gotcha
+
+If you run the 1Password SSH agent (or any other agent that hijacks identity selection — Apple keychain, gnome-keyring, KeePass-XC), it will offer all your stored keys to the server *before* the one you specified with `-i`. The server doesn't care; it just sees the first key offered. If that first key isn't on the box, you get `Permission denied (publickey)` even though `-i` pointed at a valid key.
+
+The fix is to disable the agent for this connection with `-o IdentityAgent=none`. `-i` alone does not override the agent.
+
+```bash
+ssh \
+  -o ConnectTimeout=15 \
+  -o ServerAliveInterval=10 \
+  -o BatchMode=yes \
+  -o StrictHostKeyChecking=accept-new \
+  -o IdentityAgent=none \
+  -i ~/.ssh/alfred-black-verify \
+  root@<VM-IP>
+```
+
+The other options:
+
+| Option | Why |
+|--------|-----|
+| `ConnectTimeout=15` | Bound the TCP handshake — don't hang for minutes if the VM is offline. |
+| `ServerAliveInterval=10` | Send a keepalive every 10s — survives intermittent NAT timeouts. |
+| `BatchMode=yes` | Don't prompt for a password or confirmation, fail instead. Important in scripts. |
+| `StrictHostKeyChecking=accept-new` | Auto-accept the host key on first connect; reject if it changes later. |
+| `IdentityAgent=none` | Disable the SSH agent for this session — see above. |
+| `-i ~/.ssh/<key>` | Use this specific key. |
+
+<Warning>
+For a one-off interactive shell, `ssh root@<VM-IP>` is fine. The long form above is what you'd use from a CI runner or an automated probe where unexpected agent identities or interactive prompts will silently break the run.
+</Warning>
+
+---
+
+## Where the authorized_keys live
+
+The compose stack bind-mounts `/root/.ssh/authorized_keys` read-only into `ctrl-api` *(`docker-compose.yaml:397`)*. The `/channels` Terminal card in the dashboard reads it through `GET /api/v1/system/ssh-info` so the principal can copy the host's public key onto their own machine if they need to.
+
+The container has read-only access; **only the host operator can edit `/root/.ssh/authorized_keys`**. To add a key:
+
+```bash
+ssh root@<VM-IP>
+nano /root/.ssh/authorized_keys
+# paste pubkey, save
+```
+
+The dashboard's Terminal card updates on the next page load.
+
+---
+
+## Read-only audits and recon
+
+When investigating live behaviour (per the bug-fixing protocol), keep your SSH session read-only — no `docker exec` writes, no `curl -X POST`, no editing `.env` from the box. The convention is to add `--dry-run` or use `GET`-only API probes from the SSH session itself, then ship findings back to your laptop for synthesis.
+
+If you must run a probe that has a side effect (e.g. triggering a workflow to observe its log output), call it out in the investigation report so the synthesizer can distinguish observed behaviour from probe-induced behaviour.

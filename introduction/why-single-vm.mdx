@@ -1,0 +1,43 @@
+---
+title: "Why a single VM"
+description: "What you give up moving from SaaS to one box, and what you get."
+---
+
+Alfred Black is the **single-VM reframing** of an older multi-tenant platform. The previous build (`alfred-platform`) provisioned Hetzner servers per tenant, knitted them together with Tailscale, automated Cloudflare DNS, ran a SaaS control plane on top, and billed users on a Stripe metered plan. The new build throws all of that out. One repo, one VM, one `docker compose up`, one principal *(CLAUDE.md §1)*.
+
+That move was a deliberate trade. It's worth being honest about both sides.
+
+## What you give up
+
+<Warning>
+Single-VM deployments are not high-availability. If the VM goes down, Alfred is down.
+</Warning>
+
+- **No HA, no horizontal scale.** Everything runs on one host. If it loses power or fills its disk, the dashboard, the intelligence layer, the sidecars, and the vault all go offline together. There is no failover. *(docker-compose.yaml — single host targeted; no replica services.)*
+- **No managed provisioning.** You point your own DNS records, fill in your own `.env`, run `./scripts/bootstrap.sh`, and `docker compose up -d`. The flow takes maybe fifteen minutes if your DNS is already in place; it is not a one-click experience *(scripts/bootstrap.sh)*.
+- **No billing, no SaaS control plane.** API keys you supply pay for themselves directly to the upstream providers — OpenRouter, Anthropic, Composio, Twilio. There is no aggregated meter, no monthly invoice. You see exactly what you spend, on each provider's own console.
+- **No multi-tenant story.** The single-VM build assumes **one principal**. The first signup becomes the owner; subsequent signups are members of that same household. If you need genuine multi-tenant isolation, this is not the build.
+
+## What you get
+
+- **Your data on your hardware.** The vault (markdown files), the working stores (`alfred-state.db`, `ingest.db`), the secrets vault (Vaultwarden), the project board (Plane), the finances (Sure) — all of it lives in Docker volumes on a VM you control. No copy sits on a third-party machine *(CLAUDE.md §13)*.
+- **Every secret in your `.env`.** API keys, OAuth tokens, encryption keys — `bootstrap.sh` generates 21 auto-secrets locally via `openssl rand -hex 32` *(scripts/bootstrap.sh:115–137)*. None are issued by a remote service. You can rotate them by editing one file.
+- **A fully auditable runtime.** Every decision Alfred makes, autonomous or approved, lands on the `/decisions` ledger with full provenance. Every state change to a matter or task carries a `state_change` audit row in `alfred-state.db` *(packages/learn/docs/STATE-MUTATION.md)*. Nothing is hidden in a service you can't query.
+- **A small attack surface.** Caddy fronts everything with automatic Let's Encrypt TLS *(caddy/Caddyfile)*. No inbound ports beyond 80/443. The webhook surface is path-prefixed and individually authenticated.
+- **Reproducible builds.** `docker compose up` never builds — it pulls `:latest` of every image. CI in the upstream repo is the only path that publishes images, and you can pin tags in the compose file if you want to control updates *(.github/workflows/)*.
+
+## When to choose Alfred Black
+
+Pick the single-VM build when:
+
+- You're one person (or a small household) and the data feels personal enough that you'd rather host it yourself.
+- You're comfortable running a Linux VM, watching `docker compose logs`, and reading SQLite when something looks off.
+- You want to be able to read every line of code your butler runs.
+
+Pick a hosted product instead when:
+
+- HA matters more than control.
+- You'd rather pay a single subscription than juggle four upstream API keys.
+- Standing up a Linux VM and pointing DNS records is not how you want to spend an afternoon.
+
+Both are reasonable. Alfred Black is the build for the first group.

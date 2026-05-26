@@ -1,0 +1,59 @@
+---
+title: "Staff"
+description: "The small staff of specialists employed on the principal's behalf."
+---
+
+<Info>
+**Status — marketing surface, not a live page.** Alfred's landing page promises *"a small staff of specialists, employed on your behalf"* *(packages/web/src/landing-page/LandingPage.tsx:87)*. CLAUDE.md §4 lists `/staff` in the surface roster, but the route is **not yet implemented** in `packages/web/main.wasp`. This page documents the concept — the staff *exists*, just not as a single dashboard URL.
+</Info>
+
+## The metaphor
+
+The Alfred Black design language frames the system as a household: a butler ("Alfred") who employs a small staff of specialists, each tuned to a different kind of work. The principal never sees the staff directly; they see the work arrive, signed by Alfred *(packages/web/src/landing-page/LandingPage.tsx:140-170)*.
+
+## The actual roster
+
+Under the metaphor, every "specialist" is a named agent bound to a Hermes profile. The roster is enumerated at [Settings → Agent Configuration](/surfaces/study) via `getAgentConfig`, with three top-level profiles *(packages/web/src/dashboard/StudyPage.tsx:222-241)*:
+
+<CardGroup cols={3}>
+  <Card title="Alfred (main)">
+    The principal's conversational counterpart on every channel — Slack, Telegram, SMS, the web app, email replies. Carries persistent memory across turns; reads SOUL.md / USER.md / RULES.md at every prompt. Hermes profile: **`main`** (port 18789).
+  </Card>
+  <Card title="The Workers">
+    The high-volume, cheap end of the household. **Clerk** classifies and extracts signals, drafts reflections; **chore execution** runs the principal's recurring workflows; **surveyor** labels and embeds new vault records for the semantic index. Hermes profile: **`workers`** (port 18790).
+  </Card>
+  <Card title="Heavy reasoning">
+    Reserved for slow, expensive work: onboarding fact extraction, pattern discovery, the heavy-reasoning beats inside chores that need a frontier model. Used sparingly to keep the bill down. Hermes profile: **`heavy`** (port 18791).
+  </Card>
+</CardGroup>
+
+## Why the principal sees one face
+
+The principal interacts with **Alfred** — singular, signed, in one voice. The staff exists so different kinds of work can ride different cost-and-latency budgets without the principal having to think about which one is on call. Every chore, every onboarding step, every clerk reflection is internally dispatched to the right profile by ctrl-api's `agents` route; the answer comes back to the principal as Alfred's *(packages/ctrl/src/api/routes/agents.ts)*.
+
+## How a specialist gets work
+
+The pipeline that connects inbound signals to staff dispatch is detailed in [Signal pipeline](/architecture/signals). Briefly:
+
+1. A stream event lands (email, Composio webhook, OMI audio chunk, calendar push).
+2. **Workers / clerk** extract a signal from it; **workers / surveyor** indexes the artifacts.
+3. The signal router matches the signal against known instincts; if confidence clears the bar, **workers** dispatch the autonomous action.
+4. If it doesn't, **Alfred (main)** surfaces the matter on `/desk` and asks the principal what to do.
+5. The principal's click feeds back into reflection — drafted nightly by **workers**, refined by **heavy** when patterns warrant a deeper look.
+
+## Where to manage them
+
+| Surface | What you can do |
+|---|---|
+| [Settings → Agent Configuration](/surfaces/study) | Swap the model bound to each profile (every agent on that profile moves together) |
+| [Tools](/surfaces/tools) | See exactly which Composio actions, MCP servers, and built-in primitives each specialist may reach |
+| [Chores](/surfaces/chores) | See which chore the workers run and on what cadence |
+| [Decisions](/surfaces/decisions) | Audit the work the staff did on the principal's behalf |
+
+## When `/staff` lands
+
+When a dedicated `/staff` route ships, it will collapse the above into one roster page — a card per specialist with current model, recent work, cost-per-day, and an "out of office" toggle. Until then, the staff is real but distributed across the surfaces above.
+
+<Note>
+The roster lives in **runtime config**, not source. Add a profile by editing `packages/hermes/profiles/<name>/config.yaml`; add an agent and bind it to a profile by editing the agents table in ctrl-api. The Settings page surfaces whatever ctrl-api reports.
+</Note>

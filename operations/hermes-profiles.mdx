@@ -1,0 +1,125 @@
+---
+title: "Hermes profile management"
+description: "The hermes CLI inside the container — config, profile, auth — plus the dashboard caveat."
+---
+
+The Hermes runtime container ships three supervised gateway processes, one per "profile". You interact with them through the `hermes` CLI inside the container, not through a web dashboard.
+
+| Profile | Port | Default model | Used for |
+|---------|------|---------------|----------|
+| `main` | 18789 | `x-ai/grok-4.3` | User-facing chat (memory + channels enabled) *(`packages/hermes/render_hermes.py:338`)* |
+| `workers` | 18790 | `openai/gpt-4.1-nano` | Background agents — classification, curation, ephemeral runs *(`render_hermes.py:339`)* |
+| `heavy` | 18791 | `anthropic/claude-opus-4-6` | Opus-class background reasoning (onboarding, reflection) *(`render_hermes.py:340`)*. Compose-network only — not published to the host. |
+
+Models are overridable via `HERMES_MAIN_MODEL`, `HERMES_WORKERS_MODEL`, `HERMES_HEAVY_MODEL` in `.env` *(`.env.example:38-44`)*.
+
+---
+
+## The dashboard caveat
+
+Hermes ships a web-dashboard backend, but the upstream pip wheel does **not** include the React frontend bundle. Hooking it up returns `{"error":"Frontend not built"}` on every request — we tried this once and reverted (commit `ce6c177`).
+
+Use the CLI inside the container for everything until upstream ships the SPA bundle.
+
+---
+
+## Getting a shell inside the container
+
+```bash
+docker compose exec hermes bash
+```
+
+The CLI is on `$PATH` and reads `HERMES_HOME=/hermes-state` (the `hermes_data` volume) by default. Profiles live at `$HERMES_HOME/profiles/<name>/`.
+
+---
+
+## `hermes profile` — managing profiles
+
+```bash
+hermes profile list             # show all profiles
+hermes profile use main         # set sticky default for subsequent commands
+hermes profile show main        # dump the resolved config.yaml
+```
+
+The supervisor sets `hermes profile use main` at boot *(`packages/hermes/docker/supervisor.sh:126`)* so bare `hermes ...` commands default to the main profile.
+
+To target a specific profile for one command, use `-p`:
+
+```bash
+hermes -p workers gateway run --replace   # what the supervisor calls
+hermes -p heavy config get model          # inspect just the heavy profile
+```
+
+---
+
+## `hermes config` — editing profile config
+
+Each profile's `config.yaml` is rendered from `hermes-config.yaml.njk` once at init *(`packages/hermes/init/entrypoint.sh:438-465`)* and is operator-owned thereafter — re-running init doesn't overwrite it.
+
+```bash
+hermes -p main config edit          # opens config.yaml in $EDITOR
+hermes -p main config get model     # print one key
+hermes -p main config set model=x-ai/grok-4.3   # set one key (writes config.yaml)
+```
+
+After editing, restart the gateway for that profile so it re-reads:
+
+```bash
+docker compose restart hermes      # restarts all three profiles
+```
+
+There's no per-profile restart — the supervisor is one process per container.
+
+---
+
+## `hermes auth` — managing OAuth identity
+
+Hermes can authenticate against upstream model providers via OAuth (mostly for Anthropic direct routing). Each profile carries its own `auth.json` under `$HERMES_HOME/profiles/<name>/`. The supervisor mirrors `main/auth.json` to `workers/` and `heavy/` at boot so all three share the same identity *(`supervisor.sh:128-153`)*.
+
+```bash
+hermes auth login            # interactive OAuth flow for the active profile
+hermes auth status           # show current auth state
+hermes auth logout           # clear stored tokens
+```
+
+If only the `main` profile has been authenticated and you want the others to inherit, restart the container — the supervisor's mirror runs on every boot:
+
+```bash
+docker compose restart hermes
+```
+
+---
+
+## `hermes plugins` — inspecting loaded plugins
+
+The main profile loads two plugins:
+
+- **hermes-lcm** — the lossless context-management engine, baked into the image at `/opt/hermes-lcm` and copied to `$HERMES_HOME/profiles/main/plugins/hermes-lcm/` at boot *(`supervisor.sh:188-192`)*.
+- **one-alfred** — the Alfred continuity layer, registers `pre_gateway_dispatch`, `pre_llm_call`, `post_llm_call` hooks *(`supervisor.sh:210-220`)*.
+
+```bash
+hermes -p main plugins list      # show loaded plugins
+hermes -p main plugins reload    # force reload (used by the LCM verify probe)
+```
+
+The workers and heavy profiles are plugin-less by design — they're stateless agents.
+
+---
+
+## Verifying the runtime is healthy
+
+```bash
+# Inside the container
+curl -s -H "Authorization: Bearer $(cat /alfred-data/.gateway-token)" \
+  http://localhost:18789/v1/models
+curl -s -H "Authorization: Bearer $(cat /alfred-data/.gateway-token)" \
+  http://localhost:18789/v1/tools | head -30
+```
+
+The supervisor runs a background `verify_lcm` probe at boot that queries `/v1/tools` for `lcm_*` tools and logs a clear `OK` or `WARNING` *(`supervisor.sh:222-264`)*. Check the hermes container logs after a restart:
+
+```bash
+docker compose logs --tail=100 hermes | grep -E '(LCM|verify|OK|WARNING)'
+```
+
+If LCM isn't loading, check `$HERMES_HOME/profiles/main/plugins/hermes-lcm/` exists and isn't empty.

@@ -1,0 +1,205 @@
+---
+title: "Gotchas"
+description: "Concrete pitfalls you will hit, drawn from the team's incident log."
+---
+
+This page is the list of *"oh, I lost an hour to that one"* pitfalls. Every
+item below has bitten someone in production. Each is one short paragraph and
+a fix.
+
+## Vault PATCH body shape
+
+The vault writer accepts only **wrapped** bodies. A `PATCH /api/v1/vault/records/<path>`
+whose body looks like `{ "title": "new" }` will return `200 OK` and silently
+no-op — the writer's `hasCliArgs` short-circuit returns before the daemon
+ever sees the request *(packages/ctrl/src/api/routes/vault.ts:976)*.
+
+<Warning>
+Wrap every field in one of the canonical operators:
+
+```json
+{ "set":          { "title": "new" } }
+{ "append":       { "tags": ["urgent"] } }
+{ "body_append":  "new markdown line" }
+{ "body_set":     "fully replaced body" }
+{ "json_set":     { "data.counters.viewed": 12 } }
+```
+
+A bare field-keyed body is a no-op without a diagnostic.
+</Warning>
+
+## Task `status` vs `state`
+
+A vault task has **two** lifecycle fields with different vocabularies. Writers
+must set both, and the validator will hard-fail otherwise *(CLAUDE.md §6.2)*.
+
+| Field | Vocabulary | Owner |
+|---|---|---|
+| `status` | `active \| blocked \| cancelled \| done \| todo` | the alfred-vault Python daemon's validator |
+| `state` | `pending \| in_progress \| done \| archived` | the matters aggregator |
+
+<Warning>
+`status: queued` looks plausible but is rejected with HTTP 500 by the daemon
+validator. For a new task, use `status: todo` (canonical "not yet started") +
+`state: pending`. A red-test in `packages/ctrl/tests/` guards this — see
+incident 2026-05-24.
+</Warning>
+
+## The decision-mirror recursion
+
+The legacy `POST /api/v1/admin/needs-attention/:id/dispatch` mints a mirror
+`decision/<ts>.md` so that UI clicks land in the audit ledger. But the
+`DecisionRouter` workflow *also* calls `/dispatch` while processing a delegate
+decision — without a guard, this would create a fresh mirror decision every
+minute, each one re-firing the agent *(CLAUDE.md §15.3)*.
+
+<Warning>
+The guard lives at `packages/ctrl/src/api/routes/attention.ts`: `mintDecisionMirror`
+is skipped when the request body carries `decision_origin`. Only the router
+passes that field; UI clicks don't. **Never strip `decision_origin` while
+forwarding** to `/dispatch`, or you reintroduce the loop. Reference fix: commit
+`4466c68`.
+</Warning>
+
+## The web is two containers, not one
+
+Dashboard changes only ship when **both** containers redeploy:
+
+- `web` — the Wasp server (auth, operations, API at `:3000`)
+- `web-client` — the static React SPA served by nginx
+
+If you `docker compose pull web && docker compose up -d web` and the SPA
+doesn't refresh, you forgot `web-client`. Browsers also cache the SPA bundle;
+a hard refresh (Ctrl+Shift+R / Cmd+Shift+R) is part of the deploy *(CLAUDE.md §15.4)*.
+
+<Tip>
+After a UI change, pull and recreate both: `docker compose pull web web-client &&
+docker compose up -d web web-client`. Then hard-refresh the browser tab.
+</Tip>
+
+## `_resolve_parent_matter_path` — four-tier fuzzy fallback
+
+Onboarding writes tasks with a `parent_matter` link. The naive implementation
+slugifies the LLM's `related_matter` string and writes that — even if no such
+matter exists, producing a phantom path that the matters aggregator can't
+follow. The fix is a four-tier resolver *(packages/learn/src/activities/packs_opus.py, `_resolve_parent_matter_path`)*:
+
+1. Exact slug match against the live matter index.
+2. Fuzzy match of `related_matter` text against matter names (overlap coefficient ≥ 0.40).
+3. Fuzzy match of the **task name** itself against matter names, for when `related_matter` is empty.
+4. Fallback to `matter/inbox.md` — auto-seeded by the init container on first boot.
+
+<Warning>
+If you skip the validation step and trust the LLM's slug, fresh deploys produce
+orphan tasks that the `/matters` page silently drops. The bug shipped once and
+left 32 orphaned tasks on a live tenant — see incident 2026-05-24.
+</Warning>
+
+## The Hermes web dashboard is not usable
+
+The upstream `hermes-agent` pip wheel ships **neither** the React source nor a
+prebuilt `web_dist/`. The dashboard backend boots fine and responds at the
+configured port, but every request returns `{"error":"Frontend not built"}`.
+We wired up `hermes.{$DOMAIN}` once, hit the empty 200, and reverted it
+*(CLAUDE.md §15.6, commit `ce6c177`)*.
+
+<Tip>
+For Hermes inspection, exec into the container and use the CLI:
+
+```sh
+docker compose exec hermes hermes profile list
+docker compose exec hermes hermes config show --profile main
+docker compose exec hermes hermes auth status
+```
+</Tip>
+
+## Cron-DOW autocorrect on chores
+
+The chore generator emits human-readable cron strings like
+`0 7 * * Mon,Tue,Wed,Thu,Fri`. Some validators reject the named-weekday form
+and want `0 7 * * 1-5`. We autocorrect rather than ask the LLM to be precise
+*(packages/learn/src/activities/chore_generation.py, `_autocorrect_cron_dow_for_description`)*.
+
+<Note>
+Don't fight the autocorrect. If your chore validator is failing on a perfectly
+sensible cron, check whether the autocorrect ran (look for the rewritten
+expression in the logs) before debugging the validator.
+</Note>
+
+## The instinct scorer tokenizer bug
+
+The signal-to-instinct matcher tokenises both the signal and the instinct
+pattern. The historical bug: `_score_keyword_overlap` did set intersection
+between **single-word** signal tokens and **multi-word** pattern phrases
+(`"reply to invoice"` never matches `["reply","to","invoice"]` as a set).
+Result: every live instinct scored 0.0 for every signal. No discretion
+threshold could rescue it *(CLAUDE.md §15.8)*.
+
+<Warning>
+The fix combines three matchers — substring of full text, all-pattern-tokens-in-keyword-set,
+and the legacy single-word overlap — at `MATCH_THRESHOLD = 0.05`. If you touch
+the scorer, **verify the tokenizers on both sides produce comparable units**.
+A test fixture in `packages/learn/tests/` covers this.
+</Warning>
+
+## SSH into the box with 1Password agent running
+
+The 1Password SSH agent silently hijacks identity selection on macOS, so
+`-i ~/.ssh/alfred-black-verify` is ignored and you get a "Permission denied
+(publickey)" you can't explain. The fix is two flags:
+
+```sh
+ssh -o ConnectTimeout=15 -o ServerAliveInterval=10 -o BatchMode=yes \
+    -o StrictHostKeyChecking=accept-new -o IdentityAgent=none \
+    -i ~/.ssh/alfred-black-verify root@<VM-IP>
+```
+
+<Warning>
+`-o IdentityAgent=none` is **required** if 1Password's SSH agent is running.
+Inline these flags in every call — a shell variable won't word-split correctly
+under zsh *(CLAUDE.md §15.9)*.
+</Warning>
+
+## Hot-patch + `--force-recreate` destroys the patch
+
+When you `docker cp` a fix into a running container and then run
+`docker compose up -d --force-recreate <svc>`, Compose creates a new container
+from the **image** and your overlay is gone. Use `docker restart` to preserve
+the patch, or push a CI build *before* you go to bed *(CLAUDE.md §11.3)*.
+
+<Tip>
+The right pattern: hot-patch to confirm the fix, *immediately* push the same
+change as a PR so CI rebuilds the image, then a normal `docker compose up -d`
+picks up the durable fix.
+</Tip>
+
+## Backups discipline
+
+Four volumes hold real state. Back them up — none of them is regenerable:
+
+| Volume | What's in it | Why back it up |
+|---|---|---|
+| `vault_data` | The principal's markdown vault | The published surface of the entire system |
+| `state_data` | `alfred-state.db` (signals, observations, audit) | The learning loop's training corpus |
+| `caddy_data` | Let's Encrypt certificates | Avoid LE rate limits on a rebuild |
+| `ingest_data`, `hermes_data` | Raw inbound stream + Hermes profiles | Recoverable but costly to re-onboard |
+
+<Warning>
+A fresh `docker compose down -v` deletes all volumes. There is no
+"undo this destructive operation" path. If you don't have a snapshot before
+`-v`, the vault and the LE certs are gone — and LE rate-limits will bite the
+rebuild *(CLAUDE.md §15.10)*.
+</Warning>
+
+## Mode flags — defaults
+
+Three settings flags control how aggressively Alfred acts. All three default
+to `"live"` (act) — the resolver checks env var, then `/alfred-data/settings.json`,
+then falls through to live *(CLAUDE.md §8)*.
+
+<Note>
+If you're debugging "Alfred isn't doing anything", check these *first* — a
+stale settings file with `signal_action_mode: shadow` will produce a system
+that observes correctly but never dispatches. The toggle lives at
+`/settings#agent` in the dashboard.
+</Note>

@@ -1,0 +1,147 @@
+---
+title: "CI workflows"
+description: "Path-filtered builds: one workflow per image, plus the cross-cutting ci-check gate."
+---
+
+Once the [commit gate](/development/commit-gate) accepts a commit and a
+PR merges to `main`, the GitHub Actions workflows under
+`.github/workflows/` take over. They publish `:latest` images to Docker
+Hub which the VM pulls on the next `docker compose pull && docker
+compose up -d`. Nothing in `docker compose up` ever builds locally —
+the entire production path is pull-only.
+
+There are **twelve workflow files**, split into three groups: nine
+per-image builders, one cross-cutting gate, one secret scanner, and one
+release workflow for the standalone Python package.
+
+## The nine image builders
+
+Each builder is path-filtered: it only runs when files under its
+package change *(see each workflow's `on.push.paths` block)*. This
+keeps PR feedback fast — a Python change in `packages/learn/` doesn't
+re-run the Wasp toolchain.
+
+| Workflow | Triggers on | Image tag |
+|----------|-------------|-----------|
+| `build-web.yml` | `packages/web/**` | `ssdavidai00/alfred-web:latest`, `ssdavidai00/alfred-web-client:latest` |
+| `build-ctrl-api.yml` | `packages/ctrl/**` | `ssdavidai00/alfred-ctrl-api:latest` *(build-ctrl-api.yml:11-13)* |
+| `build-learn.yml` | `packages/learn/**` | `ssdavidai00/alfred-learn:latest` *(build-learn.yml:8-12)* |
+| `build-hermes.yml` | `packages/hermes/**` | `ssdavidai00/alfred-black-hermes:latest` |
+| `build-init.yml` | `packages/hermes/init/**` + selected templates | `ssdavidai00/alfred-init:latest` |
+| `build-mcp-server.yml` | `packages/mcp-server/**` | `ssdavidai00/alfred-mcp-server:latest` |
+| `build-voice-bridge.yml` | `packages/voice-bridge/**` | `ssdavidai00/alfred-voice-bridge:latest` |
+| `build-alfred-worker.yml` | `packages/alfred-vault/**`, `packages/alfred-worker/**` | `ssdavidai00/alfred-worker:latest` |
+| `build-setup.yml` | `packages/setup/**` | `ssdavidai00/alfred-setup:latest` |
+
+Most builders share the same shape: checkout → `setup-qemu-action` →
+`setup-buildx-action` → Docker Hub login → `build-push-action` with
+`platforms: linux/amd64,linux/arm64` *(e.g. build-ctrl-api.yml:24-47)*.
+They publish a single multi-arch manifest under the `:latest` tag.
+
+### Special case: `build-web.yml`
+
+The web build is structurally different *(build-web.yml:8-23)*. Wasp's
+server Dockerfile runs `npm install` inside the image, which is
+native-heavy (Prisma generate, node-gyp). Cross-emulating `arm64` via
+QEMU on an `amd64` runner SIGILLs intermittently. The workflow works
+around this with a four-stage graph:
+
+1. **prepare** *(build-web.yml:49-128)* — runs `wasp build` once
+   (arch-agnostic), generates the Prisma baseline migration, builds
+   the SPA client. Uploads the server and client build contexts as
+   artifacts.
+2. **build-server** *(build-web.yml:136-188)* — matrix `{amd64 on
+   ubuntu-latest, arm64 on ubuntu-24.04-arm}`. Each **native** runner
+   builds its own architecture and pushes **by digest**, no tag.
+3. **merge-server** *(build-web.yml:195-223)* — `docker buildx
+   imagetools create` stitches the two per-arch digests into the
+   `:latest` multi-arch manifest at the registry level (no rebuild).
+4. **build-client** *(build-web.yml:230-264)* — standard multi-arch
+   buildx; the SPA image only packages static output, so QEMU is
+   safe here.
+
+The cost of this complexity is build time. `build-learn.yml` ships
+in around 10 minutes; `build-web.yml` is closer to 15, but the
+**longest pole is `build-learn.yml`'s test stage** under heavy
+dependency installs (~25 minutes including the test gate
+*(build-learn.yml:19-37)*). Plan deploys accordingly.
+
+## `ci-check.yml` — the cross-cutting gate
+
+This is the workflow that runs on **every PR** and every push to `main`
+*(ci-check.yml:13-22)*. It does not build or publish images — that's
+the per-image workflows' job. Instead, it runs four orthogonal checks
+in parallel *(ci-check.yml:24-98)*:
+
+<Tabs>
+  <Tab title="build-ctrl">
+    `npm ci` then `node build.mjs` in `packages/ctrl` — the real
+    esbuild bundle that the `alfred-ctrl-api` image ships. Bare `tsc
+    --noEmit` is intentionally skipped because `node:sqlite` is an
+    esbuild external with no tsc-resolvable types
+    *(ci-check.yml:35-40)*.
+  </Tab>
+  <Tab title="pytest-learn">
+    Python 3.12, `pip install -r requirements.txt` + pytest, then
+    `pytest tests/ -v -m "not slow"` *(ci-check.yml:42-56)*. The
+    `not slow` marker skips Temporal replay tests that would
+    otherwise dominate runtime.
+  </Tab>
+  <Tab title="compose-lint">
+    Synthesises a dummy `.env` (real values are unnecessary for
+    `compose config`) and runs `docker compose config --quiet` for
+    both the default profile and `--profile vexa`
+    *(ci-check.yml:58-91)*. This is what catches a syntactically
+    broken compose file or an unresolvable `${VAR}` interpolation
+    before a deploy.
+  </Tab>
+  <Tab title="bootstrap-lint">
+    `shellcheck scripts/bootstrap.sh` *(ci-check.yml:93-98)*. The
+    bootstrap script is the host-side prerequisite for every fresh
+    deploy; a shellcheck regression there is operator-visible.
+  </Tab>
+</Tabs>
+
+The Wasp web app is **not** type-checked here. `wasp build` is the only
+correct typecheck (bare `tsc` can't resolve the generated `wasp/*`
+modules without codegen), and that runs in `build-web.yml`'s `prepare`
+stage instead *(ci-check.yml:7-11)*.
+
+## `gitleaks.yml` and `release-alfred-vault.yml`
+
+Two more workflows complete the set:
+
+- **`gitleaks.yml`** scans every commit for accidentally-committed
+  secrets (API keys, tokens, private keys). It fails loud on any
+  match.
+- **`release-alfred-vault.yml`** is triggered by tags matching
+  `alfred-vault-v*` and publishes the standalone `alfred-vault`
+  Python package to PyPI. The package is `pip install`-able on its
+  own — it has a release lifecycle independent of Alfred Black's
+  Docker images.
+
+## How `:latest` reaches the VM
+
+There is **no** auto-deploy from CI to a tenant. The flow is:
+
+1. CI builds and pushes `ssdavidai00/<name>:latest` to Docker Hub.
+2. An operator runs `docker compose pull && docker compose up -d`
+   on the VM. The compose file references each image by `:latest`,
+   so the pull surfaces the new manifest and `up -d` recreates only
+   the containers whose image digest changed.
+
+Caddyfile and `docker-compose.yaml` changes are **not** in any image —
+they ship via `rsync` (or `git pull` in `/opt/alfred`) before the
+`docker compose up`. This is intentional: the operator should decide
+when to reload the proxy.
+
+## What to read next
+
+<CardGroup cols={2}>
+  <Card title="The commit gate" href="/development/commit-gate">
+    What happens to your commit before it ever reaches CI.
+  </Card>
+  <Card title="The lane protocol" href="/development/lane-protocol">
+    The five lanes and the C1–C19 frozen contracts that keep CI happy.
+  </Card>
+</CardGroup>

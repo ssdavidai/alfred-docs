@@ -1,0 +1,50 @@
+---
+title: "Glossary"
+description: "A quick card for the twelve canonical vault types and the system vocabulary."
+---
+
+A reference card for the words you'll meet on every page of Alfred Black. The first table is the **household** — the twelve canonical record types the principal reads and edits. The second is the **system vocabulary** — the working concepts behind the dashboard.
+
+## The twelve canonical vault types
+
+These are the only types `ctrl-api` allows into the markdown vault. Anything else is rejected with HTTP 422 *(packages/ctrl/src/db/promotionContract.ts)*.
+
+| Type | Path | What it is |
+|---|---|---|
+| **matter** | `vault/matter/<slug>.md` | A long-running concern — a project, a relationship, an ongoing obligation. Tasks roll up under matters. |
+| **task** | `vault/task/<slug>.md` | A concrete next action, linked to a parent matter. Has both a `status` (validator vocab) and a `state` (aggregator vocab). |
+| **note** | `vault/note/<slug>.md` | Free-form prose the principal wants kept. |
+| **person** | `vault/person/<slug>.md` | Someone Alfred should know about — colleague, family, vendor. |
+| **org** | `vault/org/<slug>.md` | A company, charity, or institution. |
+| **place** | `vault/place/<slug>.md` | A location with meaning — home, office, a favourite restaurant. |
+| **asset** | `vault/asset/<slug>.md` | Something the principal owns or stewards — car, lease, account, license. |
+| **chore** | `vault/chore/<slug>.md` | Recurring work on a schedule. Backed by a Python workflow class loaded into Temporal. |
+| **instinct** | `vault/instinct/<slug>.md` | A learned pattern of behaviour. Promoted through Asking → Confirming → Acting tiers. |
+| **decision** | `vault/decision/<ts>-<sha8>.md` | An immutable audit record of every action Alfred took on the principal's behalf. |
+| **briefing** | `vault/briefing/<date>.md` | The daily missive — written each morning by `BriefingWorkflow`. |
+| **daybook** | `vault/daybook/<date>.md` | The day's narrative log. |
+
+<Note>
+The Python vault daemon (`packages/alfred-vault/`) supports more than twenty entity types for legacy and developer use — `project`, `process`, `run`, `event`, `assumption`, `constraint`, `synthesis`, and others. In **production**, ctrl-api enforces only the twelve listed above. The extras live in `alfred-state.db` instead.
+</Note>
+
+## System vocabulary
+
+These are the concepts behind the dashboard — what Alfred reads, what it writes, and how the learning loop closes.
+
+| Term | Definition |
+|---|---|
+| **Signal** | A unit of attention. Extracted from an inbound stream event (email, calendar, payment, etc.) by `SignalExtractWorkflow`. Lives in `alfred-state.db.signal`, never the vault. |
+| **Observation** | The smallest unit of learning. Written every time Alfred sees a relevant event, makes a decision, or hears the principal's feedback. Lives in `alfred-state.db.observation`. The loop closer. |
+| **Instinct** | A learned rule of thumb. Each instinct accumulates observations until its confidence crosses a threshold; then it promotes from **Asking** (defer to the principal) to **Confirming** (act with confirmation) to **Acting** (autonomous). |
+| **Discretion** | The per-instinct match threshold. Computed from observation count and confidence. Used by `SignalRouter` to decide whether to act, ask, or suppress. |
+| **Decision** | A record of an action the principal took (Done / Defer / Noise / Delegate / Take mine) or that Alfred took autonomously. Always written as `state: open` so `DecisionRouter` can pick it up, execute the side-effects, and close the learning loop with an observation *(packages/learn/src/activities/decision_router.py)*. |
+| **Brief** | The daily letterpress missive rendered at `/brief`. Composed by `BriefingWorkflow` from matters with `next_action_due`, open chores, and unresolved payment-failure signals. |
+| **Chore** | A scheduled recurring workflow. Each chore is a vault markdown record plus a Python class registered to Temporal via the dynamic loader. New chores ride three quarantine dry-runs before going live. |
+| **Reflection** | The nightly Opus pass at 02:00 UTC that proposes instinct changes from accumulated observations. The sole writer of `confidence_score`, `observation_count`, and `tier` on instincts. |
+| **Clerk** | The internal name for an LLM-backed extraction or classification call. Used by `SignalExtract` (to mint signals from raw events) and `TaskClosureWatcher` (to assess whether a task is done). |
+| **Principal** | The person Alfred serves. See [The principal model](/introduction/the-principal-model). |
+| **Hermes** | The AI runtime. One Docker image running three supervised profiles — `main` (chat), `workers` (background), `heavy` (Opus-class). Speaks the OpenAI Responses API natively. |
+| **ctrl-api** | The tenant API on `:3100`. Sole writer of `alfred-state.db` and `ingest.db`. The dashboard's backend, the vault's gatekeeper. |
+
+For the full data model behind these words, see the [Architecture overview](/architecture/four-store-model).

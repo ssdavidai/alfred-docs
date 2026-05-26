@@ -1,0 +1,81 @@
+---
+title: "Sure"
+description: "Self-hosted personal finance, exposed to Alfred over 116 MCP tools."
+---
+
+[Sure](https://github.com/we-promise/sure) is the open-source personal-finance app (a fork of Maybe) Alfred ships as its money sidecar. The UI lives at `sure.{$DOMAIN}`, the data lives in `sure_pgdata`, and Alfred reaches Sure through the largest MCP catalogue in the stack: **116 tools** in the `sure` app *(packages/mcp-server/src/tools/sure.ts)*.
+
+## The four containers
+
+Sure is one product, four containers *(docker-compose.yaml:1072–1245)*:
+
+| Service | Image | Purpose |
+|---|---|---|
+| `sure-db` | `postgres:16-alpine` | Primary database |
+| `sure-redis` | `valkey/valkey:7.2.11-alpine` | Cache + Sidekiq queue |
+| `sure-web` | `ghcr.io/we-promise/sure:stable` | Rails web app on `:3000` |
+| `sure-worker` | `ghcr.io/we-promise/sure:stable` | Sidekiq background jobs |
+| `sure-init` | `ghcr.io/we-promise/sure:stable` | One-shot: seeds the API key into the DB |
+
+`sure-init` runs `bin/rails runner /alfred-data/sure-bootstrap/bootstrap.rb` *(docker-compose.yaml:1243)*; it short-circuits if `.sure-api-key` already exists on the shared `alfred_data` volume, so re-runs are no-ops. The API key it seeds is what ctrl-api uses to proxy MCP calls into Sure's REST surface.
+
+## The MCP catalogue
+
+The `sure` MCP app is the heaviest in Alfred — Sure has a very wide HTTP surface and Alfred mirrors most of it. Tools group by domain *(packages/mcp-server/src/tools/sure.ts:1–1128)*:
+
+| Domain | Approx tools | What they do |
+|---|---|---|
+| **Balance sheet** | 1 | Net-worth snapshot across all accounts |
+| **Accounts** | 4 | CRUD on manual accounts (cash, savings, illiquid) |
+| **Transactions** | ~10 | List, get, create, update, delete, split, unsplit, bulk update, bulk delete |
+| **Duplicates** | 2 | Merge or dismiss duplicate detections |
+| **Categories** | 6 | CRUD plus `bootstrap_default_categories` for fresh tenants |
+| **Merchants** | 6 | CRUD plus merge, family-merchant aliases |
+| **Tags** | 5 | CRUD plus merge |
+| **Rules** | ~12 | Transaction auto-classification (LIKE-match → set merchant + category + tag) |
+| **Transfers** | 4 | Create, match, confirm, reject (recognise account-to-account flows) |
+| **Holdings & trades** | ~8 | Investment positions, manual cost basis, trade history |
+| **Valuations** | 4 | Illiquid-asset value over time |
+| **Imports** | 3 | CSV bulk import (Mint, Lunch Money, generic) |
+| **Budget** | 2 | Bootstrap, copy budgets between periods, update category budgets |
+| **Recurring** | 3 | Identify, activate, deactivate recurring patterns |
+| **Clustering** | 3 | AI categorisation (see below) |
+| **Family merchants** | 3 | Per-tenant merchant aliases |
+| **Account shares** | 3 | Multi-user account access (advanced) |
+| **Connections** | 1 | OAuth account linking to Plaid-equivalents |
+| **Exports** | 1 | Full-family data dump (async) |
+| **User preferences** | 1 | AI enabled, theme, locale |
+| **Sure chats** | 4 | Sure's internal AI chat UX |
+| **Sync / housekeeping** | ~5 | Trigger sync, cleanup stale recurring, deactivate API user |
+
+All routes proxy through ctrl-api at `/api/v1/sure/*`. Some go through Sure's REST API (`get_transaction`, `list_accounts`); a handful that need server-side data manipulation (e.g. `bootstrap_default_categories`, `apply_cluster_proposals`) run through ctrl-api's Rails-runner workers, which `exec` into `sure-web` and call Sure's models directly.
+
+## Clustering — and the cost note
+
+Two tools in the catalogue cost real money to run:
+
+- **`cluster_transactions`** runs Alfred's clustering pipeline against your transaction history: TF-IDF alias merging on bank-feed name strings, behavioural co-occurrence for recurring patterns, and **LLM category inference** for the residual transactions that don't match an existing rule *(packages/mcp-server/src/tools/sure.ts:1004–1021)*. It returns proposals only — review them before applying.
+
+- **`apply_cluster_proposals`** executes the approved proposals: ensures the `FamilyMerchant` rows exist, creates auto-classification `Rules` (e.g. `transaction_name LIKE '%starbucks%'` → set merchant `Starbucks` + category `Coffee`), and fires `apply_all_rules` *(packages/mcp-server/src/tools/sure.ts:1024–1043)*.
+
+The cost on a typical full run is **~$0.10–$0.30** in LLM tokens (roughly 30k tokens, the residual transactions only), with a **9-minute server timeout** *(packages/mcp-server/src/tools/sure.ts:1010)*. On a 3,000-transaction corpus the full pipeline takes 4–7 minutes wall-clock.
+
+`bootstrap_sure_full` is the convenience wrapper that chains `bootstrap_default_categories` → `cluster_transactions` → `apply_cluster_proposals` in one call. End-to-end on a 3,000-transaction tenant: ~30 minutes *(packages/mcp-server/src/tools/sure.ts:1048)*.
+
+<Warning>
+ctrl-api enforces a **25-minute hard timeout** on the orchestrator endpoint. Tenants with substantially larger transaction histories should run the three steps individually rather than via `bootstrap_sure_full`, or the request will fail mid-pipeline.
+</Warning>
+
+## Connecting your bank
+
+Sure ships with hooks for several aggregators (Plaid, Teller, SimpleFIN, …). On a self-hosted single-VM install, the practical path is:
+
+1. Sign up for a Plaid sandbox key (or a paid Plaid account).
+2. Enter the credentials in Sure's own settings UI at `sure.{$DOMAIN}/settings`.
+3. Run the linked-account OAuth flow inside Sure.
+
+Sure pushes the bank-feed transactions into its own database; Alfred sees them through the `list_transactions` tool. Sure is the system of record for the data; Alfred is read-mostly, with `create_transaction` / `update_transaction` available for manual additions and corrections.
+
+## Disabling Sure
+
+If you don't need personal finance, set `SURE_ENABLED=false` in `.env` and the four Sure containers drop out of the compose graph on the next `docker compose up` *(.env.example: SURE_ENABLED)*. The `sure` MCP app stays registered but tool calls return connection errors; remove the app from your Hermes profile config if you want the catalogue to disappear from MCP discovery.

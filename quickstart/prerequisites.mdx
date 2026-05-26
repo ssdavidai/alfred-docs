@@ -1,0 +1,75 @@
+---
+title: "Prerequisites"
+description: "VM specs, DNS records, and API keys to have ready before you deploy."
+---
+
+Alfred Black is a single-VM deploy. Before you run `bootstrap.sh`, you need three things in place: a VM big enough to hold the stack, eight DNS records pointing at it, and a handful of API keys for the upstream providers Alfred talks to.
+
+## VM specifications
+
+The stack runs roughly thirty containers in its default configuration *(docker-compose.yaml)*. RAM is the binding constraint — under load the default profile sits around 37 GB of allocated container ceilings, and 32 GB will OOM the heavy reasoning path.
+
+| Resource | Minimum | Recommended | With Vexa profile |
+|---|---|---|---|
+| **RAM** | 48 GB | 48 GB | 56–64 GB |
+| **vCPU** | 4 | 4+ | 4+ |
+| **Disk** | 80 GB | 80+ GB | 100+ GB |
+| **OS** | Linux with `docker` and `docker compose` v2 | Same | Same |
+
+<Note>
+The Vexa transcript profile adds nine more containers — Postgres, Redis, MinIO, four Vexa services, a bot runtime, and a dashboard *(docker-compose.yaml, profiles: ["vexa"] at lines 1251–1489)*. Skip it on first deploy unless you need meeting transcription right away.
+</Note>
+
+A Hetzner CCX33 (8 vCPU / 32 GB RAM) is too small. A CCX43 (16 vCPU / 64 GB RAM) handles default and Vexa comfortably. Any cloud provider with equivalent specs works — there is no Hetzner-specific code anywhere in the stack.
+
+## DNS records
+
+Caddy fronts the stack and issues a Let's Encrypt certificate per host via the HTTP-01 challenge. Point all eight A-records at the VM's public IP **before** `docker compose up -d`; Caddy retries on failure, so a late record only delays the first cert *(caddy/Caddyfile:12–15)*.
+
+| Record | Target | Serves |
+|---|---|---|
+| `@` (apex) | VM IP | The dashboard SPA + public webhook paths |
+| `api` | VM IP | The Wasp API server (auth, operations) |
+| `plane` | VM IP | Plane — self-hosted project management |
+| `sure` | VM IP | Sure — self-hosted personal finance |
+| `vault` | VM IP | Vaultwarden — secrets manager |
+| `mcp` | VM IP | The MCP HTTP server for Claude Custom Connectors |
+| `sms` | VM IP | Twilio SMS webhook → Hermes SMS adapter |
+| `voice` | VM IP | Twilio Media Streams WebSocket → voice-bridge |
+
+<Warning>
+The Caddyfile's comment header (caddy/Caddyfile:13) lists seven records and omits `api`. The site block at `caddy/Caddyfile:70–73` shows `api.{$DOMAIN}` does receive traffic and needs its own DNS record. All **eight** records above are required for a working deploy.
+</Warning>
+
+## API keys you must provide
+
+`scripts/bootstrap.sh` refuses to run until each of these is non-empty in your `.env` *(scripts/bootstrap.sh:71–98)*.
+
+<CardGroup cols={2}>
+  <Card title="OpenRouter" icon="key" href="https://openrouter.ai/keys">
+    `OPENROUTER_API_KEY` — Hermes's primary LLM provider. Funds the three profiles' model calls.
+  </Card>
+  <Card title="Composio" icon="key" href="https://composio.dev">
+    `COMPOSIO_API_KEY` — the bridge to ~1000 third-party apps (Gmail, Calendar, Notion, Slack…). Powers onboarding's "connect Gmail" flow.
+  </Card>
+</CardGroup>
+
+You'll also fill `DOMAIN`, `ACME_EMAIL`, and `OWNER_NAME` — the apex domain, the email Let's Encrypt registers under, and your display name *(.env.example:14–32)*.
+
+## API keys that are optional (but load-bearing)
+
+The bootstrap script will succeed without these, but several features stay dark until you fill them in:
+
+| Variable | Enables |
+|---|---|
+| `ANTHROPIC_API_KEY` | A direct Anthropic route. Hermes routes through OpenRouter by default, so this is purely optional *(scripts/bootstrap.sh:78–79)*. |
+| `OWNER_EMAIL` | The first-brief sender, the cross-tenant ingest guard, the Sure first-boot owner, the Vexa attendee match. Loud warning at bootstrap if blank *(scripts/bootstrap.sh:107–111)*. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | The cosmetic "Sign in with Google" login button. Onboarding's Gmail connect uses Composio regardless *(.env.example:46–60)*. |
+| `SENDGRID_API_KEY` / `MAILGUN_API_KEY` | Transactional email — email verification, password reset. |
+| `GROQ_API_KEY` | OMI ambient-wearable transcription (separate from Vexa's Whisper token) *(.env.example:116–121)*. |
+| `AGENTMAIL_API_KEY` / `AGENTMAIL_INBOX_ID` | Outbound email for the first brief and the `self` email tool *(.env.example:89–100)*. |
+| `VEXA_ENABLED=true` + `VEXA_TRANSCRIPTION_TOKEN` | The meeting-transcript stack. Requires the `--profile vexa` flag at compose time. |
+
+Every other secret — encryption keys, JWT signing, database passwords, internal API tokens — is generated locally by `bootstrap.sh` and appended to `.env`. There are 21 of these. You never fill them by hand.
+
+Once your VM is up, your DNS is pointed, and your `.env` is filled, proceed to [Deploy](/quickstart/deploy).

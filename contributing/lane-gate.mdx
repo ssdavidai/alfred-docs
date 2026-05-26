@@ -1,0 +1,104 @@
+---
+title: "The lane gate"
+description: "Synopsis of the pre-commit gate that enforces parallel-safe contributions."
+---
+
+The **lane gate** is a pre-commit hook that makes parallel-agent contributions
+collision-free by rejecting any commit that strays out of its lane's allowed
+files, touches a shared file, exceeds the scope cap, or fails its regression
+test.
+
+<Tip>
+This page is a synopsis. The full reference — installation, escape hatches,
+and every diagnostic — lives at [Development → The commit gate](/development/commit-gate).
+For the *why*, see [Bug-fixing protocol](/contributing/bug-fixing-protocol).
+</Tip>
+
+## The `.lane` manifest
+
+Each worktree declares its lane via a JSON file at the repository root:
+
+```json
+{ "lane": "II" }
+```
+
+Optional keys for special cases:
+
+```json
+{
+  "lane": "II",
+  "verify": "cd packages/learn && python -m pytest tests/test_signals.py -q",
+  "scope_limit": 350
+}
+```
+
+The file is git-ignored. A linked worktree with **no `.lane` is rejected**
+(fail-safe — a lane agent must declare). The main checkout with no `.lane` is
+the `phase0` orchestrator lane (allow-all) so normal work on `main` is never
+blocked *(scripts/hooks/check_lane.py:77–82)*.
+
+## The five lanes
+
+| ID | Name | Owns | Verify |
+|---|---|---|---|
+| **I** | ctrl-api | `packages/ctrl/**` | `cd packages/ctrl && npm run build` |
+| **II** | learn | `packages/learn/**` | `cd packages/learn && python3 -m pytest -q` |
+| **III** | web | `packages/web/**` | `cd packages/web && npx tsc --noEmit` |
+| **IV** | alfred-vault | `packages/alfred-vault/**` | `cd packages/alfred-vault && python3 -m pytest -q` |
+| **V** | edges-infra | `packages/hermes/**`, `packages/mcp-server/**`, `packages/vault-init/**`, `scripts/**`, `caddy/**`, `docker-compose.yaml`, `.env.example`, `Makefile`, `docs/**` | `docker compose config -q` |
+
+Source: *(scripts/hooks/lanes.json)*.
+
+## The forbidden zone
+
+Eight globs are **off-limits to every lane** — only the orchestrator
+(phase0) can edit them:
+
+```
+packages/ctrl/src/db/schema.sql
+packages/ctrl/src/db/migrations/**
+packages/ctrl/src/db/migrate.ts
+packages/ctrl/src/api/server.ts
+**/CONTRACT.md
+docs/FIX-CONTRACTS.md
+docs/FIX-PLAN.md
+docs/FAILURE-MODES.md
+scripts/hooks/**
+CLAUDE.md
+```
+
+These are the files where a concurrent edit collision would be most damaging
+(schema drift, contract drift, broken bootstrap) — so we serialize edits to
+them through the orchestrator *(scripts/hooks/lanes.json, `forbidden_zone`)*.
+
+## The four rejection reasons
+
+`check_lane.py` rejects a commit if any of:
+
+1. **Lane-jumping** — a staged file isn't matched by the lane's allowed globs.
+2. **Forbidden zone** — a staged file matches the global forbidden list.
+3. **Scope overflow** — net changed LOC exceeds the lane's `scope_limit`
+   (default **200**). A task that needs more should be split, not waived.
+4. **Verify failure** — the lane's regression command exits non-zero.
+
+## Installation
+
+Run once per clone, from the repo root:
+
+```sh
+bash scripts/hooks/install.sh
+```
+
+This sets `core.hooksPath` so every worktree inherits the gate, adds `.lane`
+to `.gitignore`, and prints a summary.
+
+## Emergency override
+
+`ALFRED_SKIP_VERIFY=1 git commit …` skips **only** the regression gate; the
+boundary and scope checks still run.
+
+<Warning>
+The override exists for emergencies and is logged to stderr in yellow. If you
+find yourself using it, your change needs to be split. See
+[Bug-fixing protocol → Hard-won rules](/contributing/bug-fixing-protocol#hard-won-rules).
+</Warning>

@@ -1,0 +1,41 @@
+---
+title: "Brief"
+description: "The daily letterpress missive composed by BriefingWorkflow."
+---
+
+`/brief` is the principal's daily letter from Alfred. The page renders a single envelope — masthead, dateline, salutation, body, signature — modeled on a printed memorandum and styled in the EB Garamond / Playfair Display / JetBrains Mono typeface stack *(packages/web/src/dashboard/BriefPage.tsx, packages/web/main.wasp:28)*.
+
+## What it renders
+
+The page reads exclusively from `briefing/*` vault records *(BriefPage.tsx:1-8)*. It calls `getBriefings({ slot: "all", limit: 1 })` to find the newest envelope across the morning and evening cadences, then hydrates the body with `getBriefing({ slugDate })`. The body markdown flows through the shared `Markdown` component so wikilinks resolve against the live vault title index *(BriefPage.tsx:84-178)*.
+
+There is no fallback to event digests, container logs, or signal summaries. If `BriefingWorkflow` has not yet composed a brief on this tenant, the page renders a quiet empty state — *"There is nothing to say this morning. I will write again at the next scheduled hour."* *(BriefPage.tsx:184-258)*.
+
+The envelope masthead carries:
+
+- **From** — `Alfred <alfred@alfred.black>`
+- **To** — the principal's email (read from `useAuth`)
+- **Date** — the `briefing.date` field, formatted long (`Monday, 26 May 2026`)
+- **Subject** — `Morning Brief.` or `Evening Brief.`
+
+The body opens with a salutation chosen by slot (`Good morning.` / `Good evening.`), an italicised dateline, a double rule, the composed prose, and a single-rule signoff — *"— Alfred."* — with a quiet link to `/briefings` for the chronological index.
+
+## Where the prose comes from
+
+Each brief is composed by the `BriefingWorkflow` activity `write_brief_opus`, which runs twice a day per the cadence in Temporal (typical defaults: 06:30 and 17:30 in the tenant timezone). The activity reads:
+
+- Matters with `next_action_due` falling inside the window
+- Open chores due in the next 24 hours
+- Recent payment-failure and other "watch" signals
+- The `RULES.md` standing rules
+- Yesterday's outcomes (from the `audit` table on `alfred-state.db`)
+
+…and writes a vault record at `briefing/<YYYY-MM-DD>-<slot>.md` with frontmatter `slug_date`, `slot` (`morning|evening`), `date`, and `composed_at`.
+
+<Note>
+The brief is a canonical vault type. ctrl-api's promotion contract enforces it — a non-canonical attempt to write `briefing/...` returns HTTP 422 `PROMOTION_CONTRACT_VIOLATION` *(packages/ctrl/src/db/promotionContract.ts)*.
+</Note>
+
+## Inline on Desk too
+
+`/desk` reads the same `getBriefings({ limit: 1 })` query and shows the brief envelope above the decision queue until the principal clicks *Continue* — at which point a `dismissBriefing` action records the slug-date on the User row so the envelope stays collapsed until the next brief composes *(packages/web/src/dashboard/DeskPage.tsx:302-328)*. The full envelope view at `/brief` itself is always available regardless of the dismissal pointer.

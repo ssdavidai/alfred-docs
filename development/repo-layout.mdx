@@ -1,0 +1,117 @@
+---
+title: "Repository layout"
+description: "The top-level tree, the seven packages, and the lane glob territory that governs cross-cutting work."
+---
+
+Alfred Black is a single Git repository (`alfred-black`) that builds and deploys
+the entire AI butler. Every container in the stack — the dashboard, the
+Temporal worker, the agent runtime, the MCP bundle — comes from the same
+checkout. There is no second repo, no submodule, no private fork.
+
+## Top-level tree
+
+```
+alfred-black/
+├── docker-compose.yaml      single static stack — pull-only, never builds
+├── .env.example             single env template
+├── Makefile                 convenience targets (build, deploy, smoke)
+├── CHANGELOG.md             dated release notes
+├── CLAUDE.md                contributor guide (forbidden zone)
+├── caddy/
+│   └── Caddyfile            reverse proxy + automatic Let's Encrypt TLS
+├── scripts/
+│   ├── bootstrap.sh         generates secrets, validates .env
+│   └── hooks/               the commit gate (lane checker)
+├── docs/
+│   ├── PLAN.md              full design rationale (Parts A–I)
+│   ├── FAILURE-MODES.md     ranked bug catalogue
+│   ├── FIX-PLAN.md          lane fan-out sequencing
+│   └── FIX-CONTRACTS.md     19 frozen cross-package interfaces
+├── packages/
+│   ├── ctrl/                Node 22 dashboard backend (port 3100)
+│   ├── learn/               Python Temporal worker (signal pipeline)
+│   ├── web/                 Wasp app (the 14 principal pages)
+│   ├── hermes/              agent runtime image + 3-profile supervisor
+│   ├── mcp-server/          one TS codebase, two deploy shapes
+│   ├── alfred-vault/        standalone Python vault daemon
+│   └── voice-bridge/        Twilio voice ↔ Hermes bridge
+└── .github/workflows/       twelve CI pipelines, path-filtered
+```
+
+The seven packages under `packages/` are the **owned territories**. Anything
+outside them — Caddyfile, compose file, scripts, docs, the `.env.example` —
+is shared infrastructure.
+
+## Package boundaries
+
+<CardGroup cols={2}>
+  <Card title="ctrl" icon="server" href="/development/packages-ctrl">
+    The dashboard backend. Single esbuild bundle (`dist/api.mjs`). Sole writer
+    to `alfred-state.db` and `ingest.db`. ~50 route modules under `/api/v1/*`.
+  </Card>
+  <Card title="learn" icon="brain" href="/development/packages-learn">
+    Python 3.12 Temporal worker. ~30 workflows + ~80 activities driving the
+    signal pipeline, the reflection loop, briefings, chores, and onboarding.
+  </Card>
+  <Card title="web" icon="window" href="/development/packages-web">
+    Wasp app. Two containers — Node server (`web`) at port 3000 + nginx SPA
+    (`web-client`) at port 80. Proxies everything to ctrl-api via Bearer token.
+  </Card>
+  <Card title="hermes" icon="robot" href="/development/packages-hermes">
+    The agent runtime image. One Docker image, three supervised profiles
+    (`main`, `workers`, `heavy`) on ports 18789–18791.
+  </Card>
+  <Card title="mcp-server" icon="plug" href="/development/packages-mcp-server">
+    One TypeScript codebase. Compiles to both an HTTP server and the stdio
+    bundle baked into the Hermes image. Six MCP apps, ~155–165 tools total.
+  </Card>
+  <Card title="alfred-vault" icon="book" href="/development/packages-alfred-vault">
+    Standalone Python pip package. Vault CLI invoked by ctrl-api via
+    `dockerExec`. Supports 20+ entity types; ctrl-api enforces 12 in production.
+  </Card>
+</CardGroup>
+
+`voice-bridge` is a small Twilio ↔ Hermes shim — see the channels reference for
+its surface.
+
+## Lane glob territory
+
+Cross-cutting work is coordinated through five **lanes**, each owning a
+disjoint glob of the tree. A commit gate (`scripts/hooks/check_lane.py`,
+installed by `bash scripts/hooks/install.sh`) rejects any commit whose diff
+strays outside the active lane's territory *(scripts/hooks/check_lane.py)*.
+
+| Lane | Glob | What it owns |
+|------|------|---|
+| **I — ctrl** | `packages/ctrl/**` | Routes, the four-store layer, settings |
+| **II — learn** | `packages/learn/**` | Temporal workflows, activities, scoring |
+| **III — web** | `packages/web/**` | Wasp app, dashboard pages, operations |
+| **IV — alfred-vault** | `packages/alfred-vault/**` | Python vault daemon |
+| **V — edges/infra** | `packages/{hermes,mcp-server,vault-init}/**`, `scripts/**`, `caddy/**`, `docker-compose.yaml`, `.env.example`, `Makefile`, `docs/**` | All non-package config |
+
+A worktree declares its lane via a `.lane` manifest at its root. The main
+checkout (no manifest) is **phase0** — orchestrator-only territory that may
+edit forbidden-zone files: `docs/FIX-CONTRACTS.md`, `packages/ctrl/src/db/migrations/**`,
+`packages/ctrl/src/api/server.ts`, `scripts/hooks/**`, `CLAUDE.md`. Lane
+worktrees that touch any of these are blocked at commit time *(scripts/hooks/check_lane.py)*.
+
+The lanes parallelise cleanly because their globs are disjoint by
+construction. When a consumer lane needs a new shape from a provider lane,
+the boundary is frozen ahead of time as a numbered contract in
+`docs/FIX-CONTRACTS.md` (C1–C19) *(docs/FIX-CONTRACTS.md)*. Once the
+contract is frozen, both sides code against it without coordinating
+day-to-day.
+
+<Tip>
+  The full protocol — `.lane` shape, the four rejection rules, the ~200 LOC
+  scope cap — lives in the [lane protocol](/development/lane-protocol) and
+  [commit gate](/development/commit-gate) pages.
+</Tip>
+
+## Where the deploy artefacts come from
+
+Nothing in `docker-compose.yaml` builds. Every service pulls a `:latest`
+image from Docker Hub *(docker-compose.yaml)*. The twelve CI workflows under
+`.github/workflows/` (one per package + path-filtered triggers) are the only
+path that publishes a new image. See the [CI workflows page](/development/ci-workflows)
+for the full pipeline matrix.

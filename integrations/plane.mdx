@@ -1,0 +1,88 @@
+---
+title: "Plane"
+description: "Self-hosted project management, reached as one sidecar over eleven containers."
+---
+
+[Plane](https://plane.so) is the open-source Linear / Jira alternative Alfred ships as its project management sidecar. The UI lives at `plane.{$DOMAIN}`; the data lives in `plane_pgdata` *(docker-compose.yaml:280)*; the MCP surface lives in the `plane` app inside Hermes *(packages/mcp-server/src/tools/plane.ts)*.
+
+## The eleven containers
+
+Plane is one product, but eleven containers in your compose graph *(docker-compose.yaml:745–1069, 1171–1217)*. None of them is reached directly from outside — Caddy routes `plane.{$DOMAIN}` to `plane-proxy:80`, which then fans out internally:
+
+| Service | Image | Purpose |
+|---|---|---|
+| `plane-db` | `postgres:16-alpine` | Primary Postgres database |
+| `plane-redis` | `valkey/valkey:7.2.11-alpine` | Cache + Celery broker auxiliary |
+| `plane-mq` | `rabbitmq:3.13-management-alpine` | Celery message queue |
+| `plane-minio` | `minio/minio:latest` | S3-compatible attachment storage |
+| `plane-migrator` | `makeplane/plane-backend:stable` | One-shot Django migrations |
+| `plane-api` | `makeplane/plane-backend:stable` | Django backend on `:8000` |
+| `plane-worker` | `makeplane/plane-backend:stable` | Celery worker (background jobs) |
+| `plane-beat` | `makeplane/plane-backend:stable` | Celery beat scheduler |
+| `plane-web` | `makeplane/plane-frontend:stable` | Next.js dashboard |
+| `plane-space` | `makeplane/plane-space:stable` | Public-issue React UI |
+| `plane-admin` | `makeplane/plane-admin:stable` | Admin UI |
+| `plane-live` | `makeplane/plane-live:stable` | WebSocket live collaboration |
+| `plane-proxy` | `makeplane/plane-proxy:stable` | Internal nginx-style proxy |
+| `plane-init` | `makeplane/plane-backend:stable` | One-shot: seeds owner User + InstanceAdmin |
+
+Memory budgets are tuned for the single-VM target — `plane-worker` is allocated 2 GB (Plane OOMs at 1 GB under realistic load) *(docker-compose.yaml:934)*, the rest fit in 256–512 MB. The whole Plane cluster fits comfortably in roughly 5 GB of RAM.
+
+Bootstrap is automated by `plane-init`, which uses the Django ORM directly to create the owner account and mark `is_setup_done` true *(docker-compose.yaml:1171–1217)*. The CSRF protection on Plane's HTTP signup path makes a curl-based bootstrap fragile; the ORM path is idempotent and re-runs safely on every `docker compose up`.
+
+## The `plane` MCP app
+
+Alfred reaches Plane through 11 MCP tools *(packages/mcp-server/src/tools/plane.ts:26–224)*. All of them route through ctrl-api's `/api/v1/plane/*` proxy — Hermes never holds the Plane personal access token directly.
+
+### Issue read + write
+
+| Tool | Purpose |
+|---|---|
+| `get_issue` | One issue by id. Returns name, descriptions (HTML + stripped), state, priority, labels, assignees, dates. |
+| `list_issue_comments` | Full thread, oldest → newest. Each comment carries `is_alfred` so the agent can recognise its own past replies. |
+| `post_issue_comment` | Reply as Alfred. Pass `text` (plain, auto-escaped) **or** `text_html` (pre-rendered). **Not idempotent** — list comments first before retrying. |
+| `list_issues` | Paginated list in **one** project. Use this when you already know the project_id. |
+| `search_issues` | The power tool. Multi-dimensional filter (state groups, priorities, labels, dates, assignees, text search) across one project or the whole workspace. |
+| `create_issue` | New issue. Required: `project_id` + `name`. **Not idempotent**. |
+| `update_issue` | PATCH. `assignees` and `labels` arrays **replace** the existing set — read first if you mean to merge. |
+
+### Metadata resolution
+
+These four tools turn human names into UUIDs *(packages/mcp-server/src/tools/plane.ts:172–223)*:
+
+- `list_projects` — workspace project catalogue. Always the first call when the principal names a project.
+- `list_states` — workflow states in one project. Each carries a `group` (`backlog` / `unstarted` / `started` / `completed` / `cancelled`).
+- `list_cycles` — sprints / iterations in one project.
+- `list_labels` — labels in one project.
+
+Plane's REST is project-scoped, so a name → UUID lookup is mandatory before most operations. The `search_issues` tool accepts friendly `state_groups` directly and resolves UUIDs server-side, so prefer it over `list_states` + `list_issues` when filtering by group.
+
+## The 15-project cross-search limit
+
+`search_issues` is the one Plane tool that crosses project boundaries. Plane's REST API has no workspace-wide list endpoint, so ctrl-api fans out one upstream call per project and merges the results client-side. To bound that fan-out, the server caps workspace-wide search at **15 projects** *(packages/mcp-server/src/tools/plane.ts:91; ctrl-api enforces FANOUT_TOO_LARGE)*.
+
+If your workspace has more than 15 projects, you must pass `project_ids` explicitly:
+
+```json
+{
+  "project_ids": ["uuid-a", "uuid-b", "uuid-c"],
+  "state_groups": ["unstarted", "started"],
+  "priority": ["urgent", "high"]
+}
+```
+
+A request with no `project_ids` against a workspace with >15 projects returns HTTP 400 `FANOUT_TOO_LARGE` rather than silently truncating.
+
+<Note>
+The Plane webhook route at `/api/v1/plane/webhook` is intentionally **not** exposed to remote LLMs *(packages/mcp-server/src/tools/plane.ts:15–16)*. It's an inbound HMAC-authenticated ingest from Plane → Alfred, not an agent tool — Plane events arrive there and become signals in the pipeline.
+</Note>
+
+## Turning it off
+
+Plane stays on by default. If you don't use it, you can stop just the Plane services without disturbing anything else:
+
+```sh
+docker compose stop $(docker compose config --services | grep '^plane-')
+```
+
+…and the `plane.{$DOMAIN}` subdomain will return a 502 from Caddy. The MCP `plane` app stays registered; tool calls will fail with a connection error until you restart.

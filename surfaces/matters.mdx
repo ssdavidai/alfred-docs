@@ -1,0 +1,59 @@
+---
+title: "Matters"
+description: "The aggregator across long-running concerns — index plus living-narrative detail."
+---
+
+A **matter** is Alfred's name for a long-running concern — a tax filing, a property sale, a conversation that keeps refilling itself. Matters are the lens through which the principal sees the household's work: every signal, decision, and task pivots back to the matter it serves. There are two surfaces:
+
+## `/matters` — the index
+
+The index pulls `getMattersIndex` (proxies ctrl-api `/api/v1/matters`) and renders one card per matter, newest activity first *(packages/web/src/dashboard/MattersPage.tsx:23-25)*. Each card shows:
+
+- The matter name and the principal's one-line summary
+- *Last:* the most recent activity date
+- *Next:* the next anticipated action, if the aggregator has one
+- A monospace counts column — conversations, decisions, tasks, drafts — pulled from the `counts` envelope on the API response *(MattersPage.tsx:83-98)*
+
+Empty state: *"Nothing yet. Every conversation, decision, and task you ask me to keep will gather into a matter here."*
+
+The cards link straight to `/matters/:id`.
+
+## `/matters/:id` — the living-matter detail
+
+The detail page is structured around the **living-narrative layer** added in RFC #884 *(packages/web/src/dashboard/MatterDetailPage.tsx:1-9)*. It reads `getMatterDetail`, which returns:
+
+| Field | Source | Purpose |
+|---|---|---|
+| `name`, `about` | Vault frontmatter + body | What the principal originally wrote |
+| `current_state` (2–4 sentence narrative) | `NightlyNarrativeWorkflow` | Where the matter stands right now |
+| `as_of` (ISO timestamp) | Same workflow | When the narrative was last refreshed |
+| `timeline` | Composed by ctrl-api from `signal`, `task_transition`, `action`, `state_change` rows | The chronological audit thread |
+| `tasks[]` | Linked task records | The actionable threads under this matter |
+| `key_entities[]` | Resolved person/org references | CRM-style backlinks (per C-B2) |
+| `signal_count_24h` | Aggregator | Activity heat |
+
+The body shows the narrative paragraph under an *As of* timestamp, then the tasks list, then the timeline, then a lazy-loaded three.js relationship graph focused on the matter's record path *(MatterDetailPage.tsx:26-27)*.
+
+### Two `state_change` entries
+
+`state_change` timeline entries are first-class as of Phase E (#893). Each carries a nested envelope — `source`, `prior_as_of`, an `observed_window` with signal/decision counts, the changed fields, a reason string, a confidence number, and a `mode` (`shadow|live`) tag *(MatterDetailPage.tsx:47-63)*. The renderer special-cases `source: "briefing.morning"` and `source: "briefing.evening"` to surface the briefing slug-date as a clickable eyebrow *(MatterDetailPage.tsx:184-208)*.
+
+## The `done | active | waiting` roll-up
+
+The status pill on each matter card is **derived at read time** from the linked tasks, not stored on the matter *(packages/ctrl/src/api/routes/matters.ts, deriveMatterState; mirrored in MatterDetailPage.tsx:210-229)*:
+
+| Roll-up | When |
+|---|---|
+| **Active** | Any task in `state: in_progress` |
+| **Done** | Every task is `done` or `archived` |
+| **Waiting** | Otherwise — tasks all `pending`, or no tasks at all, or a mix of pending and done |
+
+This is independent of the matter's own `status` field (`active | dormant | completed | archived`), which is the *principal's lifecycle label* written through the state-mutator. A matter can be `status: active` with a `Waiting` roll-up if every task is queued; or `status: completed` with a stray `Active` task that just got auto-created — which is itself a useful signal that something needs attention.
+
+<Note>
+The roll-up depends on the task **`state`** field (the matters-aggregator vocabulary: `pending | in_progress | done | archived`), not the task **`status`** field (the alfred-vault validator vocabulary: `active | blocked | cancelled | done | todo`). Both coexist on every task record; writers must set both. See the [Vault](/surfaces/vault) page for the state-fields panel that edits these correctly.
+</Note>
+
+## Editing a matter
+
+The detail page's *Edit* button writes a `triage/*` record with `intent: matter_edit` — the legacy pattern that pre-dates the state-change envelope. State-field edits (status, current_state, as_of, surface_class, last_briefing_at) are routed through `applyManualStateChange` from the Vault page; the matter detail itself does not yet expose that panel directly. Use `/vault?slug=matter/<id>` to edit the state fields with an audit trail.

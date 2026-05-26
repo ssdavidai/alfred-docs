@@ -1,0 +1,57 @@
+---
+title: "Connections"
+description: "The Composio toolkit marketplace, plus device pairing and custom inbound webhooks."
+---
+
+`/connections` is where the principal grants Alfred the right to read from and act through a third-party service. The page is a thin restyle over [Composio's](https://composio.dev) toolkit catalogue, with two synthetic slugs grafted on for connection shapes Composio doesn't model *(packages/web/src/integrations/ConnectionsPage.tsx:36-37)*.
+
+## What you see
+
+Three stacked sections:
+
+1. **Your surfaces** — a launcher row of the household's sibling apps (Plane, Sure, Vaultwarden, Chat) pulled from `getInstalledApps`. Each tile opens its app in a new tab; muted when the app is unhealthy or its URL is null *(ConnectionsPage.tsx:719-814)*.
+2. **The catalogue** — a searchable grid of toolkits, paginated **12 cards per page** *(ConnectionsPage.tsx:132)*. Filter by category, search by name/slug/description. Each card shows the toolkit logo, name, category, and either a `Connect` button or, if already connected, `Connected` for single-row toolkits / `N active · Add` for multi-row slugs.
+3. **Where I am authorised to act** — a flat table of every live connection with derived read/write scope, authorised date, status pill, and a Revoke action. The Scope cell is computed by ctrl-api from the connection's *actual* granted OAuth scopes, not a catalogue heuristic *(ConnectionsPage.tsx:1287-1411)*.
+
+## How a connection happens
+
+The auth flow is decided per toolkit by ctrl-api's `auth_schemes` field *(ConnectionsPage.tsx:88-103)*:
+
+<Tabs>
+  <Tab title="OAuth">
+    Most toolkits. `Connect` opens a named popup at Composio's authorise URL; the page polls `popup.closed` then refetches `getConnectedIntegrations` up to six times at 2-second intervals to catch Composio's `INITIATED → ACTIVE` race. Once the connection lands, `autoConfigIntegration` wires the stream + skill + tool allowlist *(ConnectionsPage.tsx:219-299)*.
+  </Tab>
+  <Tab title="API key / bearer token">
+    A modal with one input — or, for toolkits whose required fields ctrl-api can enumerate via `getToolkitRequiredFields`, a dynamic multi-field form with secret masking *(ConnectionsPage.tsx:1100-1191)*. Bearer-token toolkits submit `auth_scheme: "BEARER_TOKEN"` so Composio doesn't reject the mismatch.
+  </Tab>
+  <Tab title="Device pair (alfred-omi)">
+    A synthetic slug. `Create pairing URL` calls `pairOmiDevice` → ctrl-api `POST /api/v1/integrations/omi/pair`, which creates-or-reuses the single `source: "omi"` stream and returns a tenant-scoped audio endpoint URL. The principal pastes that URL into the OMI app's developer settings; the device appears in the connected list once it starts streaming *(ConnectionsPage.tsx:420-446)*.
+  </Tab>
+  <Tab title="Inbound webhook (alfred-webhook)">
+    A synthetic slug. The modal asks for a short label; the page calls `createInboundWebhook`, receives a private URL, and copies it to the clipboard. Any POST to that URL lands as a stream event Alfred can curate. The URL is re-displayed on the connection row with a `Copy` affordance — it is otherwise write-once *(ConnectionsPage.tsx:448-471, 1311-1370)*.
+  </Tab>
+</Tabs>
+
+<Note>
+The `alfred-omi` and `alfred-webhook` toolkits are **not real Composio toolkits**. They are synthetic slugs ctrl-api injects into the catalogue so the same Connect UI can model device pairing and custom inbound URLs. Routing them through `initiateConnect` would fuzzy-resolve them to junk Composio toolkits, so the page calls dedicated endpoints instead *(ConnectionsPage.tsx:34-37, 418-421)*.
+</Note>
+
+## Multi-row slugs
+
+OAuth/API-key toolkits are one row per slug. OMI and webhooks can have many: multiple paired devices, multiple distinct endpoints. For those, the card shows the active count and routes clicks to "Add another" rather than disconnect *(ConnectionsPage.tsx:564-617)*.
+
+## Revoking
+
+Revoke opens an in-design confirmation modal whose copy changes depending on whether this is the last account of the toolkit (the principal loses every action surfaced through that toolkit, not just one identity) *(packages/web/src/integrations/connectionsRevokeCore.ts)*. Custom webhooks go through `deleteInboundWebhook`; everything else goes through the unified `disconnectIntegration` path.
+
+## The stream badge
+
+A connection row shows a small `stream` chip when the source has actually emitted events Alfred has processed (`is_stream_source: true`). It is the difference between "I'm authorised here" and "I'm reading from here" *(ConnectionsPage.tsx:1344-1352)*.
+
+## OpenClaw readiness banner
+
+If `getOpenclawReadiness` reports the gateway is not ready, the page shows a brass-bordered warning above the catalogue: new connections will queue and apply once the gateway settles *(ConnectionsPage.tsx:504-512)*. In practice this only fires immediately after a Hermes restart.
+
+<Tip>
+Connections feed the [Tools](/surfaces/tools) page — every toolkit you authorise here surfaces as a row under "Connected apps" there, with the exact actions and streams Hermes will let Alfred reach.
+</Tip>

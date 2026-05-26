@@ -1,0 +1,121 @@
+---
+title: "Backups"
+description: "Which volumes to back up, which are recoverable, and a starting backup script."
+---
+
+Alfred Black persists data across roughly two dozen named Docker volumes *(`docker-compose.yaml:1491-1514`)*. Not all of them are equally important — some hold irreplaceable principal data, some hold caches that regenerate at boot, and some hold third-party stores you may not care about. This page splits them into priority tiers and gives you a starting backup script.
+
+---
+
+## The four critical volumes
+
+These four hold data you cannot regenerate. Back them up nightly at minimum.
+
+| Volume | Contents | Why it's critical |
+|--------|----------|-------------------|
+| `vault_data` | The principal's published markdown — every matter, task, note, person, decision, briefing, instinct *(`docker-compose.yaml:1492`)* | The vault is the principal's output. Lose it and you've lost the whole point of running Alfred. |
+| `caddy_data` | Let's Encrypt certificates *(`docker-compose.yaml:1498`)* | Rebuilding from scratch hits the LE rate limit (50 certs per registered domain per week) and can leave the stack unreachable over HTTPS for hours. |
+| `state_data` | `alfred-state.db` — signals, observations, audit ledger, embeddings, links *(`docker-compose.yaml:1502`)* | The machine's working memory and the training data for instinct promotion. Lose it and the learning loop resets. |
+| `ingest_data` | `ingest.db` — raw inbound stream events, 7-day TTL *(`docker-compose.yaml:1503`)* | The 7-day buffer of unprocessed events. Lose it mid-incident and you lose the ability to replay extraction. |
+
+A working backup of these four reconstructs a functional tenant: the principal's records, valid TLS, the learning history, and the most recent week of inbound. Everything else is either re-derivable or third-party.
+
+---
+
+## Tier 2 — useful, recoverable
+
+These hold data Alfred can regenerate or that you can rebuild from upstream, but you'll lose history or have to re-onboard if they're gone.
+
+| Volume | Contents | If lost |
+|--------|----------|---------|
+| `hermes_data` | `$HERMES_HOME` — Hermes profile configs, SOUL.md, sessions, plugins, OAuth `auth.json` *(`docker-compose.yaml:1493`)* | Re-runs the init container; you lose chat history and have to re-authenticate the Hermes OAuth identity. |
+| `alfred_data` | Shared scratch — `.gateway-token`, `settings.json`, `.composio-user-id`, chore snapshots, Sure/Plane bootstrap inputs *(`docker-compose.yaml:1494`)* | Init recreates most files; `settings.json` reverts to defaults (`"live"` for the three mode flags). |
+| `cold_data` | DuckDB/Parquet forensic long-tail (>90 days, ctrl-api Store 3) *(`docker-compose.yaml:1504`)* | Older audit history vanishes; hot tables (state.db) keep the recent 90 days. |
+| `vaultwarden_data` | Bitwarden secrets vault *(`docker-compose.yaml:1500`)* | Lose your stored credentials — back this up if you actually use the secrets manager. |
+
+---
+
+## Tier 3 — sidecar datastores
+
+These hold the data of the third-party sidecars (Plane, Sure, Vexa). Back them up only if you rely on the sidecar's own data — most of them re-bootstrap from `alfred_data` and from the auto-generated secrets in `.env`.
+
+| Volume | Owner | Notes |
+|--------|-------|-------|
+| `web_db_data` | Wasp dashboard Postgres *(`docker-compose.yaml:1497`)* | User accounts, dashboard preferences. Re-runs the migrations on a fresh DB. |
+| `temporal_data` | Temporal SQLite *(`docker-compose.yaml:1495`)* | Workflow history. Restoring lets in-flight workflows resume; otherwise they restart from scratch. |
+| `ollama_data` | Local embeddings model cache *(`docker-compose.yaml:1496`)* | Re-pulled at boot — safe to drop. |
+| `caddy_config` | Caddy runtime state *(`docker-compose.yaml:1499`)* | Tiny; not strictly required. |
+| `mcp_server_data` | MCP server runtime state *(`docker-compose.yaml:1501`)* | Tiny; OAuth scope state. |
+| `plane_pgdata`, `plane_redis`, `plane_rabbitmq`, `plane_uploads` | Plane stack | Project management data. Back up only if you depend on Plane history. |
+| `sure_pgdata`, `sure_redis` | Sure stack | Personal-finance history. Back up if you rely on the Sure data. |
+| `vexa_redis`, `vexa_postgres`, `vexa_minio`, `vexa_recordings` | Vexa stack (profile `vexa` only) | Meeting transcripts + audio. Back up if you care about meeting history. |
+
+---
+
+## A starting backup script
+
+The simplest reliable approach: stop the stack briefly, tar each volume's underlying directory, and ship the tarball to off-host storage. Docker volumes live at `/var/lib/docker/volumes/alfred-black_<name>/_data/`.
+
+<Warning>
+SQLite volumes (`state_data`, `ingest_data`, `temporal_data`, `web_db_data`) can be backed up *hot* with `sqlite3 .backup`, but the simplest correct snapshot is to stop the stack first. WAL-mode SQLite generally tolerates `cp` on a live database but it is not guaranteed to be consistent.
+</Warning>
+
+```bash
+#!/usr/bin/env bash
+# /opt/alfred/scripts/backup.sh — run nightly from cron.
+set -euo pipefail
+
+DEST=/mnt/backup/alfred-$(date +%Y%m%d-%H%M)
+mkdir -p "$DEST"
+
+cd /opt/alfred
+docker compose stop
+
+# Critical
+for v in vault_data caddy_data state_data ingest_data; do
+  docker run --rm \
+    -v "alfred-black_${v}:/src:ro" \
+    -v "${DEST}:/dst" \
+    alpine \
+    tar czf "/dst/${v}.tgz" -C /src .
+done
+
+# Tier 2 (comment out if you don't need them)
+for v in hermes_data alfred_data cold_data vaultwarden_data; do
+  docker run --rm \
+    -v "alfred-black_${v}:/src:ro" \
+    -v "${DEST}:/dst" \
+    alpine \
+    tar czf "/dst/${v}.tgz" -C /src .
+done
+
+docker compose start
+
+# Ship off-host
+rsync -a "${DEST}/" backup-host:/srv/alfred-backups/$(basename "$DEST")/
+
+# Rotate locally
+find /mnt/backup -name 'alfred-*' -mtime +14 -exec rm -rf {} +
+```
+
+A short stop-resume window of about 30 seconds is usually enough for the four critical volumes. If that downtime is unacceptable, use SQLite's online backup for `state_data` and `ingest_data` and `rsync` the rest live — the markdown vault tolerates concurrent reads.
+
+---
+
+## What to do after a restore
+
+After untarring the volumes back into place:
+
+<Steps>
+  <Step title="Restore order">
+    Restore `caddy_data` first (so HTTPS comes up cleanly), then `vault_data`, `state_data`, `ingest_data`, then any Tier 2 volumes you have.
+  </Step>
+  <Step title="docker compose up -d">
+    The init container will detect existing files in `vault_data` and `alfred_data` and skip its scaffold logic *(`packages/hermes/init/entrypoint.sh`)*.
+  </Step>
+  <Step title="Re-issue tokens if missing">
+    If `alfred_data/.gateway-token` is missing, `init` regenerates it — but the new value won't match anything the Hermes profiles already have. Restore `hermes_data` *and* `alfred_data` together, or expect to re-render Hermes profile envs.
+  </Step>
+</Steps>
+
+See [backup and restore drills](/operations/backup-restore) for the per-volume procedure.

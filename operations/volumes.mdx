@@ -1,0 +1,110 @@
+---
+title: "Volumes"
+description: "Every named volume in docker-compose.yaml, its writer, its contents, and its backup priority."
+---
+
+`docker-compose.yaml` declares 23 named volumes in the default profile and 4 more when the Vexa profile is enabled *(`docker-compose.yaml:1491-1514`)*. They're created on first `docker compose up` and persist across container restarts. This page maps each one to the service that owns it, what's inside, and how urgently you should back it up.
+
+<Note>
+**Single-writer discipline.** Most volumes have exactly one container with a write mount. The few exceptions (`alfred_data`, `hermes_data`, `vault_data`) are coordinated through `init` doing the scaffold once and `ctrl-api` doing all subsequent writes through HTTP endpoints, with other readers mounted read-only or write-coordinated. See [storage architecture](/architecture/storage-architecture).
+</Note>
+
+---
+
+## Core volumes (default profile)
+
+| Volume | Sole writer | Mount point inside writer | Contents | Backup priority |
+|--------|-------------|---------------------------|----------|-----------------|
+| `vault_data` | `init` (scaffold), `ctrl-api` (all subsequent writes) | `/vault` | The principal's markdown vault — matters, tasks, notes, decisions, briefings, instincts, the SOUL.md / RULES.md singletons *(`docker-compose.yaml:1492`)* | **Critical** |
+| `caddy_data` | `caddy` | `/data` | Let's Encrypt certificates + ACME state *(`docker-compose.yaml:1498`)* | **Critical** (rate-limit avoidance) |
+| `state_data` | `ctrl-api` | `/state` | `alfred-state.db` — signals, observations, audit, embeddings, links + WAL *(`docker-compose.yaml:1502`)* | **Critical** |
+| `ingest_data` | `ctrl-api` | `/ingest` | `ingest.db` — raw inbound stream events with 7-day TTL + WAL *(`docker-compose.yaml:1503`)* | **Critical** |
+| `hermes_data` | `init` (scaffold), `hermes` (runtime) | `/hermes-state` (= `$HERMES_HOME`) | Profile dirs (`main`, `workers`, `heavy`) with `config.yaml`, `.env`, `auth.json`, sessions, plugins; consolidated `SOUL.md`; memory files *(`docker-compose.yaml:1493`)* | High |
+| `alfred_data` | `init` (scaffold), `ctrl-api` (settings + utility) | `/alfred-data` | `.gateway-token`, `settings.json`, `.composio-user-id`, `user-chores/`, `chore-snapshots/`, Sure/Plane bootstrap staging *(`docker-compose.yaml:1494`)* | High |
+| `cold_data` | `ctrl-api` | `/cold` | DuckDB/Parquet forensic archive (>90 days, ctrl-api Store 3) *(`docker-compose.yaml:1504`)* | Medium |
+| `temporal_data` | `temporal` | `/data` | Temporal workflow history (SQLite) *(`docker-compose.yaml:1495`)* | Medium |
+| `web_db_data` | `web-db` | `/var/lib/postgresql/data` | Wasp dashboard Postgres data *(`docker-compose.yaml:1497`)* | Medium |
+| `caddy_config` | `caddy` | `/config` | Caddy runtime state *(`docker-compose.yaml:1499`)* | Low |
+| `ollama_data` | `ollama` | `/root/.ollama` | Local embeddings model cache (`nomic-embed-text`) — re-pulled on boot *(`docker-compose.yaml:1496`)* | Low (re-derivable) |
+| `mcp_server_data` | `mcp-server` | `/data` | MCP server runtime state *(`docker-compose.yaml:1501`)* | Low |
+| `vaultwarden_data` | `vaultwarden` | `/data` | Bitwarden secrets vault DB *(`docker-compose.yaml:1500`)* | High (if you use the secrets manager) |
+
+---
+
+## Plane stack
+
+The Plane project-management sidecar maintains its own datastores.
+
+| Volume | Sole writer | Contents |
+|--------|-------------|----------|
+| `plane_pgdata` | `plane-db` | Postgres 15.7 — Plane's primary DB *(`docker-compose.yaml:1505`)* |
+| `plane_redis` | `plane-redis` | Valkey 7.2 — Plane's cache + queues |
+| `plane_rabbitmq` | `plane-mq` | RabbitMQ 3.13 — Plane's async messaging |
+| `plane_uploads` | `plane-minio` | MinIO bucket for file attachments |
+
+Back up if you depend on Plane history; otherwise let them rebootstrap.
+
+---
+
+## Sure stack
+
+| Volume | Sole writer | Contents |
+|--------|-------------|----------|
+| `sure_pgdata` | `sure-db` | Postgres 16 — Sure's primary DB *(`docker-compose.yaml:1509`)* |
+| `sure_redis` | `sure-redis` | Valkey 7.2 — Sidekiq queue |
+
+Back up if you've imported financial data; otherwise the `sure-init` one-shot re-seeds the API key and the rest re-builds on first run.
+
+---
+
+## Vexa stack (profile `vexa` only)
+
+These four are created only when `docker compose --profile vexa up -d` is used; otherwise they're dormant declarations.
+
+| Volume | Sole writer | Contents |
+|--------|-------------|----------|
+| `vexa_postgres` | `vexa-postgres` | Postgres 17 — Vexa admin + meeting state *(`docker-compose.yaml:1512`)* |
+| `vexa_redis` | `vexa-redis` | Valkey — Vexa's cache *(`docker-compose.yaml:1511`)* |
+| `vexa_minio` | `vexa-minio` | MinIO bucket metadata *(`docker-compose.yaml:1513`)* |
+| `vexa_recordings` | `vexa-meeting-api` | Recorded audio + transcripts *(`docker-compose.yaml:1514`)* |
+
+Back these up if you keep meeting transcripts; they're large.
+
+---
+
+## Inspecting volume contents
+
+The volumes live under `/var/lib/docker/volumes/alfred-black_<name>/_data/` on the host. To poke at them:
+
+```bash
+# Quick read from inside the writer container
+docker compose exec ctrl-api ls -la /state
+
+# Browse from the host (root)
+ls /var/lib/docker/volumes/alfred-black_vault_data/_data/
+
+# Disk usage by volume
+docker system df -v | head -50
+```
+
+For SQLite-backed volumes (`state_data`, `ingest_data`, `temporal_data`, `web_db_data`), prefer connecting to the live writer over the gateway API or with `sqlite3` inside the container — the database file on the host is WAL-mode and can be in an inconsistent state mid-checkpoint.
+
+---
+
+## Removing volumes (destructive)
+
+`docker compose down` keeps volumes; `docker compose down -v` deletes them. The latter is the **only** way to wipe a tenant fully.
+
+<Warning>
+`docker compose down -v` deletes everything — vault, certs, learning history, the entire Vaultwarden vault. Triple-check the directory you're in. If you're testing on a throwaway VM and you mean to nuke and start over, also run `docker volume prune -f` afterwards to clean up any orphaned volumes from previous compose project names.
+</Warning>
+
+To recreate after a wipe:
+
+```bash
+docker compose down -v
+./scripts/bootstrap.sh  # re-validates .env (auto-secrets are kept since they're in .env, not the volumes)
+docker compose up -d
+```
+
+The `init` container scaffolds fresh volumes; first signup at `https://${DOMAIN}` re-establishes the owner.

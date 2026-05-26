@@ -1,0 +1,184 @@
+---
+title: "The commit gate"
+description: "check_lane.py — the pre-commit hook that makes lane violations impossible to land."
+---
+
+The lane protocol on its own is a code-of-conduct: useful, but only as
+strong as the contributors honouring it. The **commit gate** is what
+makes a bad commit impossible to land in the first place.
+
+It lives at `scripts/hooks/check_lane.py` and runs as the `pre-commit`
+hook in every worktree once installed *(scripts/hooks/install.sh:7)*.
+
+## Installing the gate
+
+Run once from the repo root:
+
+```bash
+bash scripts/hooks/install.sh
+```
+
+This sets `core.hooksPath=scripts/hooks` in the repo config
+*(scripts/hooks/install.sh:7)*. Because `core.hooksPath` is a repo-level
+setting, **every linked worktree inherits the hook automatically** —
+each lane agent's worktree is gated without any per-worktree setup.
+
+The installer also adds `.lane` to `.gitignore` so the per-worktree
+manifest never gets accidentally committed *(scripts/hooks/install.sh:10-13)*.
+
+## The four rejection reasons
+
+`check_lane.py` rejects the commit *before* `git commit` records it,
+for any of four reasons:
+
+### 1. Lane-jumping
+
+A staged file is outside the lane's `allowed` globs in
+`scripts/hooks/lanes.json`. Example: Lane II (`learn`) commits a file
+under `packages/ctrl/`.
+
+```
+✗ commit blocked by the lane gate
+
+Lane-jumping detected — these staged files are not in your lane:
+
+  OUT OF LANE      packages/ctrl/src/api/routes/foo.ts
+                   → lane II (learn) owns only: packages/learn/**
+```
+
+*(scripts/hooks/check_lane.py:99-106)*
+
+### 2. Forbidden-zone violation
+
+A staged file is in the global forbidden zone — owned by `phase0`,
+never editable from a lane *(scripts/hooks/check_lane.py:100-102,
+scripts/hooks/lanes.json:3-13)*. The forbidden list is the same one
+documented on the [lane protocol page](/development/lane-protocol#the-forbidden-zone):
+`schema.sql`, the migration runner, `server.ts`, every `CONTRACT.md`,
+the fix docs, the hook scripts themselves, and `CLAUDE.md`.
+
+```
+  FORBIDDEN ZONE   packages/ctrl/src/api/server.ts
+                   → Phase-0-owned shared surface. Coordinate centrally; do not edit in a lane.
+```
+
+### 3. Scope cap exceeded
+
+Net changed LOC (additions + deletions) exceeds the lane's
+`scope_limit`, default **200** *(scripts/hooks/check_lane.py:108-117,
+scripts/hooks/lanes.json:20)*. The gate sums the per-file `numstat`
+counts and compares against the cap; if the diff is bigger the commit
+is rejected and the brief tells the agent to STOP and report rather
+than push through.
+
+```
+Scope limit exceeded: 412 LOC changed > 200 cap for lane II.
+A task this big should be split. Per your brief: STOP and report.
+```
+
+A legitimately larger task can raise its cap via the `.lane` manifest
+(see below), but the PR description should justify it.
+
+### 4. VERIFY failure
+
+The lane's regression command returned non-zero
+*(scripts/hooks/check_lane.py:119-127)*. The default per lane is the
+package's smallest meaningful check:
+
+- **Lane I** — `cd packages/ctrl && npm run build` (the esbuild bundle)
+- **Lane II** — `cd packages/learn && python3 -m pytest -q`
+- **Lane III** — `cd packages/web && npx tsc --noEmit`
+- **Lane IV** — `cd packages/alfred-vault && python3 -m pytest -q`
+- **Lane V** — `docker compose config -q`
+
+If the agent breaks a test or fails a typecheck, the gate blocks the
+commit until the regression is fixed. **The fix is part of the same
+commit** — never push a red commit with a follow-up to make it green;
+the gate exists precisely to stop that pattern from landing.
+
+## The `.lane` manifest
+
+Each worktree declares its lane via a `.lane` file at the worktree root.
+The file is JSON and has three optional keys
+*(scripts/hooks/check_lane.py:15-17)*:
+
+```json
+{
+  "lane": "II",
+  "verify": "cd packages/learn && python -m pytest tests/test_signals.py -q",
+  "scope_limit": 350
+}
+```
+
+- **`lane`** *(required)* — one of `I`, `II`, `III`, `IV`, `V`.
+- **`verify`** *(optional)* — override the lane's default VERIFY,
+  typically to narrow it to a single test file for a focused task.
+- **`scope_limit`** *(optional, default 200)* — bump the LOC cap for a
+  legitimately larger task. Justify it in the PR description.
+
+Minimal form, written when the agent starts:
+
+```bash
+echo '{"lane":"II"}' > .lane
+```
+
+## The phase0 fallback
+
+The **main checkout** — the one cloned with `git clone` — has no
+`.lane` file by design. The gate handles this by treating it as the
+`phase0` lane: allow-all globs, scope cap of 100,000, VERIFY `true`
+*(scripts/hooks/check_lane.py:77-82, scripts/hooks/lanes.json:56-61)*.
+
+That's deliberate. `phase0` is the orchestrator's lane: cross-cutting
+work, contract amendments, forbidden-zone edits. The same gate file
+that protects the lanes lets the orchestrator work without friction.
+
+A **linked worktree with no `.lane`** is rejected on purpose
+*(scripts/hooks/check_lane.py:77-81)*. The implicit-allow only applies
+to the canonical checkout — a lane agent that forgot to declare its
+lane gets a clear error message instead of mysteriously bypassing the
+gate.
+
+## `ALFRED_SKIP_VERIFY`
+
+The gate honours one escape hatch: `ALFRED_SKIP_VERIFY=1` skips
+**only** the VERIFY step *(scripts/hooks/check_lane.py:120-121)*. The
+lane-jumping, forbidden-zone, and scope-limit checks still run.
+
+<Warning>
+**Never use `ALFRED_SKIP_VERIFY` for a normal commit.** If a test is
+red, fix the test as part of the same commit. The gate exists to
+catch the exact pattern of "land it now, fix it later" — bypassing
+VERIFY undoes the only mechanism stopping that pattern.
+
+The only legitimate use is an emergency fix that needs to bypass an
+unrelated, transiently broken test on a critical-path commit. If you
+find yourself reaching for it more than once a quarter, the test
+suite is wrong, not the gate.
+</Warning>
+
+## Self-testing the gate
+
+The installer prints a self-test command:
+
+```bash
+ALFRED_LANE=II python3 scripts/hooks/check_lane.py
+```
+
+Run this with files staged to see exactly what the gate would do
+without actually committing. The `ALFRED_LANE` env var is read as a
+fallback when no `.lane` file is present
+*(scripts/hooks/check_lane.py:71)* — useful for testing the gate's
+behaviour from the main checkout without writing a `.lane` file
+there.
+
+## What to read next
+
+<CardGroup cols={2}>
+  <Card title="The lane protocol" href="/development/lane-protocol">
+    The five lanes, the forbidden zone, and the C1–C19 contract series.
+  </Card>
+  <Card title="CI workflows" href="/development/ci-workflows">
+    What happens after the gate accepts your commit — path-filtered image builds.
+  </Card>
+</CardGroup>

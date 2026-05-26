@@ -1,0 +1,141 @@
+---
+title: "Incident history"
+description: "Past production incidents, their root causes, and the fixes that landed."
+---
+
+This page is the team's incident log — kept here so the *why* behind quirky
+code is never lost. Each entry is a one-liner symptom, the actual root cause,
+and the commit that closed it. The original log lives in `CLAUDE.md §16`;
+this is the de-personalised, narrative-shaped version.
+
+## 2026-05-24 — the Desk loop closure campaign
+
+A single day produced ~85 findings and twelve fixes across all five lanes. The
+common thread: the signal-to-instinct-to-decision learning loop was broken in
+several silent ways, so the system **looked** healthy from the outside while
+no observations were landing in `state.db` and no instincts were promoting.
+
+| Symptom | Root cause | Fix |
+|---|---|---|
+| Onboarding wrote degenerate task shape (no `parent_matter`, no `state`, no `closure_predicate`); 32 tasks orphaned from matters | The `packs_opus` errand-pack writer wasn't using the rich shape; `_resolve_parent_matter_path` blindly slugified the LLM's `related_matter` string | `dbaca81` (Lane II): rich shape + 4-tier resolver + `state_mutator_mode` defaults to `live` + `auto_task_create_mode` defaults to `live` |
+| Task `status: queued` rejected by alfred-vault validator → backfill 100% errored | `tasks.py:23` had an aspirational `'queued'` value in a comment that became canon in newer writers; the daemon validator's vocabulary is `active \| blocked \| cancelled \| done \| todo` | `eed3799` (orchestrator) — harmonise to `status: todo` end-to-end, plus tests in `e3c1ad2` updated in the same PR |
+| `DecisionRouter` delegate path minted a fresh mirror `decision/<ts>.md` every cycle → the agent fired every minute forever | `attention.ts.mintDecisionMirror` had no recursion guard; the router's own dispatch hit `/dispatch` which minted another decision which the router then processed | `4466c68` (orchestrator) — `/dispatch` skips `mintDecisionMirror` when `decision_origin` is set in the body |
+| Delegate clicks never fired the agent | Lane I `#216` had severed `signal-router`'s `principal_delegate_override` path; nothing else dispatched | `6a8052f` (Lane II) — `DecisionRouter` calls `dispatch_action_to_agent` directly when intent is delegate |
+| One delegate click produced ten dispatches | The delegate dispatch minted a `status=unrouted` signal, which `SignalRouter` re-dispatched on every 2-minute tick | `c551c00` (Lane I, #216) — mint the re-routed signal in terminal state (`routed_agent`) so `SignalRouter` cannot loop on its own output |
+| `POST /api/v1/decisions` minted done/noise/take-mine in `state=completed` → `DecisionRouter` skipped → 0 `kind=decision` observations | The Desk write path was minting decisions in their final state, so the router's `extract_observation_from_decision` never ran | `31fa11f` (orchestrator) — always mint `state=open`; `e8905e4` does the same for the legacy attention mirror |
+| Instinct scorer returned 0.0 for every signal | `_score_keyword_overlap` did set intersection of single-word tokens against multi-word patterns; structurally impossible to match | `c27e6e3` (Lane II, Gap 5b) — three-matcher fix at `MATCH_THRESHOLD = 0.05` |
+| Instinct matcher loaded nothing | `_load_active_instincts` filtered on `status=active`, but unconfirmed instincts have `status=unconfirmed` | `c27e6e3` (Lane II, Gap 3) — accept all non-deprecated instincts; the discretion gate is the real safety belt |
+| `chore-run` observations were landing in the vault instead of `state.db` | The chore-run seed routed to the wrong store | `de34f6d` (Lane III, Gap 5c) |
+| Five principal-listed UX bugs (brief shape, /desk duplicates, /chores truncate, /connections icons, /channels Terminal card, /plane blank, Vault→Vaultwarden rename, ssh-info endpoint) | Multiple — cross-cutting | Lanes I/II/III/V — four PRs, 1,978 LOC, 30 new tests |
+| `home.alfred.black` swap from `test.alfred.black` | Apex domain change | One `.env` flip; Caddy auto-reissued six Let's Encrypt certs |
+
+The campaign's lesson: **the loop closes at `extract_observation_from_decision`**.
+If observations aren't landing in `state.db` for every Desk click, the system
+isn't learning, no matter how good the rest of the pipeline looks.
+
+## 2026-05-24 — the Hermes web dashboard non-fix
+
+Hooking up `hermes.{$DOMAIN}` to the upstream Hermes dashboard backend looked
+straightforward — the gateway image already runs the dashboard server on its
+configured port. We deployed, the route worked, every page returned
+`{"error":"Frontend not built"}`.
+
+<Note>
+**Root cause**: the `hermes-agent` v0.14.0 pip wheel ships neither the React
+source code nor a built `web_dist/`. The backend always 500s the frontend.
+**Fix**: revert (`ce6c177`). Use `docker compose exec hermes hermes …` CLI
+instead. See [Gotchas → The Hermes web dashboard](/troubleshooting/gotchas#the-hermes-web-dashboard-is-not-usable).
+</Note>
+
+## 2026-05-23 — sentence-boundary truncation
+
+The onboarding `personalize_opus` activity writes `USER.md` from the LLM's
+behavioural profile output, capped at ~1375 characters. The naive
+truncator did `text.rfind('.', 0, cap)` — but on a long paragraph with the
+last sentence break near position 53 of a 1407-char document, the cap landed
+at 53 characters and threw away 96% of the content.
+
+<Note>
+**Fix**: sentence-boundary truncation with a floor fraction — accept the last
+sentence break only if it sits within `[0.85 * cap, cap]`; otherwise truncate
+at the cap and append an ellipsis. Same fix in `MEMORY.md`.
+</Note>
+
+## 2026-05-23 — hermes-lcm plugin baked but not loaded
+
+The cross-session memory plugin (`hermes-lcm`) was baked into the Hermes image
+at `/opt/hermes-lcm/` but the install step into the `main` profile's `plugins/`
+dir wasn't running, so the plugin was on disk and never imported.
+
+<Note>
+**Fix**: `verify_lcm()` background probe in the Hermes supervisor that asserts
+the plugin loaded at boot, plus a per-profile plugin directory copy so the
+install is idempotent across restarts. Failure now surfaces in `docker compose logs hermes`.
+</Note>
+
+## 2026-05-22 — the 0522 fix-fan-out campaign
+
+A 21-finding sweep over the live product produced eight image deploys and
+twenty-one fixes shipped as PRs. This is the campaign that produced the
+post-`0522` lane protocol: gate-protected fix fan-out, contract freezes
+(`C12–C19`), failing-test-first discipline. See [Contributing →
+Bug-fixing protocol](/contributing/bug-fixing-protocol) for the rules.
+
+Notable individual fixes:
+
+- **`#180` — Composio bulk pull >4MB**. `composio_pull` was returning a
+  >4MB payload to the Temporal activity, blowing past the gRPC limit. Fix:
+  self-ingest oversized batches with chunked pagination.
+- **`#181` — chore cron-DOW mismatch**. Generated chores were stuck in a
+  validator loop because the cron string used `Mon-Fri` instead of `1-5`. Fix:
+  `_autocorrect_cron_dow_for_description` rewrites before validation.
+- **`#193` — onboarding context overflow**. `extract_facts_opus` was passing
+  the entire backfill (~2000 messages) to the LLM in one prompt, hitting
+  Hermes' max-compression-attempts ceiling. Fix: chunked extraction
+  (chunk_threshold=500, chunk_size=400).
+- **`#196` — empty Desk on day one**. New tenants landed on `/desk` with
+  zero cards. Fix: `seed_day_one_desk_cards` picks time-anchored matters
+  during onboarding so the first impression isn't empty.
+- **`#216` — delegate signal loops**. Documented above (2026-05-24); root
+  cause traces back here.
+- **`#218` — duplicate decision on dispatch**. The orchestrator suppresses
+  the decision mirror when the call originates from the router.
+- **`#229` — matters list vs detail tasks count diverge**. The list endpoint
+  counted tasks by one query, the detail endpoint by another. Fix: consolidate
+  on a single canonical query.
+
+## 2026-05-20 — the platform release
+
+The first Alfred Black platform release. Wraps the `alfred-vault` engine
+(CLI, version 1.0.0) in a complete self-hosted deploy: docker-compose stack,
+Caddy + Let's Encrypt, the four-store storage model, Plane / Sure / Vaultwarden
+sidecars, the Hermes runtime, onboarding ritual + Daily Brief.
+
+Migration notes: existing `alfred-vault` users keep `pip install alfred-vault`
+and the `alfred` CLI works unchanged. Fresh tenants run one-command deploy.
+
+## Recurring failure classes (audit, 2026-05-20)
+
+The `docs/FAILURE-MODES.md` audit identified six systemic classes that account
+for nearly every failure we've shipped:
+
+1. **Silent under-extraction** — gpt-4.1-nano misses signals; no error, no
+   card, no surface. The class with the worst trust impact.
+2. **Autonomous wrong action** — a generated chore or instinct misfires
+   repeatedly, unattended.
+3. **Promotion-contract gaps** — writers `422` silently after a store change,
+   losing audit/state without surfacing.
+4. **Temporal stalls** — zombie or replay-failure workflows freeze autonomy
+   while the UI stays green.
+5. **Resource exhaustion** — 32 GB single-VM has no HA; one pressure point
+   drops the whole butler.
+6. **Cost blowup** — Opus everywhere + per-email extraction can bill quietly
+   high.
+
+<Tip>
+**Meta-finding**: nearly every failure is silent. The highest-leverage fix is
+to make failure loud — health probes proving the signal pipeline ran, the
+steward swept, chores fired, extraction isn't zeroing, the bill is sane.
+That's the direction the 2026-05-25 release pushed; expect more in the next
+one *(docs/FAILURE-MODES.md "Meta-finding")*.
+</Tip>

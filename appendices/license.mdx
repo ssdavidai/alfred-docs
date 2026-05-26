@@ -1,0 +1,43 @@
+---
+title: "License"
+description: "The license under which Alfred Black is distributed."
+---
+
+<Warning>
+**No `LICENSE` file is currently present at the root of the Alfred Black
+repository.** That makes the project's license **unspecified** as of this
+writing — under most jurisdictions, code published without an explicit
+licence defaults to "all rights reserved," meaning third parties have no
+granted rights to copy, modify, or redistribute it.
+</Warning>
+
+If you are a contributor or operator who needs clarity on rights to use,
+modify, or redistribute Alfred Black, open an issue or pull request requesting
+an explicit licence statement.
+
+## Recommended OSS defaults
+
+Most modern self-hostable AI infrastructure projects ship under one of two
+permissive licenses; both are well-understood by lawyers, well-supported by
+package registries, and impose minimal friction on downstream users.
+
+| License | Summary | Used by |
+|---|---|---|
+| **MIT License** | Permissive, very short. Allows commercial use, modification, distribution, private use. Requires preserving the copyright and licence notice. | Wasp, Vaultwarden, large parts of the JavaScript ecosystem |
+| **Apache License 2.0** | Permissive, slightly longer. Adds an explicit patent grant and a "NOTICE" file convention. | Temporal, Caddy, much of the cloud-native ecosystem |
+
+The Hermes runtime (`NousResearch/hermes-agent`) and the broader dependency
+graph carry their own licences; if Alfred Black adopts a licence, any
+linked-in upstream terms must be respected and reflected in a `NOTICE` or
+`CREDITS` file.
+
+## Per-package note
+
+The `alfred-vault` Python package at `packages/alfred-vault/` was published
+to PyPI prior to the Alfred Black platform release; its `pyproject.toml`
+should be checked separately for its declared licence (which may differ from
+the platform's).
+
+If you are reading this page on the live documentation site and a licence has
+since been added, the [repository](https://github.com/ssdavidai/alfred) is
+the source of truth.

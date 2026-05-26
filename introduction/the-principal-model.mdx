@@ -1,0 +1,38 @@
+---
+title: "The principal model"
+description: "Why Alfred speaks of a principal and a household, and who Alfred is for."
+---
+
+Most software calls the person on the other side of the screen a **user**. Alfred Black uses the word **principal** instead. The choice is deliberate, and it shapes every surface of the product.
+
+## Why "principal"
+
+A user *uses* an application — they consume features, fill in forms, click buttons. A principal *is served*. The relationship is fiduciary: the assistant acts on the principal's behalf, with the principal's authority, against the principal's standing instructions. The principal sets the rules; the assistant carries them out and reports back.
+
+That framing changes the design in concrete ways:
+
+- **Decisions, not features.** The default landing page is `/desk` — a queue of decisions Alfred wants to make on the principal's behalf, with Done / Defer / Noise / Delegate buttons *(packages/web/src/client/pages/desk/DeskPage.tsx:23–48)*. There is no "feature menu". Whatever Alfred is doing, the principal sees it as a decision waiting on the queue, or an action already taken on the audit ledger.
+- **Standing rules over per-action settings.** Preferences live in `RULES.md`, edited on `/household`, not scattered across a settings tree. Alfred reads them on every relevant call.
+- **An audit ledger by default.** Every action Alfred takes — whether the principal approved it explicitly or it fired autonomously — lands on `/decisions` with provenance *(packages/web/src/client/pages/decisions/DecisionsPage.tsx)*. Nothing is hidden behind logs the principal can't see.
+
+## The household
+
+Alfred organises the principal's life into a small set of canonical record types, kept in a markdown vault the principal can open in Obsidian. The household consists of **matters** (long-running concerns), **tasks** (concrete next actions), **people**, **orgs**, **places**, **assets**, **chores** (recurring work), **instincts** (learned patterns of behaviour), **decisions** (the audit trail), **briefings** (the daily missive), **notes**, and a **daybook**. Twelve types, no more *(packages/ctrl/src/db/promotionContract.ts)*.
+
+Anything that isn't one of those twelve doesn't belong in the vault. Observations, raw signals, audit events, stream payloads — these go to SQLite stores Alfred reads but the principal mostly doesn't. See the [Glossary](/introduction/glossary) for the full vocabulary.
+
+## Who Alfred is for
+
+Alfred Black is built for **one principal per VM**. There is no multi-tenant story in this build; the SaaS variant supported many, but the single-VM reframing made that complexity unnecessary *(CLAUDE.md §1)*. The first signup against a fresh deployment becomes the owner and lands on `/desk`. Subsequent signups are members of the same household with reduced authority.
+
+The ideal principal is someone who:
+
+- Has enough recurring decision-load — email, calendars, household chores, finances — that triaging it by hand is genuinely costly.
+- Wants the assistant's reasoning and the data behind it to live on hardware they control.
+- Is comfortable running a Linux VM, pointing DNS records, and keeping `.env` files honest. There is no managed onboarding; the [Quickstart](/quickstart/prerequisites) is the onramp.
+
+If a hosted product would suit you better, that is a reasonable choice — Alfred Black is not it. If you want a butler whose every line of code, every container, and every database row sits on your own machine, this is the build.
+
+## A note on the in-house voice
+
+The codebase and commit history sometimes address the principal as "Sir" — a residue of the original house style. Outside the code, the documentation uses **principal** and **household** consistently. Both refer to the same thing: the person Alfred serves, and the set of concerns Alfred keeps track of for them.

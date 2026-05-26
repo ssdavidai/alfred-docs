@@ -1,0 +1,175 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Alfred Black",
+  "description": "An AI butler you can self-host on a single VM. Open source.",
+  "colors": {
+    "primary": "#0A0A0A",
+    "light": "#E5E5E5",
+    "dark": "#0A0A0A"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Introduction",
+            "pages": [
+              "index",
+              "introduction/what-is-alfred",
+              "introduction/the-principal-model",
+              "introduction/why-single-vm",
+              "introduction/glossary"
+            ]
+          },
+          {
+            "group": "Quick start",
+            "pages": [
+              "quickstart/prerequisites",
+              "quickstart/deploy",
+              "quickstart/onboarding-walkthrough",
+              "quickstart/verifying"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture/overview",
+              "architecture/four-store-model",
+              "architecture/signal-pipeline",
+              "architecture/state-machines",
+              "architecture/hermes-runtime",
+              "architecture/sidecars"
+            ]
+          },
+          {
+            "group": "Surfaces (the 14 pages)",
+            "pages": [
+              "surfaces/overview",
+              "surfaces/onboarding-ritual",
+              "surfaces/desk",
+              "surfaces/brief",
+              "surfaces/vault",
+              "surfaces/matters",
+              "surfaces/instincts",
+              "surfaces/decisions",
+              "surfaces/chores",
+              "surfaces/connections",
+              "surfaces/channels",
+              "surfaces/tools",
+              "surfaces/claude",
+              "surfaces/study",
+              "surfaces/household",
+              "surfaces/staff"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/env-reference",
+              "configuration/mode-flags",
+              "configuration/settings-json",
+              "configuration/domain-and-tls",
+              "configuration/backups"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "integrations/overview",
+              "integrations/composio",
+              "integrations/plane",
+              "integrations/sure",
+              "integrations/vaultwarden",
+              "integrations/gmail-calendar-drive",
+              "integrations/vexa",
+              "integrations/mcp-clients",
+              "integrations/claude-skill"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "operations/deploy-paths",
+              "operations/volumes",
+              "operations/redeploy",
+              "operations/hermes-profiles",
+              "operations/ssh-access",
+              "operations/backup-restore"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/repo-layout",
+              "development/packages-ctrl",
+              "development/packages-learn",
+              "development/packages-web",
+              "development/packages-hermes",
+              "development/packages-mcp-server",
+              "development/packages-alfred-vault",
+              "development/lane-protocol",
+              "development/commit-gate",
+              "development/ci-workflows",
+              "development/cookbooks/add-a-chore",
+              "development/cookbooks/add-an-mcp-tool",
+              "development/cookbooks/add-a-ctrl-route"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/ctrl-api-routes",
+              "reference/mcp-tool-catalog",
+              "reference/state-db-schema",
+              "reference/frontmatter-shapes",
+              "reference/temporal-workflows",
+              "reference/env-vars"
+            ]
+          },
+          {
+            "group": "Troubleshooting",
+            "pages": [
+              "troubleshooting/gotchas",
+              "troubleshooting/incident-history",
+              "troubleshooting/debugging-guide"
+            ]
+          },
+          {
+            "group": "Contributing",
+            "pages": [
+              "contributing/bug-fixing-protocol",
+              "contributing/lane-gate",
+              "contributing/failing-test-first",
+              "contributing/pr-conventions"
+            ]
+          },
+          {
+            "group": "Appendices",
+            "pages": [
+              "appendices/glossary",
+              "appendices/changelog",
+              "appendices/license",
+              "appendices/credits"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/ssdavidai/alfred"
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/ssdavidai/alfred"
+    }
+  }
+}

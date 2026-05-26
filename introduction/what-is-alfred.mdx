@@ -1,0 +1,56 @@
+---
+title: "What is Alfred Black?"
+description: "A single-VM, open-source AI butler — the entire household runtime in one docker compose up."
+---
+
+Alfred Black is an **open-source AI butler that runs entirely on one Linux VM**. You clone a repo, fill in a `.env`, run a bootstrap script, and `docker compose up -d`. There is no SaaS account to create, no Hetzner provisioner, no Tailscale mesh, no Cloudflare automation, no billing wall. The whole household runtime — dashboard, intelligence layer, sidecars, TLS, ingress — comes up on your own machine, against your own domain.
+
+It is a reframing of the older `alfred-platform` (a multi-tenant SaaS fleet) into the smallest unit that still does the job: **one repo, one VM, one stack** *(CLAUDE.md §1)*.
+
+## The principal model
+
+Alfred treats the person it serves as a **principal**, not a "user". The principal has a household — matters they care about, people they answer to, chores that recur, decisions that need making — and Alfred's job is to keep that household functioning without becoming yet another inbox. See [The principal model](/introduction/the-principal-model) for the framing in full.
+
+## What's in the box
+
+A fresh deploy stands up roughly thirty containers. The ones a principal actually interacts with:
+
+<CardGroup cols={2}>
+  <Card title="Dashboard" icon="house">
+    The 14 principal-facing pages — `/desk`, `/brief`, `/vault`, `/matters`, `/instincts`, `/decisions`, `/chores`, `/connections`, `/channels`, `/tools`, `/claude`, `/settings`, `/household`, `/staff` *(packages/web/main.wasp:191–250)*.
+  </Card>
+  <Card title="Hermes runtime" icon="cpu">
+    One AI runtime, three supervised profiles — `main` (chat, port 18789), `workers` (background agents, 18790), `heavy` (Opus-class reasoning, 18791) *(packages/hermes/docker/supervisor.sh)*.
+  </Card>
+  <Card title="ctrl-api" icon="server">
+    The tenant API on `:3100`. Sole writer of the working stores; ~40 route files behind the dashboard *(packages/ctrl/src/api/routes/)*.
+  </Card>
+  <Card title="alfred-learn" icon="brain">
+    Temporal-backed intelligence layer. Signal extract, signal router, decision router, briefing, reflection, judgment — roughly thirty workflows on schedules from 2 min to nightly *(packages/learn/CONTRACT.md)*.
+  </Card>
+  <Card title="Sidecars" icon="cubes">
+    Plane (project management), Sure (personal finance), Vaultwarden (secrets), and an optional Vexa profile for meeting transcripts *(docker-compose.yaml)*.
+  </Card>
+  <Card title="MCP server" icon="plug">
+    A bundle of six stdio MCP apps (alfred, sure, plane, vaultwarden, execute, hermes) plus an HTTP `alfred-ctrl` proxy. Each Hermes profile currently registers six MCP servers (five stdio + the HTTP proxy); the `hermes` stdio app ships in the bundle but isn't wired into the profile template yet *(packages/mcp-server/src/)*.
+  </Card>
+</CardGroup>
+
+## The four-store architecture
+
+The vault is **the principal's published surface, not the system's database**. Behind it, four physical stores split responsibility *(packages/ctrl/docs/STORAGE-ARCHITECTURE.md)*:
+
+| # | Store | Backing | Purpose |
+|---|-------|---------|---------|
+| 1 | **Vault** | Markdown files in `vault_data` | Twelve canonical record types the principal reads and edits in Obsidian |
+| 2 | **`alfred-state.db`** | SQLite + WAL + sqlite-vec | Machine working memory — signals, observations, audit, embeddings |
+| 3 | **Cold archive** | DuckDB / Parquet (deferred) | Forensic long tail (>90d) |
+| 4 | **`ingest.db`** | SQLite | Raw inbound stream events (7-day TTL) |
+
+`ctrl-api` is the **sole writer** of stores 2 and 4. Everything else — `alfred-learn`, the vault daemon, the MCP servers — writes through HTTP endpoints. This eliminates multi-process SQLite contention and makes vault drift structurally impossible *(CLAUDE.md §5.2)*.
+
+## The licence and the posture
+
+Alfred Black is MIT-licensed and built to be forked. The code, the contracts, the bootstrap script, the Caddyfile, the compose graph — everything you need to stand up your own instance — is in one repo. There is no telemetry. There is no managed offering. Your data lives in Docker volumes on your VM; back them up like you would any other database.
+
+What you give up by choosing the single-VM build is HA, horizontal scale, and the hand-holding of a hosted product. What you get is a butler whose every decision you can audit, whose every secret you hold, and whose every container you can stop.

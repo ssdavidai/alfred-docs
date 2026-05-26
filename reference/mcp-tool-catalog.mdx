@@ -1,0 +1,453 @@
+---
+title: "MCP tool catalog"
+description: "Every Model Context Protocol tool exposed by Alfred Black — ~178 tools across 6 stdio apps plus the alfred-ctrl HTTP proxy."
+---
+
+Alfred Black exposes its capability surface to LLMs through **Model Context Protocol (MCP)** servers. Six apps live in the catalogue *(packages/mcp-server/src/tools/registry.ts:16-31)*; each Hermes profile currently registers **six MCP servers** — five stdio apps plus the HTTP `alfred-ctrl` proxy *(packages/hermes/hermes-config.yaml.njk:280-354)*. The sixth app (`hermes`) ships in the bundle but is not yet wired into the profile template; it is reachable via the HTTP MCP server at `mcp.{$DOMAIN}/hermes/mcp` *(packages/mcp-server/src/index.ts:299-334)*. Apps in the catalogue:
+
+- **Six stdio apps** compiled from a single TypeScript bundle (`packages/mcp-server`) and spawned by Hermes as Node subprocesses: `alfred`, `sure`, `plane`, `vaultwarden`, `execute`, `hermes`.
+- **One HTTP server** (`alfred-ctrl`) — a thin proxy that lets MCP clients reach the same ctrl-api routes that back most stdio tools.
+
+All six stdio apps share one transport layer: `proxyToCtrl()` *(packages/mcp-server/src/tools/helpers.ts:68-96)* attaches `Authorization: Bearer ${AAS_API_KEY}` and forwards each call to ctrl-api on `:3100`. ctrl-api then talks to the real backend (filesystem, Plane REST, Vaultwarden REST, Composio v3, Sure Rails-runner, Hermes HTTP API).
+
+The same TS bundle is also shipped as a standalone container (`alfred-mcp-server`, port `:8787`) for Claude.ai Custom Connectors *(packages/mcp-server/src/index.ts:244-334)* — `mcp.${DOMAIN}` routes through Caddy to it. Approval flows via `MCP_APPROVAL_SECRET` (timing-safe bearer match or interactive HTML form) *(packages/mcp-server/src/index.ts:210-242)*.
+
+## Tool count by app
+
+| App | Tools | Backing | File |
+|-----|------:|---------|------|
+| alfred | 24 | ctrl-api routes (filesystem, Temporal CLI, Hermes cron) | `src/tools/alfred.ts` |
+| sure | 116 | ctrl-api → Sure REST + Rails-runner | `src/tools/sure.ts` |
+| plane | 11 | ctrl-api → Plane REST API | `src/tools/plane.ts` |
+| vaultwarden | 14 | ctrl-api → `bw serve` sidecar → Vaultwarden REST | `src/tools/vaultwarden.ts` |
+| execute | 6 | ctrl-api → Composio v3 platform | `src/tools/execute.ts` |
+| hermes | 7 | ctrl-api → Hermes `:18789`/`:18790` HTTP + cron CLI | `src/tools/hermes.ts` |
+| **Total** | **157** | | |
+
+<Note>The `hermes` stdio app was added to the catalogue on 2026-05-26 *(packages/mcp-server/src/tools/hermes.ts:1-27)*, but `packages/hermes/hermes-config.yaml.njk` currently registers only five stdio apps + the HTTP `alfred-ctrl` proxy per profile. The `hermes` app is still reachable through the HTTP MCP server at `mcp.{$DOMAIN}/hermes/mcp`. When the profile template catches up, each profile will register seven MCP servers.</Note>
+
+---
+
+## alfred — vault, agents, workflows, briefings (24 tools)
+
+**Backend**: HTTP via `proxyToCtrl()` to ctrl-api's `/api/v1/*` endpoints *(packages/mcp-server/src/tools/alfred.ts:46-562)*. Bearer auth using `AAS_API_KEY`. Backing endpoints: vault filesystem (read/write through the alfred CLI under a per-path mutex), Temporal CLI via `docker exec`, Hermes pairing CLI, ctrl-api ledger queries.
+
+This is the Alfred Black control surface: read or write any vault record, kick off Temporal workflows, inspect the OpenClaw/Hermes gateway, and send notifications. Twenty-four tools intentionally exposed; restart / rotate-secret / fleet-pause operations are deliberately withheld from connector traffic *(packages/mcp-server/src/tools/alfred.ts:18-28)*.
+
+<Accordion title="alfred — full tool table">
+
+### Vault (6)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `list_vault_by_type` | List every record of a given vault type (matter, task, note, person, org, place, asset, chore, instinct, briefing, daybook, decision). | `type` (required), `preview` (body-preview char count, max 2000) |
+| `search_vault` | Free-text grep and/or glob search across the vault. Requires at least one of `grep`/`glob`. | `grep`, `glob`, `limit` (max 500) |
+| `get_vault_record` | Read one record's frontmatter + body by exact vault-relative path. | `path` (e.g. `matter/acme.md`) |
+| `create_vault_record` | Create a new record. `type` must be one of the 12 canonical vault types. | `type`, `name`, `content` (raw) or `fields` (scaffold) |
+| `update_vault_record` | Patch a record — `set` (overrides), `append` (list extends), `body_append`, `body_set`. | `path`, plus any of the four operation keys |
+| `promote_triage_to_task` | Convert a `triage/*` record into a `task/*` and mark the triage resolved. | `triagePath`, `matter`, `owner`, `priority` |
+
+### Agents (2)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `spawn_alfred_task` | Hand a one-shot task to Sir's main Alfred agent via a Hermes main-profile cron job that fires once and self-destroys. | `task`, `channel`, `to`, `at_seconds`, `announce` |
+| `list_agents` | List the static agent catalogue (main, learn-clerk, vault-curator, vault-janitor, vault-distiller) + surveyor config. | — |
+
+### Workflows — Temporal (4)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `list_workflows` | List Temporal executions (running + recent) with optional visibility query. | `query` (Temporal SQL-ish) |
+| `describe_workflow` | Fetch full detail for one execution: status, start/close, pending activities, last failure. | `wfId`, `run_id` |
+| `start_workflow` | Start a new workflow execution by type. | `workflow_type`, `task_queue`, `input`, `workflow_id` |
+| `signal_workflow` | Send a Temporal signal to a running workflow. | `wfId`, `signal_name`, `input`, `run_id` |
+
+### OpenClaw / Hermes diagnostics (3, read-only)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `get_openclaw_health` | Health envelope from the gateway — provider auth, queue depth, cron tick latency, MCP availability. | — |
+| `list_openclaw_agents` | Agents as the gateway sees them (model bindings, provider auth, fallback chain). | — |
+| `list_openclaw_allowed_tools` | Gateway tool inventory — `builtin_tools[]` + `mcp_tools[]`. | — |
+
+### Device approval (1)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `approve_device` | Approve a pending Hermes DM-pairing code (Telegram, Slack, …). | `platform`, `code` |
+
+### Desk / decisions / briefings (7)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `list_briefings` | List the morning/evening brief snapshots written by `BriefingWorkflow`. | `slot`, `since`, `until`, `limit` |
+| `get_briefing` | Read one brief snapshot by slug-date. | `slug_date` (e.g. `2026-05-14-morning`) |
+| `list_decisions` | List decision records — choices made (delegate/done/noise/defer/hold). | `state`, `source`, `since`, `limit` |
+| `get_decision` | Read one decision record by id. | `id` |
+| `list_pending_decisions` | List `needs_attention` cards currently on `/desk`. | `include` (pending/all), `limit` |
+| `list_state_changes` | List the state-change audit ledger (every matter/task mutation). | `target`, `source`, `since`, `until`, `limit`, `offset` |
+| `list_in_flight_agents` | List ephemeral `exec-*` subagents currently spawned and not yet torn down. | — |
+
+### Notifications (1)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `notify_principal` | Send a message to Sir on his preferred channel (Telegram, Slack). Bridged through a Hermes main-profile one-shot cron job. | `message`, `channel` (auto/telegram/slack), `urgency`, `to` |
+
+</Accordion>
+
+---
+
+## sure — personal finance (116 tools)
+
+**Backend**: HTTP via `proxyToCtrl()` to ctrl-api's `/api/v1/sure/*` *(packages/mcp-server/src/tools/sure.ts:1-19)*. ctrl-api fronts the self-hosted [Sure](https://github.com/we-promise/sure) Rails app on `sure-web:3000`, using two paths: `REST` for query endpoints, `Rails-runner` (a sandboxed `bin/rails runner` shell-out) for mutations Sure's REST API can't reach. Bearer auth using `AAS_API_KEY`; ctrl-api holds the Sure API key seeded by `sure-init`.
+
+By far the largest tool surface. The taxonomy below mirrors Sure's domain model: accounts → transactions → categories/merchants/tags → rules → transfers → holdings/trades → valuations → budgets → recurring → imports → administration.
+
+<Accordion title="sure — full tool table">
+
+### Balance sheet (1)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `get_balance_sheet` | Net worth: family currency, total assets, total liabilities, classification breakdown. | — |
+
+### Accounts (4)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `list_accounts` | List banks, brokerages, crypto, property, manual loans. | `classification`, `accountable_type`, `currency`, pagination |
+| `create_manual_account` | Create a manual account (Sure's REST is GET-only for accounts). | `name`, `balance`, `currency`, `accountable_type`, `accountable_attributes` |
+| `update_account` | Rename, correct balance, change loan interest rate. | `id` + any updatable field |
+| `delete_account` | Soft-delete; refuses provider-linked accounts (409). | `id` |
+
+### Transactions (10)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `list_transactions` | Workhorse read: date range, account, category, merchant, tag, amount, type, free-text. | `start_date`/`end_date`, `account_id(s)`, `category_id(s)`, `merchant_id(s)`, `tag_ids`, `min/max_amount`, `type`, `search` |
+| `get_transaction` | Full detail for one transaction. | `id` |
+| `create_transaction` | Log a manual transaction (cash, between-spouse, reimbursements). Signed amount. | `account_id`, `date`, `amount`, `name`, `category_id`, `merchant_id`, `tag_ids` |
+| `update_transaction` | Recategorise, rename, retag, correct amount/date. | `id` + any updatable field |
+| `delete_transaction` | Permanently delete (no undo). | `id` |
+| `split_transaction` | Split a parent into multiple children (sum must equal parent). | `id`, `splits[]` |
+| `unsplit_transaction` | Restore a previously-split parent. | `id` |
+| `bulk_update_transactions` | Update many transactions in one call. | `ids[]`, common patch payload |
+| `bulk_delete_transactions` | Delete many transactions; refuses split children. | `ids[]` |
+| `merge_duplicate_transaction` | Reconcile pending↔posted duplicates. | `id`, `merge_into_id` |
+| `dismiss_duplicate_transaction` | Tell Sure that a duplicate suggestion is wrong. | `id` |
+
+### Categories (6)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `list_categories` | List all categories. | — |
+| `get_category` | Retrieve one. | `id` |
+| `bootstrap_default_categories` | Seed Sure's default category tree on a fresh install. | — |
+| `create_category` | Create a new category. | `name`, `parent_id?`, `color`, `icon` |
+| `update_category` | Rename, recolor, re-parent. | `id` + fields |
+| `delete_category` | Remove a category. | `id` |
+
+### Merchants (6)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `list_merchants` | List all merchants (family + provider). | — |
+| `get_merchant` | Retrieve one. | `id` |
+| `create_family_merchant` | Create a custom (family) merchant. | `name`, `color`, `website_url?` |
+| `update_family_merchant` | Edit a family merchant (provider merchants are read-only). | `id` + fields |
+| `delete_family_merchant` | Destroy a custom merchant. | `id` |
+| `merge_merchants` | Merge a duplicate merchant into a canonical one. One-way. | `id`, `replacement_id` |
+| `enhance_provider_merchants` | Promote a provider merchant to a family one for editability. | `id` |
+
+### Tags (6)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `list_tags` | List all transaction tags. | — |
+| `get_tag` | Retrieve one. | `id` |
+| `create_tag` | Create a new tag. | `name`, `color` |
+| `update_tag` | Rename or recolor. | `id` + fields |
+| `delete_tag` | Delete a tag. | `id` |
+| `merge_tags` | Merge a duplicate into a canonical tag. | `id`, `replacement_id` |
+
+### Rules (8)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `list_rules` | List family rules (newest first). | — |
+| `get_rule` | Show one rule with conditions/actions/affected count. | `id` |
+| `create_rule` | New rule with conditions + actions. | `name`, `conditions[]`, `actions[]`, `active` |
+| `update_rule` | Edit rule structure or activation. | `id` + fields |
+| `delete_rule` | Delete a rule (existing classifications kept). | `id` |
+| `preview_rule` | Dry-run: show which transactions a rule would touch. | `id` |
+| `apply_rule` | Run one rule across the transaction set. | `id` |
+| `apply_all_rules` | Run every active rule. | — |
+
+### Holdings (7)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `list_holdings` | Investment positions: account, security, qty, cost basis, current value. | — |
+| `get_holding` | Retrieve one. | `id` |
+| `delete_holding` | Remove a holding row. | `id` |
+| `set_holding_manual_cost_basis` | Override the provider cost basis. | `id`, `cost_basis`, `currency` |
+| `unlock_holding_cost_basis` | Clear the manual lock so provider basis resumes. | `id` |
+| `remap_holding_security` | Point a holding at a different `Security` row. | `id`, `security_id` |
+| `reset_holding_security_to_provider` | Undo a manual remap. | `id` |
+
+### Trades (5)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `list_trades` | Buy/sell entries with security, qty, price, date. | — |
+| `get_trade` | One trade. | `id` |
+| `create_trade` | Log a new trade. | `account_id`, `security_id`, `qty`, `price`, `date` |
+| `update_trade` | Correct date/qty/price (holding recalculates). | `id` + fields |
+| `delete_trade` | Delete a trade (holding recalculates). | `id` |
+
+### Valuations (4)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `create_valuation` | Manual valuation snapshot for illiquid assets (property, vehicle). | `account_id`, `amount`, `date`, `notes?` |
+| `get_valuation` | Retrieve one entry. | `id` |
+| `update_valuation` | Correct amount/date/notes. | `id` + fields |
+| `delete_valuation` | Delete an entry. | `id` |
+
+### Transfers (5)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `create_transfer` | Create a manual cross-account transfer pair. | `from_account_id`, `to_account_id`, `amount`, `date` |
+| `match_transfer` | Match two existing transactions as a transfer. | `from_transaction_id`, `to_transaction_id` |
+| `confirm_transfer` | Confirm a suggested transfer pairing. | `id` |
+| `reject_transfer` | Reject a suggestion (won't reappear). | `id` |
+| `delete_transfer` | Destroy a confirmed transfer (legs become `standard`). | `id` |
+
+### Recurring (4)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `identify_recurring_patterns` | Run Sure's recurring-detection pass. | — |
+| `cleanup_stale_recurring` | Deactivate patterns whose last occurrence is stale. | — |
+| `activate_recurring` | Re-enable a pattern. | `id` |
+| `deactivate_recurring` | Hide a recurring without deleting it. | `id` |
+
+### Sharing & invitations (5)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `create_account_share` | Share an account with a family member. | `account_id`, `email`, `permission`, `include_in_finances` |
+| `update_account_share` | Change permission or `include_in_finances`. | `id` + fields |
+| `delete_account_share` | Revoke a share. | `id` |
+| `create_invitation` | Invite a new family member. | `email`, `name?`, `role?` |
+| `delete_invitation` | Revoke a pending invitation. | `id` |
+
+### Budgets (3)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `find_or_bootstrap_budget` | Get-or-create the budget for a month. | `year`, `month` |
+| `copy_budget_from` | Copy line items from a previous month. | `from_year`, `from_month`, `to_year`, `to_month` |
+| `update_budget_category` | Set an allocated amount for one category. | `budget_id`, `category_id`, `amount` |
+
+### Imports / Exports (4)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `list_imports` | List CSV bulk imports with status. | — |
+| `create_import` | Start a CSV import job. | `account_id`, `file_contents`, `mapping` |
+| `get_import` | Check import status and parsed rows. | `id` |
+| `create_export` | Full-family data dump (async job). | — |
+
+### User preferences (1)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `update_user_preferences` | Toggles for AI features, theme, locale. | `ai_enabled`, `theme`, `locale` |
+
+### Sure's internal AI chats (7)
+
+These drive Sure's own AI chat UX (distinct from Alfred's conversation). Use only when Sir explicitly wants to seed a chat in Sure's own UI.
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `list_sure_chats` | List Sure-internal chats. | — |
+| `create_sure_chat` | Start a new Sure-internal chat. | `title?` |
+| `get_sure_chat` | Retrieve one with its messages. | `id` |
+| `update_sure_chat` | Rename a chat. | `id`, `title` |
+| `delete_sure_chat` | Delete a chat. | `id` |
+| `post_sure_chat_message` | Post a message into a chat. | `chat_id`, `content` |
+| `retry_sure_chat_message` | Re-run the last assistant turn. | `chat_id` |
+
+### Sync, clustering, administration (9)
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `trigger_sync` | Force a provider re-sync (Plaid / Lunchflow / Binance / …). | `account_id?` |
+| `cluster_transactions` | LLM-driven merchant/category clustering pass (~$0.10–0.30/run). | — |
+| `apply_cluster_proposals` | Commit the latest clustering proposals as updates. | — |
+| `bootstrap_sure_full` | One-shot: bootstrap categories + default rules + currency. | — |
+| `get_api_usage` | Inspect API quota usage for the active key. | — |
+| `deactivate_api_user` | Disable an API key. | `id` |
+| `reset_all_data` | Wipe the family's data (destructive; admin only). | `confirm` |
+
+</Accordion>
+
+---
+
+## plane — project management (11 tools)
+
+**Backend**: HTTP via `proxyToCtrl()` to ctrl-api's `/api/v1/plane/*` *(packages/mcp-server/src/tools/plane.ts:1-224)*. ctrl-api proxies to the self-hosted Plane REST API (`plane-api:8000`) using a tenant Personal Access Token. The webhook endpoint (`/api/v1/plane/webhook`) is intentionally **not** exposed to remote LLMs *(packages/mcp-server/src/tools/plane.ts:15-16)*.
+
+Two versions live side-by-side: the legacy v1 read-only flow (`get_issue`/`list_issue_comments`/`post_issue_comment`) is still used by older threads; the v2 surface adds create/update/list/search/metadata.
+
+<Accordion title="plane — full tool table">
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `get_issue` | Fetch an issue by id with metadata. | `project_id`, `issue_id` |
+| `list_issue_comments` | Full comment thread for an issue. | `project_id`, `issue_id` |
+| `post_issue_comment` | Reply to an issue as Alfred. | `project_id`, `issue_id`, `comment` |
+| `list_issues` | Paginated issue list for a single project. | `project_id`, filters, pagination |
+| `search_issues` | Multi-project cross-filter (capped at 15 projects fan-out; >15 returns 400 `FANOUT_TOO_LARGE`). | `project_ids[]`, query filters |
+| `create_issue` | New issue with optional state/priority/assignees/labels/dates. | `project_id`, `name`, `description?`, `state_id?`, `priority?`, `assignees?`, `labels?`, `due_date?` |
+| `update_issue` | Patch — state transitions, reassignment, priority, dates. | `project_id`, `issue_id` + fields |
+| `list_projects` | List all projects (id ↔ name). | — |
+| `list_states` | Workflow states for a project (id ↔ name). | `project_id` |
+| `list_cycles` | Sprints/cycles for a project. | `project_id` |
+| `list_labels` | Available issue labels for a project. | `project_id` |
+
+</Accordion>
+
+---
+
+## vaultwarden — secrets manager (14 tools)
+
+**Backend**: HTTP via `proxyToCtrl()` to ctrl-api's `/api/v1/vaultwarden/*`, which proxies to a long-running `bw serve` sidecar on `vault-cli:8087`, which talks to Vaultwarden's REST on `vaultwarden:80` *(packages/mcp-server/src/tools/vaultwarden.ts:1-19)*. The session is unlocked at boot using `VAULTWARDEN_BW_PASSWORD` and never re-locked.
+
+Deliberately narrow surface (no attachment upload/download, no Send, no password history) because remote LLMs talk to this app over a 1-hour bearer token *(packages/mcp-server/src/tools/vaultwarden.ts:12-19)*. `get_vault_item` is the **only** tool in any app that returns secret values (passwords, TOTP).
+
+<Accordion title="vaultwarden — full tool table">
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `vaultwarden_status` | Probe session, lastSync, userEmail. | — |
+| `vaultwarden_sync` | Force re-pull from server. | — |
+| `list_vault_items` | List items with filters. | `search`, `folder_id?`, `collection_id?`, `org_id?` |
+| `search_vault_items` | POST variant for special chars. | `query` (free-text) |
+| `get_vault_item` | Return one item with password/TOTP — the only credential-returning tool. | `id` |
+| `create_vault_item` | New login. | `name`, `username`, `password`, `uri?`, `folder_id?`, `notes?` |
+| `update_vault_item` | Patch — rotate password, rename, move folder. | `id` + fields |
+| `delete_vault_item` | Soft-delete (30-day recovery in web UI). | `id` |
+| `list_vault_folders` | List folders. | — |
+| `create_vault_folder` | New folder. | `name` |
+| `list_vault_collections` | Org structure: read-only. | — |
+| `list_vault_organizations` | Org membership: read-only. | — |
+| `generate_password` | Random or diceware. | `length`, `uppercase`, `digits`, `special`, `passphrase?` |
+| `vault_refresh` | Rewrite `/opt/alfred/.env` from vault state and restart impacted services. | — |
+
+</Accordion>
+
+---
+
+## execute — Composio v3 integration (6 tools)
+
+**Backend**: HTTP via `proxyToCtrl()` to ctrl-api's `/api/v1/integrations/*` *(packages/mcp-server/src/tools/execute.ts:1-19)*. ctrl-api fronts Composio's v3 platform using `COMPOSIO_API_KEY` + `COMPOSIO_USER_ID`.
+
+The whole surface is built around one primitive — `composio_execute` — so adding a new third-party app (Gmail, Stripe, Notion, …) requires no MCP redeploy. There is no hardcoded action inventory; agents enumerate at runtime via `list_composio_tools`.
+
+<Accordion title="execute — full tool table">
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `list_composio_tools` | Enumerate actions per toolkit, or list connected toolkits when called with no args. | `toolkit?` |
+| `composio_execute` | Execute one Composio action by slug. NOT idempotent on writes. Returns `{action, toolkit, result}`. | `action` (UPPER_SNAKE_CASE, e.g. `GMAIL_SEND_EMAIL`), `arguments` (JSON object) |
+| `list_connections` | Active accounts + status. | — |
+| `create_connection` | OAuth flow; returns auth URL to redirect Sir to. | `toolkit_slug`, `redirect_url?` |
+| `reconnect_connection` | Refresh expired credentials. | `id` |
+| `delete_connection` | Revoke and clean up. | `id` |
+
+</Accordion>
+
+---
+
+## hermes — runtime delegation + scheduling (7 tools)
+
+**Backend**: HTTP via `proxyToCtrl()` to ctrl-api's `/api/v1/hermes/*`, which talks to either the `main` profile gateway (`hermes:18789`) or the `workers` profile gateway (`hermes:18790`) *(packages/mcp-server/src/tools/hermes.ts:11-15)*. Scheduling (`schedule_prompt`/`list_scheduled`/`cancel_scheduled`) goes through `docker exec` against the Hermes CLI rather than HTTP — there are no HTTP `/v1/cron` endpoints on Hermes *(packages/mcp-server/src/tools/hermes.ts:140-206)*.
+
+Added on 2026-05-26 to support the voice agent: the realtime voice runtime delegates long-form research/composition to the text-tuned worker model, and uses scheduling for reminders. All seven tools accept an optional `profile: "main" | "workers"` arg.
+
+<Accordion title="hermes — full tool table">
+
+| Tool | Purpose | Key params |
+|------|---------|-----------|
+| `run` | Spawn a background run with a prompt + optional return-channel (fire-and-forget). | `prompt`, `profile?` (default `workers`), `return_channel?` |
+| `stop_run` | Cancel a running task. | `run_id` |
+| `health` | Liveness check on a profile. | `profile?` (default `main`) |
+| `list_models` | Available model names (profiles exposed as OpenAI-compatible model registry). | `profile?` (default `main`) |
+| `schedule_prompt` | Schedule a one-shot or recurring prompt; ISO-8601 timestamp or 5-field cron. | `prompt`, `schedule`, `profile?` (default `main`), `name?` |
+| `list_scheduled` | Show pending cron jobs. | `profile?` (default `main`) |
+| `cancel_scheduled` | Remove a scheduled job by id. | `id`, `profile?` (default `main`) |
+
+</Accordion>
+
+---
+
+## alfred-ctrl — HTTP proxy (not stdio)
+
+The seventh MCP server registered per Hermes profile is **not** a separate process. It's an HTTP proxy declaration in each profile's `config.yaml` *(packages/hermes/init/profiles/*/config.yaml)* that points at ctrl-api directly:
+
+```yaml
+mcp:
+  - name: alfred-ctrl
+    type: http
+    url: http://ctrl-api:3100
+    auth:
+      type: bearer
+      token_file: /alfred-data/.gateway-token
+```
+
+Hermes calls ctrl-api over HTTP and surfaces the full ~40-route surface (vault routes, decisions, signals, observations, settings, system, …) as tools. The stdio `alfred` app above exposes a curated 24-tool subset suitable for remote LLMs — `alfred-ctrl` is the full unfiltered surface, intended for in-tenant agents (the main chat persona, ephemeral exec subagents, alfred-learn workers) where trust is much higher.
+
+See [ctrl-api routes](/reference/ctrl-api-routes) for the complete endpoint catalogue.
+
+---
+
+## Approval flow — bearer or HTML form
+
+The HTTP MCP server (`alfred-mcp-server`, `mcp.${DOMAIN}`) supports two auth paths *(packages/mcp-server/src/index.ts:122-242)*:
+
+<Tabs>
+<Tab title="Human (claude.ai)">
+1. `POST /<app>/mcp` → 401 with `WWW-Authenticate`.
+2. Browser redirected to `/authorize`.
+3. Sir enters `MCP_APPROVAL_SECRET` on an HTML form.
+4. Form posts to `/approve` with `secret` + `client_id` + `code_challenge` + `app_id` + `redirect_uri`.
+5. Server validates the secret (timing-safe compare), issues an auth code, redirects back with code.
+6. Token good for **1 hour** *(packages/mcp-server/src/oauth/provider.ts:35)*.
+</Tab>
+<Tab title="Programmatic (bearer)">
+1. Set `Authorization: Bearer ${MCP_APPROVAL_SECRET}`.
+2. Middleware short-circuits the OAuth verifier and synthesises `req.auth` directly.
+3. Blast radius is the same as a full OAuth token (the secret can already mint one), but the round-trip is gone.
+</Tab>
+</Tabs>
+
+Stdio apps (the 6 spawned by Hermes) don't use this flow — they inherit auth from the parent Hermes profile via the gateway token at `/alfred-data/.gateway-token`.
+
+---
+
+## Cross-cutting notes
+
+<Info>
+
+- **Tool dispatch is transport-agnostic** *(packages/mcp-server/src/tools/types.ts:43-51)*. Every tool defines `inputSchema` (Zod) + `buildRequest` (returns method + path + body/query). The same definitions serve both stdio child processes (Hermes) and the HTTP server (Claude connector).
+- **The HTTP server is a per-tenant container**; stdio apps are per-profile child processes inside Hermes. Both run on the same compose network and talk to the same ctrl-api.
+- **No tool returns secret values except `get_vault_item`**. Even `vaultwarden_status` and `list_vault_items` omit passwords/TOTP.
+- **`composio_execute` is the explicit Composio surface**; do not use it for Telegram or Slack notifications — those are Hermes main-profile channels reached via `notify_principal`.
+- **Sure mutations have two backings**: `Backing: REST` is straightforward REST; `Backing: Rails-runner` is a sandboxed `bin/rails runner` shell-out that ctrl-api uses for endpoints Sure's REST doesn't expose. Both go through the same MCP call.
+
+</Info>

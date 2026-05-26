@@ -1,0 +1,560 @@
+---
+title: "alfred-state.db schema"
+description: "Tables, columns, indexes, and TTLs across the three SQLite stores."
+---
+
+Alfred Black persists machine state in three SQLite files plus the markdown vault — the **four-store architecture** (`packages/ctrl/docs/STORAGE-ARCHITECTURE.md`, PLAN.md Part I). This page documents every table across the three SQLite stores, the index strategy on each, and which service owns the write handle.
+
+<Info>
+**Single-writer discipline.** ctrl-api is the **only** process with a write handle to `alfred-state.db`, `ingest.db`, and `cold.db` *(packages/ctrl/src/db/schema.sql:17-20)*. `alfred-learn`, the `alfred` vault daemon, every Hermes profile, and every Wasp web operation writes through ctrl-api HTTP routes. This eliminates SQLite multi-process write contention and makes the `vault_index` read-index structurally consistent.
+</Info>
+
+## Pragmas applied at open
+
+ctrl-api applies these PRAGMAs on every database open *(packages/ctrl/src/db/state.ts:59-62)*:
+
+```sql
+PRAGMA journal_mode = WAL;        -- concurrent readers never block the writer
+PRAGMA busy_timeout = 5000;       -- 5s contention absorption
+PRAGMA foreign_keys = ON;
+PRAGMA synchronous = NORMAL;      -- good durability, acceptable fsync batching
+```
+
+`sqlite-vec` is loaded at boot when `SQLITE_VEC_PATH` is set, and the `embedding` vec0 virtual table is created in-process (it cannot be created via a static `.sql` file because the extension must be loaded first) *(state.ts:74-98)*.
+
+---
+
+## Store 2: `alfred-state.db` — working memory
+
+Located at `process.env.STATE_DB_PATH ?? ./data/alfred-state.db` *(packages/ctrl/src/db/state.ts:24-26)*. Schema lives at `packages/ctrl/src/db/schema.sql` (idempotent `CREATE TABLE IF NOT EXISTS`) plus numbered migrations at `packages/ctrl/src/db/migrations/`.
+
+### `signal` — demoted signal records
+
+Working-memory unit of inbound salience the system extracted from a stream event ("an email from X mentions deadline Y"). Never lives in the vault *(packages/ctrl/src/db/schema.sql:34-53)*.
+
+**Columns**
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | TEXT PRIMARY KEY | ULID |
+| `ts` | TEXT NOT NULL | ISO-8601 creation time (TTL anchor) |
+| `kind` | TEXT NOT NULL | `deadline \| mention \| request \| anomaly \| …` |
+| `source` | TEXT NOT NULL | Dotted source id (e.g. `signal_extract.email`) |
+| `stream_event_id` | TEXT | By-value ref into `ingest.db.stream_event` |
+| `entity_ref` | TEXT | Vault path of the related record, if any |
+| `matter_ref` | TEXT | Vault path of the related matter |
+| `headline` | TEXT NOT NULL | |
+| `body` | TEXT | Extracted detail |
+| `salience` | REAL NOT NULL DEFAULT 0.5 | `[0, 1]` |
+| `status` | TEXT NOT NULL DEFAULT `'open'` | `open \| routed \| dismissed \| folded \| dispatching \| routed_human \| routed_agent \| routed_suppressed \| agent_responded` |
+| `payload_json` | TEXT | Full structured payload |
+| `created_at`, `updated_at` | TEXT | Defaults to `datetime('now')` |
+
+**Indexes**
+
+```sql
+idx_signal_ts        ON signal(ts DESC)
+idx_signal_status_ts ON signal(status, ts DESC)
+idx_signal_matter    ON signal(matter_ref, ts DESC)
+idx_signal_kind      ON signal(kind, ts DESC)
+```
+
+**TTL**: 90 days → `archive_signal` in `cold.db`.
+
+### `observation` — intuition engine observations
+
+What the intuition engine learns by watching the principal act ("principal always delegates X to agent Y"). Feeds the instinct / pattern layer *(packages/ctrl/src/db/schema.sql:62-81)*.
+
+**Columns**
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | TEXT PRIMARY KEY | ULID |
+| `ts` | TEXT NOT NULL | ISO-8601 (TTL anchor) |
+| `subject` | TEXT NOT NULL | `principal \| principal_via_alfred \| alfred` |
+| `kind` | TEXT NOT NULL | `pattern_proposal \| synthesis \| contradiction \| assumption \| constraint \| preference \| decision \| signal` |
+| `decision_ref` | TEXT | Vault path of the originating `decision/` record |
+| `instinct_ref` | TEXT | Vault path of a matched instinct |
+| `summary` | TEXT NOT NULL | |
+| `detail` | TEXT | |
+| `confidence` | REAL NOT NULL DEFAULT 0.5 | `[0, 1]` |
+| `status` | TEXT NOT NULL DEFAULT `'open'` | `open \| promoted \| retired` |
+| `payload_json` | TEXT | |
+| `created_at`, `updated_at` | TEXT | |
+| `processed_at` | TEXT | Added by migration `0001` — stamped when Reflection has consumed the observation |
+
+**Indexes**
+
+```sql
+idx_observation_ts        ON observation(ts DESC)
+idx_observation_kind_ts   ON observation(kind, ts DESC)
+idx_observation_subject   ON observation(subject, ts DESC)
+idx_observation_status    ON observation(status, ts DESC)
+idx_observation_processed ON observation(processed_at)   -- added 0001
+```
+
+**TTL**: 90 days → `archive_observation` in `cold.db`.
+
+### `routing_decision` — machine routing decisions
+
+The intelligence layer's `decision`. Named `routing_decision` (not `decision`) to avoid colliding with the vault's principal-facing `decision/` records *(schema.sql:83-108)*.
+
+**Columns**
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | TEXT PRIMARY KEY | ULID |
+| `ts` | TEXT NOT NULL | ISO-8601 (TTL anchor) |
+| `signal_id` | TEXT | FK to `signal(id)` with `ON DELETE SET NULL` |
+| `tier` | TEXT NOT NULL | `ask \| confirm \| act` |
+| `chosen_path` | TEXT NOT NULL | `agent \| desk \| dismiss \| hold` |
+| `agent` | TEXT | Target agent id when `chosen_path=agent` |
+| `instinct_ref` | TEXT | Vault path of the matched instinct |
+| `discretion` | REAL | Discretion score that gated the choice |
+| `reason` | TEXT | |
+| `outcome` | TEXT | `pending \| dispatched \| completed \| failed` |
+| `payload_json` | TEXT | |
+| `created_at`, `updated_at` | TEXT | |
+
+**Indexes**
+
+```sql
+idx_routing_decision_ts     ON routing_decision(ts DESC)
+idx_routing_decision_signal ON routing_decision(signal_id)
+idx_routing_decision_tier   ON routing_decision(tier, ts DESC)
+```
+
+**TTL**: 90 days → `archive_routing_decision` in `cold.db`.
+
+### `audit` — action ledger
+
+Every `signal-action`, `steward-action`, `desk-action`, `state-change`, `needs_attention_action`, `decision`, and `vault_write` becomes one row here, not a markdown file. This is the machine-verifiable audit ledger — the Desk audit feed and the `/decisions`, `/state-changes`, `/attention` list routes serve from it *(schema.sql:110-142)*.
+
+**Columns**
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | TEXT PRIMARY KEY | ULID |
+| `ts` | TEXT NOT NULL | When the action happened (TTL anchor) |
+| `action_type` | TEXT NOT NULL | `signal_action \| steward_action \| desk_action \| state_change \| needs_attention_action \| decision \| vault_write` |
+| `actor` | TEXT NOT NULL | `principal \| alfred \| <agent-id> \| <source>` |
+| `source` | TEXT | Dotted source id |
+| `target_path` | TEXT | Vault path the action touched |
+| `target_kind` | TEXT | `matter \| task \| needs_attention \| decision \| …` |
+| `subject_ref` | TEXT | Related vault path (decision, signal, …) |
+| `summary` | TEXT NOT NULL | |
+| `changes_json` | TEXT | Structured before/after diff |
+| `mode` | TEXT NOT NULL DEFAULT `'live'` | `live \| shadow` |
+| `confidence` | REAL | |
+| `undo_json` | TEXT | Inverse-action recipe, if reversible |
+| `payload_json` | TEXT | Full structured payload |
+| `created_at` | TEXT | |
+
+**Indexes**
+
+```sql
+idx_audit_ts        ON audit(ts DESC)
+idx_audit_type_ts   ON audit(action_type, ts DESC)
+idx_audit_actor_ts  ON audit(actor, ts DESC)
+idx_audit_target    ON audit(target_path, ts DESC)
+idx_audit_source_ts ON audit(source, ts DESC)
+idx_audit_subject   ON audit(subject_ref, ts DESC)
+```
+
+**TTL**: 365 days → `archive_audit` in `cold.db`. The `/api/v1/state/audit` reader transparently merges hot + cold *(packages/ctrl/src/db/coldRead.ts)*.
+
+### `link` — cross-record graph edges
+
+An explicit, queryable edge between two records. Either endpoint may be a vault path (`matter/x.md`) or an `alfred-state.db` row id (`signal:01J…`). Replaces the implicit graph that lived in scattered frontmatter `*_ref` fields *(schema.sql:144-165)*.
+
+**Columns**
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | TEXT PRIMARY KEY | ULID |
+| `ts` | TEXT NOT NULL | TTL anchor |
+| `src_ref` | TEXT NOT NULL | E.g. `matter/x.md`, `signal:<id>` |
+| `dst_ref` | TEXT NOT NULL | |
+| `rel` | TEXT NOT NULL | `mentions \| derived_from \| resolves \| blocks \| child_of \| observed_in \| …` |
+| `weight` | REAL NOT NULL DEFAULT 1.0 | |
+| `payload_json` | TEXT | |
+| `created_at` | TEXT | |
+
+**Indexes**
+
+```sql
+idx_link_unique  UNIQUE (src_ref, dst_ref, rel)
+idx_link_src     ON link(src_ref)
+idx_link_dst     ON link(dst_ref)
+idx_link_rel     ON link(rel)
+```
+
+**TTL**: 365 days → `archive_link` in `cold.db`.
+
+### `vault_index` — read-index over the markdown vault
+
+One row per canonical vault record. ctrl-api is the sole vault writer, so it updates this index on every write (create / edit / move / delete) — drift is structurally impossible *(schema.sql:167-190)*. A boot-time reconciler walks the vault once to catch out-of-band edits (a human editing markdown directly in Obsidian).
+
+**Columns**
+
+| Column | Type | Notes |
+|---|---|---|
+| `path` | TEXT PRIMARY KEY | Vault-relative path (e.g. `matter/acme.md`) |
+| `record_type` | TEXT NOT NULL | One of the 12 canonical types |
+| `title` | TEXT | |
+| `status` | TEXT | `frontmatter.status` if present |
+| `as_of` | TEXT | `frontmatter.as_of` if present |
+| `frontmatter_json` | TEXT | Parsed frontmatter snapshot |
+| `body_preview` | TEXT | First ~500 chars |
+| `size_bytes` | INTEGER | |
+| `mtime` | TEXT | File mtime (ISO-8601) |
+| `indexed_at` | TEXT | |
+
+**Indexes**
+
+```sql
+idx_vault_index_type   ON vault_index(record_type, mtime DESC)
+idx_vault_index_status ON vault_index(record_type, status)
+idx_vault_index_mtime  ON vault_index(mtime DESC)
+```
+
+**TTL**: none — drops only when the underlying vault record is deleted.
+
+### `embedding_meta` + `embedding` vec0 — vector store
+
+`embedding` is the `sqlite-vec` vec0 virtual table holding 768-dim vectors from Ollama's `nomic-embed-text` *(schema.sql:192-221, state.ts:74-98)*. vec0 holds only the vector + a rowid; `embedding_meta` carries the human-readable columns keyed by that same rowid.
+
+**`embedding_meta` columns**
+
+| Column | Type | Notes |
+|---|---|---|
+| `rowid` | INTEGER PRIMARY KEY | Shared rowid with the vec0 `embedding` table |
+| `ref` | TEXT NOT NULL | Vault path or `signal:<id>` the vector embeds |
+| `ref_kind` | TEXT NOT NULL | `vault \| signal \| observation` |
+| `ts` | TEXT NOT NULL | ISO-8601 (TTL anchor) |
+| `model` | TEXT NOT NULL DEFAULT `'nomic-embed-text'` | |
+| `chunk_index` | INTEGER NOT NULL DEFAULT 0 | For chunked records |
+| `text_preview` | TEXT | |
+| `created_at` | TEXT | |
+
+**vec0 DDL** (created in-process by `state.ts` after the extension loads):
+
+```sql
+CREATE VIRTUAL TABLE IF NOT EXISTS embedding USING vec0(
+  embedding float[768]
+);
+```
+
+**Indexes (on `embedding_meta`)**
+
+```sql
+idx_embedding_meta_ref  ON embedding_meta(ref)
+idx_embedding_meta_kind ON embedding_meta(ref_kind, ts DESC)
+```
+
+### `health_checks` — single-VM liveness log
+
+Repurposed from the old SaaS provisioning schema *(schema.sql:223-239)*. `instance_id` is always `0` on single-VM Alfred Black.
+
+| Column | Type |
+|---|---|
+| `id` | INTEGER PRIMARY KEY AUTOINCREMENT |
+| `instance_id` | INTEGER NOT NULL DEFAULT 0 |
+| `checked_at` | TEXT NOT NULL DEFAULT `datetime('now')` |
+| `status` | TEXT NOT NULL |
+| `disk_percent` | REAL |
+| `memory_percent` | REAL |
+| `response_json` | TEXT |
+
+Index: `idx_health_checks_checked ON health_checks(checked_at DESC)`.
+
+### `events` — legacy event log
+
+Repurposed from the old provisioning schema *(schema.sql:241-250)*. `instance_id` is always `0`.
+
+| Column | Type |
+|---|---|
+| `id` | INTEGER PRIMARY KEY AUTOINCREMENT |
+| `instance_id` | INTEGER NOT NULL DEFAULT 0 |
+| `event_type` | TEXT NOT NULL |
+| `message` | TEXT NOT NULL |
+| `details_json` | TEXT |
+| `created_at` | TEXT NOT NULL DEFAULT `datetime('now')` |
+
+Indexes: `idx_events_created ON events(created_at DESC)`, `idx_events_type ON events(event_type, created_at DESC)`.
+
+### `alfred_principal` — cross-channel identity (migration `0002`)
+
+The continuity-layer principal table — Sir is one principal whether he messages from Telegram, Slack, or email *(packages/ctrl/src/db/migrations/0002_alfred_journal.sql)*.
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | TEXT PRIMARY KEY | E.g. `'owner'`, `'spouse'` |
+| `display_name` | TEXT NOT NULL | |
+| `is_owner` | INTEGER NOT NULL DEFAULT 0 | Exactly one row has this set |
+| `created_at` | TEXT NOT NULL | |
+
+Bootstrap row: `('owner', 'Sir', 1)`.
+
+### `alfred_principal_channel` — channel-to-principal binding
+
+`(channel, chat_id) → principal_id` *(migration `0002`)*.
+
+| Column | Type | Notes |
+|---|---|---|
+| `channel` | TEXT NOT NULL | `telegram \| slack \| email \| web \| phone \| …` |
+| `chat_id` | TEXT NOT NULL | Channel-specific id |
+| `principal_id` | TEXT NOT NULL | FK to `alfred_principal(id)` |
+| `added_at` | TEXT NOT NULL | |
+
+Primary key: `(channel, chat_id)`.
+Index: `idx_alfred_principal_channel_by_principal ON alfred_principal_channel(principal_id)`.
+
+### `alfred_journal` — append-only Alfred↔Sir ledger
+
+Every outbound and inbound exchange, across every channel. The Hermes `pre_gateway_dispatch` hook queries this on every inbound message and rewrites the user message to inject recent context — so the `main` profile sees a coherent conversation across channels *(migration `0002`)*.
+
+**Columns**
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | TEXT PRIMARY KEY | ULID |
+| `ts` | TEXT NOT NULL | ISO-8601 UTC |
+| `principal_id` | TEXT | FK to `alfred_principal(id)`; nullable for system entries |
+| `channel` | TEXT NOT NULL | `telegram \| slack \| email \| web \| phone \| …` |
+| `chat_id` | TEXT NOT NULL | |
+| `direction` | TEXT NOT NULL | CHECK in (`outbound`, `inbound`) |
+| `message` | TEXT NOT NULL | Exact bytes Sir saw or typed |
+| `source_kind` | TEXT | `delegate \| instinct \| reply \| init \| system` |
+| `source_ref` | TEXT | E.g. decision_id, signal_id |
+| `hermes_session_id` | TEXT | The Hermes session the exchange landed in |
+| `hermes_profile` | TEXT | `main \| workers \| heavy` |
+| `status` | TEXT NOT NULL DEFAULT `'delivered'` | CHECK in (`pending`, `delivered`, `failed`, `received`) |
+| `delivery_error` | TEXT | Set when `status='failed'` |
+| `metadata` | TEXT | Structured payload for richer context |
+| `created_at`, `updated_at` | TEXT | |
+
+**Indexes**
+
+```sql
+idx_alfred_journal_lookup       ON alfred_journal(channel, chat_id, ts DESC)
+idx_alfred_journal_by_principal ON alfred_journal(principal_id, ts DESC)
+idx_alfred_journal_by_source    ON alfred_journal(source_kind, source_ref)
+idx_alfred_journal_pending      ON alfred_journal(status, ts) WHERE status='pending'
+```
+
+---
+
+## Store 3: `cold.db` — forensic long tail
+
+Located at `process.env.COLD_DB_PATH ?? ./data/cold.db` *(packages/ctrl/src/db/cold.ts:41-42)*. ctrl-api is the sole writer. The compactor rolls aged-out rows from `alfred-state.db` into `cold.db`. Per-row `body` blobs are zstd-compressed (Node ≥22.15) or gzip-fallback *(cold.ts:55-89)*.
+
+<Accordion title="Cold archive tables">
+
+### `archive_signal` (TTL anchor: 90d from `alfred-state.db.signal.ts`)
+
+| Column | Type |
+|---|---|
+| `id` | TEXT PRIMARY KEY |
+| `ts` | TEXT NOT NULL |
+| `kind`, `source`, `status`, `matter_ref` | TEXT |
+| `codec` | TEXT NOT NULL (`'zstd'` or `'gzip'`) |
+| `body` | BLOB NOT NULL (compressed JSON) |
+| `archived_at` | TEXT NOT NULL |
+
+Indexes: `idx_archive_signal_ts`, `idx_archive_signal_kind`, `idx_archive_signal_status`.
+
+### `archive_observation` (TTL anchor: 90d)
+
+| Column | Type |
+|---|---|
+| `id` | TEXT PRIMARY KEY |
+| `ts` | TEXT NOT NULL |
+| `subject`, `kind`, `status` | TEXT |
+| `codec` | TEXT NOT NULL |
+| `body` | BLOB NOT NULL |
+| `archived_at` | TEXT NOT NULL |
+
+Indexes: `idx_archive_observation_ts`, `idx_archive_observation_kind`.
+
+### `archive_routing_decision` (TTL anchor: 90d)
+
+| Column | Type |
+|---|---|
+| `id` | TEXT PRIMARY KEY |
+| `ts` | TEXT NOT NULL |
+| `tier`, `chosen_path`, `outcome`, `signal_id` | TEXT |
+| `codec` | TEXT NOT NULL |
+| `body` | BLOB NOT NULL |
+| `archived_at` | TEXT NOT NULL |
+
+Indexes: `idx_archive_routing_decision_ts`, `idx_archive_routing_decision_tier`.
+
+### `archive_audit` (TTL anchor: 365d)
+
+| Column | Type |
+|---|---|
+| `id` | TEXT PRIMARY KEY |
+| `ts` | TEXT NOT NULL |
+| `action_type`, `actor`, `source`, `target_path`, `subject_ref`, `mode` | TEXT |
+| `codec` | TEXT NOT NULL |
+| `body` | BLOB NOT NULL |
+| `archived_at` | TEXT NOT NULL |
+
+Indexes: `idx_archive_audit_ts`, `idx_archive_audit_type`, `idx_archive_audit_actor`, `idx_archive_audit_source`, `idx_archive_audit_target`.
+
+### `archive_link` (TTL anchor: 365d)
+
+| Column | Type |
+|---|---|
+| `id` | TEXT PRIMARY KEY |
+| `ts` | TEXT NOT NULL |
+| `src_ref`, `dst_ref`, `rel` | TEXT |
+| `codec` | TEXT NOT NULL |
+| `body` | BLOB NOT NULL |
+| `archived_at` | TEXT NOT NULL |
+
+Indexes: `idx_archive_link_ts`, `idx_archive_link_src`, `idx_archive_link_dst`.
+
+### `cold_compact_log` — observability for the compactor
+
+| Column | Type |
+|---|---|
+| `id` | INTEGER PRIMARY KEY AUTOINCREMENT |
+| `ran_at` | TEXT NOT NULL |
+| `table_name` | TEXT NOT NULL |
+| `cutoff_ts` | TEXT NOT NULL |
+| `rows_moved` | INTEGER NOT NULL DEFAULT 0 |
+| `bytes_cold` | INTEGER NOT NULL DEFAULT 0 |
+| `duration_ms` | INTEGER NOT NULL DEFAULT 0 |
+| `ok` | INTEGER NOT NULL DEFAULT 1 |
+| `note` | TEXT |
+
+Index: `idx_cold_compact_ran ON cold_compact_log(ran_at DESC)`.
+
+</Accordion>
+
+---
+
+## Store 4: `ingest.db` — raw inbound firehose
+
+Located at `process.env.INGEST_DB_PATH ?? ./data/ingest.db` *(packages/ctrl/src/db/ingest.ts:16-17)*. Separated from `alfred-state.db` so a firehose burst can never take the write lock on working memory. Hard 7-day TTL — consume-then-delete by design, no archive *(packages/ctrl/src/db/ingest-schema.sql:1-22)*.
+
+### `stream_event` — raw inbound payload
+
+Every email, Telegram message, Slack DM, omi transcript, webhook, …
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | TEXT PRIMARY KEY | ULID (also gives sequential ordering) |
+| `ts` | TEXT NOT NULL | Arrival time (TTL anchor) |
+| `stream` | TEXT NOT NULL | Logical stream (`email`, `telegram`) |
+| `channel` | TEXT | Channel / account |
+| `external_id` | TEXT | Upstream id (dedupe key) |
+| `kind` | TEXT NOT NULL DEFAULT `'message'` | `message \| attachment \| webhook \| …` |
+| `payload_json` | TEXT NOT NULL | Raw inbound payload |
+| `processed_at` | TEXT | Set when EventProcessor consumes; `NULL` = pending |
+| `processed_by` | TEXT | Consumer worker / workflow |
+| `created_at` | TEXT NOT NULL | |
+
+**Indexes**
+
+```sql
+idx_stream_event_pending ON stream_event(processed_at, ts) WHERE processed_at IS NULL
+idx_stream_event_ts      ON stream_event(ts)
+idx_stream_event_stream  ON stream_event(stream, ts DESC)
+idx_stream_event_external UNIQUE (stream, external_id) WHERE external_id IS NOT NULL
+```
+
+The partial unique index on `(stream, external_id)` is the dedupe key — re-arriving webhooks are silently dropped.
+
+### `ingest_sweep_log` — sweep observability
+
+One row per TTL sweep run *(ingest-schema.sql:49-64)*. Tracks alerts on stream events that aged out without ever being consumed (means EventProcessor has fallen behind).
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PRIMARY KEY AUTOINCREMENT | |
+| `ran_at` | TEXT NOT NULL | |
+| `cutoff_ts` | TEXT NOT NULL | Events with `ts < cutoff` were deleted |
+| `total_deleted` | INTEGER NOT NULL DEFAULT 0 | |
+| `processed_deleted` | INTEGER NOT NULL DEFAULT 0 | Consumed-then-aged-out (healthy) |
+| `stale_dropped` | INTEGER NOT NULL DEFAULT 0 | Never-consumed-then-aged-out (alert!) |
+
+Index: `idx_ingest_sweep_ran ON ingest_sweep_log(ran_at DESC)`.
+
+---
+
+## Migrations
+
+The migration runner (`runMigrations` in `packages/ctrl/src/db/migrate.ts`) is idempotent, transactional, and gated on the SQLite `user_version` PRAGMA. Numbered SQL files in `packages/ctrl/src/db/migrations/`:
+
+| File | Adds | Purpose |
+|---|---|---|
+| `0001_fix_pack.sql` | `observation.processed_at` column + `idx_observation_processed` index | Anchor for Reflection's "has this observation been seen yet?" check. Fixes the original `mark_observations_processed` bug (wrote to the vault, never `alfred-state.db`). |
+| `0002_alfred_journal.sql` | `alfred_principal`, `alfred_principal_channel`, `alfred_journal` tables + indexes; bootstraps the owner principal | The continuity layer for "one Alfred" UX — bridges the per-(user, channel) Hermes sessions so the `main` profile sees a coherent conversation across channels. |
+
+<Warning>
+**Never edit a merged migration.** `schema.sql` is `CREATE-IF-NOT-EXISTS` only and cannot evolve an existing table. New columns and tables must land in a new migration file, never by mutating an old one.
+</Warning>
+
+---
+
+## TTL summary
+
+| Table | Hot retention | Cold retention | Then |
+|---|---|---|---|
+| `signal` | 90 days | indefinite (compressed) | `archive_signal` |
+| `observation` | 90 days | indefinite | `archive_observation` |
+| `routing_decision` | 90 days | indefinite | `archive_routing_decision` |
+| `audit` | 365 days | indefinite | `archive_audit` |
+| `link` | 365 days | indefinite | `archive_link` |
+| `vault_index` | indefinite (drops on vault delete) | n/a | — |
+| `embedding_meta` + `embedding` (vec0) | indefinite | n/a | — |
+| `alfred_journal` | indefinite | n/a (deferred) | — |
+| `stream_event` (ingest.db) | **7 days hard** | none | deleted |
+
+The TTL compactor (`packages/ctrl/src/db/compactor.ts`) runs daily by default. `/api/v1/state/cold/compact` can force-run it.
+
+---
+
+## Quick reference — typical queries
+
+**Find every observation tied to one matter:**
+
+```sql
+SELECT id, ts, kind, summary, confidence
+FROM observation
+WHERE payload_json LIKE '%"matter_ref":"matter/acme.md"%'
+ORDER BY ts DESC
+LIMIT 50;
+```
+
+**Cross-tier audit by actor:**
+
+```sql
+-- ctrl-api does this merge automatically at /api/v1/state/audit
+SELECT id, ts, summary FROM audit  WHERE actor = 'alfred'
+UNION ALL
+SELECT id, ts, summary FROM cold.archive_audit WHERE actor = 'alfred'
+ORDER BY ts DESC LIMIT 100;
+```
+
+**Find pending stream events older than 1h (EventProcessor lag check):**
+
+```sql
+SELECT stream, COUNT(*) AS pending
+FROM stream_event
+WHERE processed_at IS NULL
+  AND ts < datetime('now', '-1 hour')
+GROUP BY stream;
+```
+
+---
+
+## See also
+
+- [ctrl-api routes](/reference/ctrl-api-routes) — every endpoint that reads or writes these tables.
+- [Frontmatter shapes](/reference/frontmatter-shapes) — the vault records the `vault_index` indexes.
+- [Temporal workflows](/reference/temporal-workflows) — the workflows that produce the rows above.
+- `packages/ctrl/docs/STORAGE-ARCHITECTURE.md` — the full design rationale for the four-store split.

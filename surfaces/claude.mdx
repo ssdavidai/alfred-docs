@@ -1,0 +1,55 @@
+---
+title: "Claude"
+description: "MCP setup from Claude Desktop and Claude Code — now folded into Settings → Agent Configuration."
+---
+
+<Info>
+`/claude` is a thin redirect to **[`/settings#agent`](/surfaces/study)** *(packages/web/src/dashboard/ClaudeRedirect.tsx)*. The old standalone page was retired in F84; its sections (MCP server URLs, approval secret, Skill download, vault login) are now stacked below the agent-model matrix on the Settings page.
+</Info>
+
+## Why the redirect
+
+The standalone `/claude` page started as a setup surface for a single concept (MCP from claude.ai) and accreted sections that overlapped with the Settings page (model picker, API keys, audit). Rather than keep two places where the principal configures their agent, F84 collapsed both into one: **Settings → Agent Configuration**. The redirect keeps every old bookmark, in-product link, and email pointer working — they all land on the same content, just inside the unified back office.
+
+## What the principal sees at `/settings#agent`
+
+The `ClaudeSetupSections` block renders five sub-sections, each only visible when its data is present *(packages/web/src/dashboard/ClaudePage.tsx:319-341)*:
+
+<Steps>
+  <Step title="MCP servers">
+    One row per enabled app, with its OAuth-protected MCP endpoint URL (`apps[].mcp_url`). The principal copies each URL into Claude.ai → Settings → Connectors (or `claude_desktop_config.json` for Claude Desktop / `~/.config/claude-code/mcp.json` for Claude Code). Each app has a CopyReveal block so the value stays hidden until needed *(ClaudePage.tsx:366-400)*.
+  </Step>
+
+  <Step title="Approval secret">
+    `MCP_APPROVAL_SECRET` is the bearer token Claude exchanges at the MCP server's `/authorize` form to mint an OAuth token. The page **never echoes** the secret on a load — it surfaces only the `approval_secret_set: true` flag and a `last_rotated_at` timestamp. The fresh value is returned exactly once by the rotate action *(ClaudePage.tsx:61-69, 402-410)*.
+  </Step>
+
+  <Step title="Skill (custom instructions)">
+    Two file downloads: `custom_instructions.md` (paste into the claude.ai profile's Personalisation field) and one per-app skill markdown (a primer Claude reads at the start of every turn that uses that MCP server) *(ClaudePage.tsx:412-456)*.
+  </Step>
+
+  <Step title="Composio skills">
+    One markdown file per connected toolkit. Each contains the tenant-specific connection id and is regenerated when the principal reconnects the toolkit. The page downloads them as Blob URLs — they never live on the SaaS static asset path *(ClaudePage.tsx:458-489)*.
+  </Step>
+
+  <Step title="Vault login">
+    The Vaultwarden web URL, the email Alfred provisioned for the principal, and the status of the master password. The password itself is only echoed once at provisioning time and not stored in plaintext on any subsequent load *(ClaudePage.tsx:52-59, 491-518)*.
+  </Step>
+</Steps>
+
+## MCP servers — how many
+
+Each Hermes profile currently registers **5 stdio MCP apps** (`alfred`, `sure`, `plane`, `vaultwarden`, `execute`) plus the HTTP `alfred-ctrl` proxy — **6 servers per profile** *(packages/hermes/hermes-config.yaml.njk:280-354)*. A sixth stdio app, `hermes`, ships in the MCP bundle (`packages/mcp-server/src/tools/hermes.ts`) but isn't yet wired into the profile template; it is reachable via the external HTTP MCP server. They share the same approval-secret bearer; rotating the secret invalidates every Claude-side connector at once.
+
+<Note>
+The `hermes` MCP app (voice agent orchestration, scheduling) was added to the catalogue in commit `9ca51577` on 2026-05-26 *(packages/mcp-server/src/tools/hermes.ts:1-27)*, bringing the bundle to six apps. The Hermes profile template still wires only five stdio apps + the `alfred-ctrl` HTTP proxy (six servers); the seven-servers-per-profile count will land when the profile template catches up.
+</Note>
+
+## What lives elsewhere now
+
+| Was on `/claude` | Now lives at |
+|---|---|
+| Model picker | [Settings → Agent Configuration](/surfaces/study) (the matrix above the Claude block) |
+| Developer API keys | [Settings → API keys](/surfaces/study) |
+| Audit log | [Settings → Audit](/surfaces/study) |
+| Agent autonomy toggles | [Settings → Agent Configuration → Agent autonomy](/surfaces/study) |

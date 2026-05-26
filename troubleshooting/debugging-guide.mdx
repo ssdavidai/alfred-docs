@@ -1,0 +1,171 @@
+---
+title: "Debugging guide"
+description: "How to debug a live Alfred Black deploy — logs, hot-patch, store queries."
+---
+
+This is the operator's field manual. When something's wrong, start at the top
+and work down.
+
+## Where logs live
+
+All containers stream to Docker's logging driver. Tail any service with:
+
+```sh
+docker compose logs -f <service>
+docker compose logs --tail=200 ctrl-api hermes alfred-learn
+```
+
+Useful filters:
+
+| What | Command |
+|---|---|
+| ctrl-api request/response | `docker compose logs -f ctrl-api \| grep -E 'POST\|PATCH\|PUT'` |
+| Temporal worker activity | `docker compose logs -f alfred-learn \| grep -E 'ActivityTask\|Workflow'` |
+| Hermes per-profile boot | `docker compose logs hermes \| grep -E 'profile=(main\|workers\|heavy)'` |
+| Caddy TLS issuance | `docker compose logs caddy \| grep -iE 'cert\|acme\|renew'` |
+
+The Temporal UI at `http://<VM>:8233` (internal-only by default) is invaluable
+for workflow inspection — open a tunnel if you're remote.
+
+## Hot-patch via `docker cp`
+
+Faster than rebuilding the image when you're testing a fix. The pattern:
+
+```sh
+# 1. Edit locally
+# 2. Copy into the running container
+docker cp packages/ctrl/dist/api.mjs alfred-ctrl-api-1:/srv/api.mjs
+
+# 3. Restart — do NOT use --force-recreate
+docker restart alfred-ctrl-api-1
+```
+
+<Warning>
+`docker compose up -d --force-recreate <svc>` rebuilds the container from the
+**image**, discarding your overlay. Use `docker restart <container>` to
+preserve the hot-patched files *(CLAUDE.md §11.3)*.
+</Warning>
+
+<Tip>
+Once a hot-patch confirms the fix, push the same change as a PR immediately so
+CI rebuilds the image. The next `docker compose pull && up -d` will pick up
+the durable fix; your overlay won't survive a host reboot.
+</Tip>
+
+## `docker restart` vs `up -d --force-recreate`
+
+| Operation | What it does | When to use |
+|---|---|---|
+| `docker restart <ctr>` | Stops and starts the **existing** container | Hot-patched files; debugging an env var that's already set; quick bounce |
+| `docker compose restart <svc>` | Same, via compose | Same |
+| `docker compose up -d <svc>` | No-op if container exists and image hasn't changed; recreates if image or compose stanza changed | Normal deploy — pull then up |
+| `docker compose up -d --force-recreate <svc>` | Always recreates from the image, discarding container state | Only when you want a clean container; **destroys hot-patches** |
+| `docker compose down -v` | Stops everything, removes containers, **deletes all named volumes** | Almost never — destroys the vault, certs, DBs |
+
+## Inspecting Hermes profiles
+
+The Hermes web dashboard is unusable
+(see [Gotchas](/troubleshooting/gotchas#the-hermes-web-dashboard-is-not-usable)).
+Use the in-container CLI instead:
+
+```sh
+# List the three supervised profiles
+docker compose exec hermes hermes profile list
+
+# Show the config for one profile
+docker compose exec hermes hermes config show --profile main
+
+# Check OAuth status
+docker compose exec hermes hermes auth status
+
+# Tail a profile's gateway log
+docker compose exec hermes tail -f /hermes-state/profiles/main/logs/gateway.log
+```
+
+Each profile has its own SQLite session store, MCP server registrations, and
+`.env` under `/hermes-state/profiles/<name>/`. The `main` profile's `SOUL.md`
+is consolidated to `/hermes-state/SOUL.md` at supervisor boot — if you don't
+see the Alfred persona in chat, that's the file to check.
+
+## Querying the four stores
+
+ctrl-api is the **single writer** to `alfred-state.db` and `ingest.db`. Open
+either with `sqlite3` for read-only diagnostics — never write directly, or
+you'll race the WAL and corrupt the working memory *(packages/ctrl/docs/STORAGE-ARCHITECTURE.md)*.
+
+```sh
+# 1. alfred-state.db — signals, observations, audit, settings
+docker compose exec ctrl-api sqlite3 -readonly /state/alfred-state.db <<SQL
+.headers on
+.mode column
+SELECT status, COUNT(*) FROM signal GROUP BY status;
+SELECT kind, COUNT(*) FROM observation GROUP BY kind;
+SELECT created_at, action_type, source FROM audit ORDER BY created_at DESC LIMIT 20;
+SELECT key, value FROM setting;
+SQL
+```
+
+```sh
+# 2. ingest.db — raw inbound stream (7-day TTL)
+docker compose exec ctrl-api sqlite3 -readonly /ingest/ingest.db <<SQL
+.headers on
+SELECT source_type, COUNT(*), MIN(received_at), MAX(received_at)
+FROM stream_event
+GROUP BY source_type;
+SQL
+```
+
+```sh
+# 3. cold.db — forensic long-tail (>90 days)
+docker compose exec ctrl-api sqlite3 -readonly /cold/cold.db ".tables"
+```
+
+```sh
+# 4. Vault — the principal's markdown surface
+docker compose exec ctrl-api ls -la /vault/matter/ /vault/task/ /vault/decision/
+docker compose exec ctrl-api cat /vault/SOUL.md
+```
+
+## Common diagnostic recipes
+
+**"Alfred isn't doing anything"** — check the mode flags first.
+
+```sh
+docker compose exec ctrl-api sqlite3 -readonly /state/alfred-state.db \
+  "SELECT key, value FROM setting WHERE key LIKE '%_mode';"
+```
+
+If anything shows `"shadow"` or `"off"`, that's likely your bug. Toggle via
+`/settings#agent` in the dashboard, or `PUT /api/v1/settings/<key>` with body `{"value":"live"}`.
+
+**"Signals aren't routing"** — check the workflow gates.
+
+```sh
+docker compose exec alfred-learn env | grep STEWARD_
+# STEWARD_SIGNAL_EXTRACT_ENABLED=1
+# STEWARD_SIGNAL_ROUTER_ENABLED=1
+```
+
+If either is `0`, the signal pipeline is gated off at the worker.
+
+**"Observations frozen at zero"** — query directly.
+
+```sh
+docker compose exec ctrl-api sqlite3 -readonly /state/alfred-state.db <<SQL
+SELECT DATE(created_at) d, kind, COUNT(*)
+FROM observation
+WHERE created_at > DATE('now', '-7 days')
+GROUP BY d, kind ORDER BY d;
+SQL
+```
+
+If `kind=decision` is zero, the Desk-click loop isn't closing — see
+[Incident history → 2026-05-24](/troubleshooting/incident-history).
+
+**"My deploy is degraded but health says OK"** — health endpoints are
+shallow on purpose. Run a real query:
+
+```sh
+curl -s https://<DOMAIN>/api/v1/learning/status | jq
+docker compose ps --filter status=running --format json | jq
+```

@@ -1,0 +1,151 @@
+---
+title: "Deploy"
+description: "Clone, bootstrap, compose up, sign in — four steps from empty VM to working butler."
+---
+
+This page assumes you've already worked through [Prerequisites](/quickstart/prerequisites) — your VM is the right size, your DNS records are pointing at it, and you have your `OPENROUTER_API_KEY` and `COMPOSIO_API_KEY` ready.
+
+The deploy itself is four steps. End to end it takes about fifteen minutes once DNS has propagated.
+
+<Steps>
+
+<Step title="Clone the repo and copy the env template">
+
+SSH to your VM as a user with Docker permissions, then:
+
+```bash
+git clone https://github.com/ssdavidai/alfred.git /opt/alfred
+cd /opt/alfred
+cp .env.example .env
+```
+
+The default install path is `/opt/alfred` — `ctrl-api` bind-mounts that path so it can read `.env` and shell out to `docker compose` *(.env.example:131–136)*. If you install elsewhere, set `COMPOSE_DIR_HOST` to the actual path before running `docker compose up`.
+
+</Step>
+
+<Step title="Fill in the required env vars">
+
+Open `.env` in your editor and fill the **USER MUST FILL — required** block at the top *(.env.example:10–32)*:
+
+```ini
+DOMAIN=alfred.example.com
+ACME_EMAIL=you@example.com
+OWNER_NAME=Your Name
+OPENROUTER_API_KEY=sk-or-v1-...
+COMPOSIO_API_KEY=...
+```
+
+<Tabs>
+  <Tab title="Required">
+
+These five are non-negotiable; `bootstrap.sh` exits with a clear error if any are empty *(scripts/bootstrap.sh:90–98)*.
+
+- `DOMAIN` — the apex domain, e.g. `home.example.com`. All eight subdomains (`@`, `api`, `plane`, `sure`, `vault`, `mcp`, `sms`, `voice`) attach to it.
+- `ACME_EMAIL` — the Let's Encrypt contact address.
+- `OWNER_NAME` — your display name in the dashboard.
+- `OPENROUTER_API_KEY` — the primary LLM route.
+- `COMPOSIO_API_KEY` — third-party integrations.
+
+  </Tab>
+  <Tab title="Strongly recommended">
+
+These don't block the deploy but are load-bearing for real use *(.env.example:81–87)*:
+
+- `OWNER_EMAIL` — the principal's email. Used by the first-brief sender, the ingest guard, Sure, and Vexa. `bootstrap.sh` prints a loud warning if blank.
+- `ANTHROPIC_API_KEY` — optional. Hermes routes through OpenRouter by default; set this only if you want a direct Anthropic route.
+
+  </Tab>
+  <Tab title="Optional features">
+
+Each unlocks one feature:
+
+- `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` — the "Sign in with Google" button.
+- `SENDGRID_API_KEY` / `MAILGUN_API_KEY` — transactional email.
+- `GROQ_API_KEY` — OMI ambient-wearable transcription.
+- `VEXA_ENABLED=true` + `VEXA_TRANSCRIPTION_TOKEN` — meeting transcripts.
+
+  </Tab>
+</Tabs>
+
+<Note>
+**Which LLM key do you actually need?** Despite some older docs implying `ANTHROPIC_API_KEY` is interchangeable, `bootstrap.sh` requires `OPENROUTER_API_KEY` *(scripts/bootstrap.sh:71–77)*. Anthropic is explicitly optional. Hermes routes through OpenRouter by default and the heavy profile defaults to `anthropic/claude-opus-4-6` *via* OpenRouter *(.env.example:42–44)*.
+</Note>
+
+</Step>
+
+<Step title="Run bootstrap.sh">
+
+```bash
+./scripts/bootstrap.sh
+```
+
+This script does two things *(scripts/bootstrap.sh:11–17)*:
+
+1. **Validates** every required field — exits 1 if any is missing or whitespace-only *(scripts/bootstrap.sh:70–98)*.
+2. **Generates 21 auto-secrets** via `openssl rand -hex 32` and appends them to `.env`: the AAS API key, JWT signing secret, Hermes gateway token, Vaultwarden admin token, MCP approval secret, Sure/Plane/Vexa database passwords, and more *(scripts/bootstrap.sh:115–137)*.
+
+The script is **idempotent** — re-running never overwrites an existing non-empty value *(scripts/bootstrap.sh:148–172)*. If you ever need to rotate one secret, blank just that line and re-run.
+
+It also generates a `COMPOSIO_USER_ID` in the form `alfred-owner-<4-byte-hex>`. This is not a random secret — it's a readable per-install identifier that scopes Composio connected accounts and prevents separate installs from sharing one OAuth bucket *(scripts/bootstrap.sh:174–193)*.
+
+Expected output:
+
+```
+Validating required fields in .env ...
+All required fields present.
+Generating auto-secrets ...
+Auto-secrets: 21 generated, 0 kept (already set).
+Bootstrap complete. Next:  docker compose up -d
+```
+
+</Step>
+
+<Step title="Bring up the stack">
+
+<Tabs>
+  <Tab title="Default profile">
+
+```bash
+docker compose up -d
+```
+
+This pulls every image (`docker-compose.yaml` has no `build:` keys — pull-only by design) and starts the default ~30-container stack. Caddy registers with Let's Encrypt, requests one cert per subdomain, and the `init` container scaffolds the vault, renders the Hermes profile configs, and writes the gateway token to `/alfred-data/.gateway-token` *(docker-compose.yaml:143–162)*.
+
+  </Tab>
+  <Tab title="With Vexa transcripts">
+
+```bash
+docker compose --profile vexa up -d
+```
+
+Adds nine Vexa containers: Postgres, Redis, MinIO, admin-api, runtime-api, meeting-api, api-gateway, dashboard, and bot orchestration *(docker-compose.yaml:1251–1489)*. Requires 56–64 GB RAM total.
+
+  </Tab>
+</Tabs>
+
+Watch the logs as it comes up:
+
+```bash
+docker compose logs -f --tail=50 caddy init hermes ctrl-api
+```
+
+You're looking for:
+
+- **caddy** — `certificate obtained successfully` for each host
+- **init** — `init complete` (the one-shot exits 0)
+- **hermes** — `gateway listening on :18789` / `:18790` / `:18791` for all three profiles, then `hermes-lcm OK: context engine 'lcm' active on main` *(packages/hermes/docker/supervisor.sh:244)*
+- **ctrl-api** — `listening on :3100`
+
+The first boot takes a few minutes; subsequent restarts are fast.
+
+</Step>
+
+</Steps>
+
+## First signup
+
+Open `https://<DOMAIN>` in a browser. The very first signup against a fresh deployment becomes the owner *(packages/web/main.wasp — onAfterSignup hook)* and is routed into the [onboarding ritual](/quickstart/onboarding-walkthrough) starting at `/awaken`.
+
+If the page loads but the cert is still pending, give Caddy a minute and refresh. If a sidecar like `https://plane.<DOMAIN>` shows a cert error long after the apex is green, check the DNS record for that specific subdomain.
+
+For everything else, see [Verifying the deploy](/quickstart/verifying).

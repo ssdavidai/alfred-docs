@@ -1,0 +1,195 @@
+---
+title: "Backup and restore"
+description: "Per-volume snapshot and restore drills, with restore-order dependencies."
+---
+
+[Backups](/configuration/backups) covers *what* to back up; this page covers *how* — the per-volume snapshot procedure, the matching restore steps, and the order in which volumes have to come back to avoid bootstrapping into a broken state.
+
+---
+
+## Snapshot helpers
+
+Every Docker volume lives at `/var/lib/docker/volumes/alfred-black_<name>/_data/`. The reliable way to snapshot a volume without touching its filesystem permissions is to run a one-off alpine container that mounts it and writes a tarball:
+
+```bash
+# Take a snapshot of one volume
+docker run --rm \
+  -v "alfred-black_${VOLUME}:/src:ro" \
+  -v "$(pwd):/dst" \
+  alpine \
+  tar czf "/dst/${VOLUME}.tgz" -C /src .
+```
+
+To restore:
+
+```bash
+# Restore a snapshot into an empty volume
+docker volume create "alfred-black_${VOLUME}"
+docker run --rm \
+  -v "alfred-black_${VOLUME}:/dst" \
+  -v "$(pwd):/src:ro" \
+  alpine \
+  tar xzf "/src/${VOLUME}.tgz" -C /dst
+```
+
+---
+
+## Hot vs cold snapshots
+
+| Volume | Hot snapshot OK? | Notes |
+|--------|------------------|-------|
+| `vault_data` | Yes | Plain markdown files. `ctrl-api`'s per-path lock keeps concurrent writes serialised; a `tar` snapshot may miss in-flight writes but won't corrupt files. |
+| `caddy_data` | Yes | Caddy writes infrequently (only at issuance/renewal). |
+| `state_data`, `ingest_data` | Risky | SQLite WAL-mode tolerates a `cp` most of the time but is not guaranteed consistent. Either stop `ctrl-api` first or use SQLite's `.backup` command. |
+| `hermes_data` | Yes | Mostly config + small session SQLite files. |
+| `alfred_data` | Yes | Plain JSON/text files. |
+| `web_db_data`, `plane_pgdata`, `sure_pgdata`, `vexa_postgres` | No | Postgres needs `pg_dump` for a consistent backup or a stopped server. |
+| `temporal_data` | Risky | SQLite — same caveat as state_data. |
+
+The safe blanket strategy: `docker compose stop`, snapshot the volumes you care about, `docker compose start`. About 30 seconds of downtime per night is usually acceptable.
+
+---
+
+## Drill: vault_data (the principal's records)
+
+<Steps>
+  <Step title="Snapshot">
+    ```bash
+    docker run --rm -v alfred-black_vault_data:/src:ro -v $(pwd):/dst alpine \
+      tar czf /dst/vault_data-$(date +%Y%m%d).tgz -C /src .
+    ```
+  </Step>
+  <Step title="Restore">
+    Stop ctrl-api first so it doesn't race with the restore: `docker compose stop ctrl-api alfred`. Then untar back into the volume.
+  </Step>
+  <Step title="Resume">
+    `docker compose start ctrl-api alfred`. The `vault_index` table in `state_data` is a derived read-index — on next boot, ctrl-api reconciles it against the on-disk vault *(`packages/ctrl/src/api/standalone.ts:57-66`)*.
+  </Step>
+</Steps>
+
+---
+
+## Drill: state_data and ingest_data (SQLite)
+
+These are the operational stores. Treat them together — a partial restore (one but not the other) leaves the audit ledger out of sync with the source events.
+
+<Steps>
+  <Step title="Stop the sole writer">
+    `docker compose stop ctrl-api alfred-learn`. Stopping both ensures no process is writing.
+  </Step>
+  <Step title="Snapshot">
+    ```bash
+    for v in state_data ingest_data; do
+      docker run --rm -v "alfred-black_${v}:/src:ro" -v "$(pwd):/dst" alpine \
+        tar czf "/dst/${v}-$(date +%Y%m%d).tgz" -C /src .
+    done
+    ```
+  </Step>
+  <Step title="Restart">
+    `docker compose start ctrl-api alfred-learn`. ctrl-api applies any unapplied migrations on boot *(`packages/ctrl/src/db/migrate.ts`)* — a restored snapshot from an older build will be migrated forward automatically.
+  </Step>
+</Steps>
+
+For a hot backup without stopping anything, use SQLite's online backup from inside the container:
+
+```bash
+docker compose exec ctrl-api sqlite3 /state/alfred-state.db ".backup '/state/alfred-state.bak'"
+docker compose exec ctrl-api sqlite3 /ingest/ingest.db ".backup '/ingest/ingest.bak'"
+# Then tar the .bak files
+```
+
+---
+
+## Drill: caddy_data (TLS certs)
+
+<Steps>
+  <Step title="Snapshot">
+    Caddy writes infrequently; safe to snapshot hot.
+    ```bash
+    docker run --rm -v alfred-black_caddy_data:/src:ro -v $(pwd):/dst alpine \
+      tar czf /dst/caddy_data-$(date +%Y%m%d).tgz -C /src .
+    ```
+  </Step>
+  <Step title="Restore">
+    Untar into a fresh `alfred-black_caddy_data` volume *before* `docker compose up -d`. If Caddy boots without the volume populated, it'll fire off ACME issuance for every host — easy to hit Let's Encrypt's rate limit if you redeploy a few times in a row.
+  </Step>
+</Steps>
+
+---
+
+## Drill: hermes_data + alfred_data (correlated)
+
+These two **must** be restored together. `alfred_data/.gateway-token` is the bearer token that every Hermes profile's `.env` carries as `API_SERVER_KEY` *(`packages/hermes/init/entrypoint.sh:327-352`)*. If you restore one without the other, the tokens drift and the system can't authenticate to its own gateway.
+
+<Steps>
+  <Step title="Snapshot together">
+    ```bash
+    for v in hermes_data alfred_data; do
+      docker run --rm -v "alfred-black_${v}:/src:ro" -v "$(pwd):/dst" alpine \
+        tar czf "/dst/${v}-$(date +%Y%m%d).tgz" -C /src .
+    done
+    ```
+  </Step>
+  <Step title="Restore together">
+    Stop hermes, init, alfred-learn, ctrl-api, alfred. Untar both. Restart.
+  </Step>
+</Steps>
+
+If you restore `alfred_data` without `hermes_data`, the next `docker compose up -d` will run `init`, which detects the existing `.gateway-token` and *renders new Hermes profile envs from scratch* — losing any hand-edited messaging-platform secrets (`TELEGRAM_*`, `SLACK_*`, `TWILIO_*`) because the per-profile `.env` files in `hermes_data` are the only place those persist *(`packages/hermes/hermes-profile.env.njk`)*.
+
+---
+
+## Restore-order summary
+
+When restoring from a full set of snapshots into a clean VM:
+
+<Steps>
+  <Step title="caddy_data">
+    First — populate before any `docker compose up` so HTTPS comes up cleanly without ACME hammering.
+  </Step>
+  <Step title="vault_data, state_data, ingest_data, cold_data">
+    Next — the principal's data and the machine's working memory.
+  </Step>
+  <Step title="hermes_data + alfred_data">
+    Together. Same gateway-token, same profile envs.
+  </Step>
+  <Step title="web_db_data">
+    Then — user accounts. Without this, the next signup becomes the new owner.
+  </Step>
+  <Step title="temporal_data">
+    Optional — restore if you want in-flight workflows to resume. Otherwise they restart from their schedules.
+  </Step>
+  <Step title="Sidecar volumes">
+    `vaultwarden_data`, `plane_*`, `sure_*`, `vexa_*` as needed. None of these block the rest of the stack from booting.
+  </Step>
+  <Step title="docker compose up -d">
+    Run `bootstrap.sh` first to ensure `.env` matches the volume snapshots' generation (the auto-secrets must align), then `up -d`.
+  </Step>
+</Steps>
+
+---
+
+## Smoke-testing a restore
+
+After `up -d`:
+
+```bash
+# Container health
+docker compose ps
+
+# Vault readable
+docker compose exec ctrl-api ls /vault/matter | head
+
+# Settings file intact
+docker compose exec ctrl-api cat /alfred-data/settings.json
+
+# Gateway authenticates
+docker compose exec hermes curl -sf \
+  -H "Authorization: Bearer $(cat /alfred-data/.gateway-token)" \
+  http://localhost:18789/v1/models | head
+
+# Dashboard reachable
+curl -I https://${DOMAIN}
+```
+
+If every check passes, log into the dashboard at `https://${DOMAIN}` and confirm the principal's matters and recent decisions are visible. That's the end-to-end signal that a restore worked.

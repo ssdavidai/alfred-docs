@@ -1,0 +1,100 @@
+---
+title: "Domain and TLS"
+description: "Caddy ingress, the eight hostnames, automatic Let's Encrypt via HTTP-01."
+---
+
+Alfred Black runs behind a single Caddy reverse proxy that terminates TLS for every public-facing surface. Caddy is configured by a static `Caddyfile` *(`caddy/Caddyfile`)* — there is no template rendering step. Caddy substitutes `{$DOMAIN}` and `{$ACME_EMAIL}` from the container environment at load time *(`caddy/Caddyfile:1-5`)*.
+
+---
+
+## DNS — the seven A-records
+
+Before you `docker compose up -d`, point seven A-records at the VM's public IP. Caddy is configured to listen on the apex and six subdomains. ACME (HTTP-01) needs each name to resolve to the VM, otherwise the cert issuance for that host will fail until DNS catches up *(`caddy/Caddyfile:12-15`)*.
+
+| Subdomain | Purpose | Caddy upstream |
+|-----------|---------|----------------|
+| `@` (apex `${DOMAIN}`) | Dashboard SPA + public webhook paths | `web-client:80` + path-handler to `ctrl-api:3100` |
+| `api` | Wasp API server (auth, operations) | `web:3000` |
+| `plane` | Plane project management | `plane-proxy:80` |
+| `sure` | Sure personal finance | `sure-web:3000` |
+| `vault` | Vaultwarden secrets manager | `vaultwarden:80` |
+| `mcp` | MCP server (Claude Custom Connector) | `mcp-server:8787` |
+| `sms` | Twilio SMS inbound webhook | `hermes:8080` |
+| `voice` | Twilio Media Streams WebSocket | `voice-bridge:9000` |
+
+<Note>
+That's seven A-records for eight hostnames — the apex doubles as both the dashboard and a small set of public webhook paths (OMI, Plane, Vexa, AgentMail inbound email). The apex block in `Caddyfile` routes those paths directly to `ctrl-api`; everything else falls through to the SPA *(`caddy/Caddyfile:34-67`)*.
+</Note>
+
+For a CDN or DNS provider that supports wildcards, a single `*.${DOMAIN}` plus apex A-record covers all seven names.
+
+---
+
+## Automatic TLS via Let's Encrypt
+
+Caddy auto-issues a Let's Encrypt cert for each host using the **HTTP-01 challenge** — no DNS-API token, no manual `certbot` flow. The challenge requires port 80 on the VM to be reachable from the public internet during issuance *(`caddy/Caddyfile:7-11`)*.
+
+### Cert lifecycle
+
+<Steps>
+  <Step title="Issuance">
+    On first boot Caddy contacts Let's Encrypt for each host listed in `Caddyfile`. It serves the HTTP-01 challenge on port 80, receives the cert, and stores it in the `caddy_data` volume.
+  </Step>
+  <Step title="Renewal">
+    Caddy auto-renews each cert 30 days before expiry. Renewal also uses HTTP-01, so port 80 must remain reachable.
+  </Step>
+  <Step title="Self-healing">
+    If issuance fails (DNS not pointing at the VM, port 80 blocked, rate limit), Caddy retries on a backoff. A stale A-record only delays the first cert — the stack still boots, the affected host just won't be reachable over HTTPS until ACME completes.
+  </Step>
+</Steps>
+
+<Warning>
+**The `caddy_data` volume holds your certs. Back it up.** Without it, every `docker compose down -v` (or volume loss) re-issues every cert from scratch, and Let's Encrypt's rate limit (50 certs per registered domain per week) is easy to hit if you redeploy aggressively. See [backups](/configuration/backups) for the volume catalog.
+</Warning>
+
+---
+
+## Special apex routing
+
+The apex block isn't a single `reverse_proxy` — it has path-level handlers because some third-party services compose their webhook URLs from `TENANT_BASE_URL` (which defaults to the apex domain) *(`caddy/Caddyfile:25-67`)*. Without these path handlers, an inbound `POST` from OMI or AgentMail would hit the SPA's nginx and get a 405.
+
+| Path prefix | Routed to | Why |
+|-------------|-----------|-----|
+| `/api/v1/streams/omi/*` | `ctrl-api:3100` | OMI ambient-wearable webhook |
+| `/api/v1/plane/webhook` | `ctrl-api:3100` | Plane → Alfred sync |
+| `/api/v1/webhooks/plane/steward` | `ctrl-api:3100` | Steward feedback from Plane |
+| `/api/v1/webhooks/vexa` | `ctrl-api:3100` | Vexa meeting transcript hook |
+| `/api/v1/webhooks/in/*` | `ctrl-api:3100` | Generic inbound webhook |
+| `/api/v1/channels/email/inbound` | `ctrl-api:3100` | AgentMail inbound email *(token-validated)* |
+| `/webhooks/agentmail` *(legacy)* | rewritten to `/api/v1/channels/email/inbound` | Backwards compat for old AgentMail console configs *(`caddy/Caddyfile:52-61`)* |
+| everything else | `web-client:80` | The Wasp SPA |
+
+These webhook routes are marked `isPublic` inside `ctrl-api`'s auth layer — they don't validate against the master Bearer token; they each have their own webhook secret or HMAC signature.
+
+---
+
+## Custom Caddy directives
+
+Each site block enables zstd + gzip compression *(`caddy/Caddyfile:35`)* and otherwise relies on Caddy's defaults. The voice and SMS hosts inherit Caddy's automatic WebSocket upgrade for the `wss://` protocol used by Twilio Media Streams — no extra config needed *(`caddy/Caddyfile:110-121`)*.
+
+If you need to add a host (e.g. a custom internal tool), do not edit the Caddyfile inside the running container — it lives on a bind mount from `caddy/Caddyfile` in the repo *(`docker-compose.yaml:33-56`)*. Edit there, then `docker compose restart caddy` to reload.
+
+---
+
+## Switching domains
+
+If you ever move the stack to a new domain (e.g. `test.example.com` → `home.example.com`):
+
+<Steps>
+  <Step title="Update .env">
+    Set the new `DOMAIN=` value.
+  </Step>
+  <Step title="Restart caddy">
+    `docker compose restart caddy` — Caddy re-reads the env var, the new Caddyfile renders, and ACME auto-issues fresh certs for every host on the new domain.
+  </Step>
+  <Step title="Update third-party callbacks">
+    Twilio webhooks, AgentMail console URLs, Composio OAuth callback URLs — any URL pinned to the old `DOMAIN` needs to be updated in the upstream's console.
+  </Step>
+</Steps>
+
+The original Let's Encrypt certs for the old domain remain in `caddy_data` and auto-expire after 90 days; nothing else needs to be cleaned up.

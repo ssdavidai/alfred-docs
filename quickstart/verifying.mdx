@@ -1,0 +1,120 @@
+---
+title: "Verifying the deploy"
+description: "Health checks to confirm Caddy, ctrl-api, Hermes, and the first brief are all live."
+---
+
+After `docker compose up -d`, run through these checks in order. Each one isolates one layer of the stack — the proxy, the tenant API, the AI runtime, the intelligence loop. If a later check fails, the earlier checks tell you where to look.
+
+## 1. Caddy TLS
+
+The fastest signal that ingress is healthy:
+
+```bash
+curl -I https://<DOMAIN>
+# expect: HTTP/2 200, with a valid Let's Encrypt cert
+```
+
+Repeat for `api.`, `plane.`, `sure.`, `vault.`, `mcp.`, `sms.`, `voice.` *(caddy/Caddyfile:34–121)*. All eight should return 200 or a successful redirect once their cert is issued.
+
+If a host shows a self-signed or expired cert, watch Caddy's log for that specific subdomain:
+
+```bash
+docker compose logs caddy | grep <subdomain>
+# look for: "certificate obtained successfully"
+```
+
+The most common cause of a stuck cert is a DNS record that hasn't propagated. Caddy retries automatically; give it five minutes and refresh.
+
+<Note>
+`caddy_data` is the volume holding the issued certificates *(docker-compose.yaml caddy service)*. Preserve it across `docker compose down`/`up` cycles to avoid hitting Let's Encrypt rate limits.
+</Note>
+
+## 2. ctrl-api on :3100
+
+`ctrl-api` is the dashboard's backend — sole writer of `alfred-state.db` and `ingest.db`, and the proxy target for ~40 routes *(packages/ctrl/src/api/routes/)*.
+
+```bash
+docker compose exec ctrl-api curl -fsS http://localhost:3100/api/v1/learning/status
+# expect: 200 with JSON, no errors
+```
+
+This is the same endpoint the container's healthcheck calls *(docker-compose.yaml:439)*. A 5xx here usually means a migration didn't apply or `state.db` is unwritable; check `docker compose logs ctrl-api` for the migration table and the SQLite path.
+
+## 3. Hermes profiles
+
+The AI runtime supervises three profiles, each on its own port *(packages/hermes/docker/supervisor.sh)*:
+
+```bash
+docker compose exec hermes curl -fsS http://localhost:18789/health  # main
+docker compose exec hermes curl -fsS http://localhost:18790/health  # workers
+docker compose exec hermes curl -fsS http://localhost:18791/health  # heavy
+```
+
+All three should return 200. The compose healthcheck probes the first two *(docker-compose.yaml:303)*; if `heavy` is silent but the first two are green, the Opus-class profile is the one that didn't start — usually because `HERMES_HEAVY_MODEL` is set to a model OpenRouter rejected.
+
+### The hermes-lcm context engine
+
+The `main` profile loads the `hermes-lcm` plugin — a context engine that gives Hermes its long-conversation memory. The supervisor probes it after gateway boot *(packages/hermes/docker/supervisor.sh:229–258)*:
+
+```bash
+docker compose logs hermes | grep "hermes-lcm"
+# expect: "hermes-lcm OK: context engine 'lcm' active on main (lcm_* tools registered)"
+```
+
+If you see `WARNING: hermes-lcm in main/config.yaml but not loaded after gateway boot`, the plugin source is missing from `$HERMES_HOME/profiles/main/plugins/`. Restart the `init` container to re-deploy it: `docker compose restart init`.
+
+## 4. The init container exited cleanly
+
+`init` is a one-shot that scaffolds the vault, renders Hermes profile configs, and writes the gateway token. Its restart policy is `"no"` *(docker-compose.yaml:144)*.
+
+```bash
+docker compose ps init
+# expect: STATE = exited (0)
+```
+
+A non-zero exit means something in the scaffold failed — usually an unset env var. Logs:
+
+```bash
+docker compose logs init
+```
+
+## 5. The first brief generated
+
+The most end-to-end signal that the intelligence layer is alive. After onboarding completes, `BriefingWorkflow` writes a briefing record to the vault. List them via ctrl-api:
+
+```bash
+docker compose exec ctrl-api curl -fsS \
+  -H "Authorization: Bearer $(grep ^AAS_API_KEY= /opt/alfred/.env | cut -d= -f2)" \
+  http://localhost:3100/api/v1/briefings
+# expect: 200 with an array containing at least one briefing
+```
+
+Equivalently, open `https://<DOMAIN>/brief` in a browser — the page renders the most recent briefing or an empty state if none has landed yet *(packages/web/src/client/pages/brief/BriefPage.tsx)*.
+
+If onboarding finished but no briefing landed, check the `alfred-learn` worker:
+
+```bash
+docker compose logs alfred-learn | grep -iE "briefing|error"
+```
+
+The most common cause is `OWNER_EMAIL` blank — the first-brief email path fails open and the workflow logs a warning rather than retrying.
+
+## 6. The signal pipeline is moving
+
+This catches the silent failure mode where ingest is full but extraction never runs *(docs/FAILURE-MODES.md S1 #6, #7)*:
+
+```bash
+docker compose exec ctrl-api sqlite3 /state/alfred-state.db \
+  "SELECT status, COUNT(*) FROM signal GROUP BY status;"
+# expect: some rows, with at least some status != 'unrouted'
+```
+
+If every signal is stuck at `unrouted`, `SignalRouter` isn't running — confirm `STEWARD_SIGNAL_ROUTER_ENABLED=true` in `.env` and restart `alfred-learn`.
+
+## 7. The audit ledger is recording
+
+Open `/decisions` in the dashboard. The page tabs include **Decisions** and **State Changes** *(packages/web/src/client/pages/decisions/DecisionsPage.tsx)*. After a few Desk clicks, the state-changes tab should show entries — those are the `DecisionRouter` workflow's audit rows landing in `alfred-state.db`. If they don't, the learning loop isn't closing.
+
+---
+
+Once all seven checks pass, your deploy is healthy. From here on, day-to-day verification is one URL — `https://<DOMAIN>/desk` — and a glance at the `/decisions` ledger to confirm Alfred is still acting on the principal's behalf.

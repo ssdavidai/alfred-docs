@@ -1,0 +1,137 @@
+---
+title: "Redeploying"
+description: "The pull-and-up loop, hot-patch caveats, when to restart vs force-recreate."
+---
+
+Alfred Black uses **pull-only** deploys: every custom image is built by CI and pushed to Docker Hub; `docker compose up` never builds anything locally. To deploy new code, you pull the latest image tags and tell compose to roll the affected containers.
+
+---
+
+## The standard loop
+
+After CI has built a new image (you'll usually see `:latest` pushed for one or more services), run two commands on the VM:
+
+```bash
+cd /opt/alfred
+docker compose pull
+docker compose up -d
+```
+
+That's the whole deploy. `docker compose up -d` is *idempotent*: it diffs the running containers against the compose spec and only restarts the ones whose image tag changed (or whose env/volume config changed). Containers whose image didn't change are left running.
+
+<Note>
+Because compose is pull-only on this stack, there is no `build:` key anywhere in `docker-compose.yaml` *(`docker-compose.yaml`)*. The only way to publish a new version is to merge to `main` and let the relevant CI workflow rebuild and push `:latest`. See [CI workflows](/contributing/ci) for what triggers what.
+</Note>
+
+---
+
+## What `up -d` does and doesn't restart
+
+| You changed | Restarts | Notes |
+|-------------|----------|-------|
+| Pulled a new `:latest` for one service | Just that service | The new image tag bumps the container's config hash. |
+| Edited a value in `.env` | Every container that references that var | `up -d` re-renders the compose config, and any container whose env hash changed gets recreated. |
+| Edited `caddy/Caddyfile` | Caddy keeps running but doesn't reload | The Caddyfile is a bind mount; the on-disk file changed but Caddy hasn't been told to reread. `docker compose restart caddy`. |
+| Edited `docker-compose.yaml` | Every container whose spec changed | Same as the env case — config hash diff. |
+
+To force a specific service to roll without changing anything:
+
+```bash
+docker compose up -d --force-recreate <service>
+```
+
+---
+
+## Hot-patching a running container
+
+You can patch source into a live container with `docker cp` for fast iteration:
+
+```bash
+docker cp ./packages/ctrl/dist/api.mjs alfred-black-ctrl-api-1:/app/dist/api.mjs
+docker compose restart ctrl-api
+```
+
+This is useful for ten-second debug cycles. **But** there are two ways this bites:
+
+<Warning>
+**`docker compose up -d --force-recreate` destroys hot patches.** `--force-recreate` rebuilds the container from the *image*, throwing away anything you `docker cp`'d in. If you've hot-patched and someone runs `up -d --force-recreate` (or `docker compose pull && up -d` if the image happens to change), your overlay is gone with no warning.
+
+The same applies to `docker compose down && docker compose up -d` — the new container is built from the image.
+</Warning>
+
+<Warning>
+**Hot patches don't survive a host reboot.** `restart: unless-stopped` brings the container back from the image, not from whatever file system overlay was running.
+</Warning>
+
+Always push the fix as a real commit and let CI rebuild before going to bed. Hot patching is a debug tool, not a deployment.
+
+### When to use `docker restart` vs `docker compose up`
+
+- **`docker restart <container>`** — preserves anything you've `docker cp`'d into the container, just restarts the process. Use this after a hot patch.
+- **`docker compose restart <service>`** — same effect as above (this is just the compose wrapper). Both preserve the container's writable layer.
+- **`docker compose up -d`** — *conditional* recreate. If the image tag, env, or mounts changed it recreates; otherwise it leaves the container alone.
+- **`docker compose up -d --force-recreate <service>`** — *unconditional* recreate. Always builds a new container from the image, discarding the writable layer.
+
+If in doubt, `docker compose restart <service>` is the safest "just bounce it" command.
+
+---
+
+## Rolling individual services
+
+When you know exactly which service changed, you can target it:
+
+<CodeGroup>
+
+```bash One service
+docker compose pull ctrl-api
+docker compose up -d ctrl-api
+```
+
+```bash Two services
+docker compose pull web web-client
+docker compose up -d web web-client
+```
+
+```bash Force recreate
+docker compose up -d --force-recreate hermes
+```
+
+</CodeGroup>
+
+This is significantly faster than rolling the whole stack when only one image moved. The web SPA is a particular case where you almost always want to roll *both* `web` (Wasp server) and `web-client` (static SPA nginx) together — they're built from the same Wasp app and a mismatch causes 401s on the API or stale UI.
+
+---
+
+## After a redeploy
+
+A handful of post-deploy checks worth running:
+
+<Steps>
+  <Step title="Container health">
+    `docker compose ps` — every service should be `running (healthy)` or `running` (for services without a healthcheck).
+  </Step>
+  <Step title="Recent logs">
+    `docker compose logs --tail=50 ctrl-api alfred-learn hermes` — look for errors during boot. The init container should have completed (`docker compose ps init` shows `exited (0)`).
+  </Step>
+  <Step title="Dashboard reachable">
+    `curl -I https://${DOMAIN}` — should return `200`. `curl -I https://api.${DOMAIN}/api/v1/learning/status` — should return `200` with `Authorization: Bearer ${AAS_API_KEY}`.
+  </Step>
+  <Step title="Workflows re-registered">
+    The Temporal UI at `http://${VM_IP}:8233` should show all 30+ workflow schedules in `running` state.
+  </Step>
+</Steps>
+
+---
+
+## Rolling back
+
+A bad deploy is rolled back by pinning the image tag to a previous digest. The `:latest` tag is mutable, but each CI build also pushes a digest you can pin:
+
+```bash
+docker image inspect ssdavidai00/alfred-ctrl-api:latest --format '{{.RepoDigests}}'
+# Copy the previous digest, then edit docker-compose.yaml:
+# image: ssdavidai00/alfred-ctrl-api@sha256:abc123…
+docker compose up -d ctrl-api
+```
+
+Then push a proper revert commit so CI re-publishes a good `:latest` and you can drop the digest pin.

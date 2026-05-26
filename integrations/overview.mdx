@@ -1,0 +1,59 @@
+---
+title: "Integrations overview"
+description: "Sidecars, Composio, and MCP clients — how Alfred reaches the outside world."
+---
+
+Alfred Black reaches the outside world through three layers: **sidecars** that live in the compose stack and ship their own UI; **Composio**, the external surface for roughly every other third-party app; and **MCP clients** — the way Claude Desktop, Claude Code, and claude.ai itself talk to Alfred.
+
+The three layers are independent. A fresh install boots with all four sidecars enabled by default *(docker-compose.yaml:643–1245)*; Composio activates the moment you fill `COMPOSIO_API_KEY` in `.env`; MCP clients work as soon as `mcp.{$DOMAIN}` resolves and you copy the per-app URL out of `/settings#agent`.
+
+## What runs in your stack
+
+<CardGroup cols={2}>
+  <Card title="Plane" icon="kanban" href="/integrations/plane">
+    Project management at `plane.{$DOMAIN}`. Eleven containers (Django, Celery, RabbitMQ, MinIO, Next.js, …) reached as one sidecar. The `plane` MCP app exposes 11 tools.
+  </Card>
+  <Card title="Sure" icon="dollar-sign" href="/integrations/sure">
+    Personal finance at `sure.{$DOMAIN}`. Rails + Sidekiq + Postgres. The `sure` MCP app exposes 116 tools across transactions, accounts, budgets, holdings, and AI clustering.
+  </Card>
+  <Card title="Vaultwarden" icon="key" href="/integrations/vaultwarden">
+    Self-hosted credentials at `vault.{$DOMAIN}`. The `vaultwarden` MCP app exposes 14 tools — and is the only place in the catalogue that returns secret values.
+  </Card>
+  <Card title="Vexa (optional)" icon="microphone" href="/integrations/vexa">
+    Meeting transcription, enabled with `--profile vexa`. Nine extra containers, +7 GB RAM. Turn on once you actually need recordings.
+  </Card>
+</CardGroup>
+
+## What lives outside the stack
+
+<CardGroup cols={2}>
+  <Card title="Composio" icon="plug" href="/integrations/composio">
+    One `composio_execute(action, args)` primitive over ~1000 third-party apps — Gmail, GitHub, Notion, Slack, Linear, Zoom, and the rest. The `/connections` surface drives the OAuth flow.
+  </Card>
+  <Card title="Gmail · Calendar · Drive" icon="google" href="/integrations/gmail-calendar-drive">
+    Google's three load-bearing apps, connected via Composio. OAuth scopes, the authenticate-tool family, and what each scope unlocks.
+  </Card>
+</CardGroup>
+
+## How Claude reaches Alfred
+
+<CardGroup cols={2}>
+  <Card title="MCP clients" icon="link" href="/integrations/mcp-clients">
+    Connect Claude Desktop and Claude Code to Alfred. The HTTP MCP server at `mcp.{$DOMAIN}:8787` and the `MCP_APPROVAL_SECRET` handshake.
+  </Card>
+  <Card title="Claude skill" icon="brain" href="/integrations/claude-skill">
+    The Alfred skill bundle for claude.ai's Custom Skills surface — what it surfaces, where the source lives, how to install.
+  </Card>
+</CardGroup>
+
+## Three layers, one mental model
+
+A **sidecar** is a container (or a cluster of containers) the compose stack runs alongside Alfred itself. Each sidecar exposes its own web UI at a subdomain, has its own database, and is reached by Hermes through an MCP app — `plane`, `sure`, or `vaultwarden` *(packages/mcp-server/src/tools/registry.ts:37–44)*. They are full applications in their own right; Alfred just happens to host and orchestrate them.
+
+**Composio** is the opposite shape — one tool over many remote apps. There is no Composio container; ctrl-api holds your `COMPOSIO_API_KEY`, and the `execute` MCP app proxies a single `composio_execute(action, args)` call out to Composio's hosted platform *(packages/mcp-server/src/tools/execute.ts:64–81)*. Every third-party app Composio supports — Gmail, GitHub, Slack, Notion, and a thousand more — is reached this way, with the action name as a parameter.
+
+**MCP clients** are how the outside model layer talks back. Hermes registers six MCP servers per profile — five stdio apps plus one HTTP proxy *(packages/hermes/hermes-config.yaml.njk:285–354)*. The MCP catalogue has six apps total (the sixth, `hermes`, was added 2026-05-26 but isn't yet wired into the profile template); all six are served externally at `mcp.{$DOMAIN}/<app>/mcp` for claude.ai, Claude Desktop, and Claude Code *(packages/mcp-server/src/index.ts:96–106, 244–334)*. Across all of them you can reach roughly 178 distinct tools.
+
+<Note>
+Inside the codebase you'll see references to "the five sidecars." That count is principal-facing UI shorthand and dates from before the Hermes MCP app shipped on 2026-05-26. The real numbers: **4 sidecars** (Plane, Sure, Vaultwarden, Hermes/chat), **5 stdio MCP apps + 1 HTTP `alfred-ctrl` proxy** registered per Hermes profile (with a 6th stdio app, `hermes`, in the catalogue but not yet wired), and **~35 containers** total *(docker-compose.yaml)* if you count Plane's 11 sub-services and the optional 9 Vexa containers individually.
+</Note>

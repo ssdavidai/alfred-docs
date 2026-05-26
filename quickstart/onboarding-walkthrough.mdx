@@ -1,0 +1,135 @@
+---
+title: "Onboarding walkthrough"
+description: "The eight-step ritual from /awaken to /desk, and what's happening behind each page."
+---
+
+After the first signup against a fresh deployment, the principal lands on `/awaken`. From there an eight-step ritual builds the household — connects accounts, reads the calendar, learns the principal's voice, drafts the first brief — before depositing them on `/desk` *(packages/web/main.wasp:191–245)*.
+
+This page walks through each stop. Page components are in `packages/web/src/client/pages/onboarding/`.
+
+## The ritual at a glance
+
+```mermaid
+flowchart LR
+    A[/awaken/] --> B[/reading-the-room/]
+    B --> C[/verify/]
+    C --> D[/soul/]
+    D --> E[/composing/]
+    E --> F[/preparing/]
+    F --> G[/first-brief/]
+    G --> H[/household/]
+    H --> I[/desk/]
+
+    style A fill:#1a1a1a,stroke:#888,color:#eee
+    style I fill:#2a4a2a,stroke:#888,color:#eee
+```
+
+<Note>
+Legacy `/onboarding` and `/onboarding/orb` routes still exist for back-compat — they redirect to `/awaken` *(R3-web.md §3)*.
+</Note>
+
+## Step by step
+
+<Steps>
+
+<Step title="Awaken">
+
+URL: `/awaken` · Component: `AwakenPage.tsx` *(packages/web/main.wasp:191–194)*
+
+A three-plane animated intro — *account*, *wire*, *household*. Pure ceremony, no backend work. Auto-advances to `/reading-the-room` after a TICK interval *(R3-web.md §3.1)*.
+
+</Step>
+
+<Step title="Reading the room">
+
+URL: `/reading-the-room` · Component: `ReadingTheRoomPage.tsx` *(packages/web/main.wasp:197–200)*
+
+This is where Alfred first looks outside. The principal connects Gmail via Composio's managed Google OAuth — no Google Cloud client of your own required *(.env.example:46–58)*. Behind the page, `alfred-learn` activities pull ~100 days of email (chunked + paginated to stay under Temporal's 4 MB gRPC limit) and ~100 days of calendar events *(CLAUDE.md §14)*.
+
+</Step>
+
+<Step title="Verify">
+
+URL: `/verify` · Component: `VerifyPage.tsx` *(packages/web/main.wasp:203–206)*
+
+A correctness gate. The page checks that the inbound stream actually landed — that `ingest.db` is filling with raw events, that the worker is processing them, that the principal's email address matches `OWNER_EMAIL`. If anything is wrong, the principal sees a clear error here instead of a silent half-onboarded state downstream.
+
+</Step>
+
+<Step title="Soul">
+
+URL: `/soul` · Component: `SoulPresetPage.tsx` *(packages/web/main.wasp:210–213)*
+
+The principal picks a **Soul preset** — a starting personality for Alfred *(R3-web.md §3.4)*. The choice seeds `SOUL.md`, the persona document the `main` Hermes profile loads at boot *(packages/hermes/docker/supervisor.sh)*. It's edited freely later from `/settings#agent`.
+
+</Step>
+
+<Step title="Composing">
+
+URL: `/composing` · Component: `ComposingPage.tsx` *(packages/web/main.wasp:216–219)*
+
+`personalize_opus` runs in the heavy profile and writes five files at once *(CLAUDE.md §14)*:
+
+- `/vault/USER.md` (~1375 chars) — who the principal is
+- `/vault/SOUL.md` — the Alfred persona, consolidated into Hermes at boot
+- `/vault/RULES.md` — standing rules, editable on `/household`
+- `/hermes-state/memories/MEMORY.md` (~2200 chars)
+- `/hermes-state/memories/USER.md` (~1375 chars)
+
+This is the heaviest LLM step of the onboarding. It runs against the `heavy` profile (port 18791) — Opus-class reasoning by default *(.env.example:42–44)*.
+
+</Step>
+
+<Step title="Preparing">
+
+URL: `/preparing` · Component: `PreparingPage.tsx` *(packages/web/main.wasp:222–225)*
+
+Materialises the working set of the household: `generate_matter_pack_opus` writes the initial matters, `generate_errand_pack_opus` writes early tasks, `generate_chore_template_code` writes a starter set of chores. New tasks are born in the **rich shape** — with `parent_matter`, `matter_ref`, `state: pending`, `status: todo`, `signal_sources`, and a `closure_predicate` slot *(CLAUDE.md §14.6)*.
+
+The parent matter for each task is resolved by a four-tier fuzzy fallback: exact slug, fuzzy `related_matter`, fuzzy task name, or `matter/inbox.md` as the floor *(packages/learn/src/activities/packs_opus._resolve_parent_matter_path)*. The `inbox.md` sentinel is auto-seeded by the `init` container so the fallback never fails *(CLAUDE.md §15.5)*.
+
+</Step>
+
+<Step title="First brief">
+
+URL: `/first-brief` · Component: `FirstBriefPage.tsx` *(packages/web/main.wasp:228–231)*
+
+`write_brief_opus` composes the first briefing — an intro paragraph plus a *"This week, on your plate"* actionable list pulled from matters with `next_action_due`, open chores, and payment-failure signals *(CLAUDE.md §14.8)*. The principal watches the render happen.
+
+`seed_day_one_desk_cards` also runs here, picking time-anchored matters and people-density to set up the first `/desk` landing so the principal doesn't see an empty queue *(CLAUDE.md §14.7)*.
+
+</Step>
+
+<Step title="Household">
+
+URL: `/household` · Component: `HouseholdPage.tsx` *(packages/web/main.wasp:235–238)*
+
+The last seam before `/desk`. The principal reviews `RULES.md` — the standing instructions Alfred reads on every relevant call — and the starter chore set. Edits here take effect on the next workflow tick.
+
+</Step>
+
+<Step title="Desk">
+
+URL: `/desk` · Component: `DeskPage.tsx` *(packages/web/main.wasp:245, src/client/pages/desk/DeskPage.tsx:23–48)*
+
+The principal's daily home. Three sections: the **decision queue** (today's matters needing attention, with Done / Defer / Noise / Delegate / Take mine buttons), the **backstage tray** (the principal's own todos), and the **record ledger** (recent actions, all reversible). From here, the loop is closed — every Desk click writes a decision, the `DecisionRouter` workflow picks it up within 60 s, applies side-effects, and writes an observation that feeds the next night's reflection *(packages/learn/src/activities/decision_router.py)*.
+
+</Step>
+
+</Steps>
+
+## What's running underneath
+
+While the principal walks the ritual, several Temporal workflows are warming up in `alfred-learn`:
+
+- **`EventProcessorWorkflow`** (every 2 min) — marks ingest events processed, routes signals.
+- **`SignalExtractWorkflow`** (every 5 min, gated on `STEWARD_SIGNAL_EXTRACT_ENABLED`) — chunked LLM extraction of signals from raw events.
+- **`SignalRouterWorkflow`** (every 2 min) — matches signals against instincts, dispatches autonomously or surfaces to `/desk`.
+- **`BriefingWorkflow`** (morning + evening, tenant-local cron) — composes briefings.
+- **`ReflectionWorkflow`** (daily 02:00 UTC) — proposes instinct changes from accumulated observations.
+
+For deeper detail on each, see [Architecture → Workflows](/architecture/workflows).
+
+## If something stalls
+
+Onboarding has stages — Opus passes, Composio polls — that can each take a couple of minutes. If a page seems stuck, give it a moment and check `docker compose logs -f alfred-learn`. The `verify` step exists precisely to catch the misconfigurations (`OWNER_EMAIL` blank, Composio key wrong, gateway token missing) that otherwise produce silent partial states later.

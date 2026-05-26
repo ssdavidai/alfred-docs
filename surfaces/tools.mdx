@@ -1,0 +1,47 @@
+---
+title: "Tools"
+description: "The Hermes allowlist audit — every Composio action, stream, built-in primitive, and MCP endpoint Alfred is permitted to reach."
+---
+
+`/tools` is a flat audit view: every tool, stream, and MCP endpoint the Hermes runtime will currently let through. One source query — `getAllowedTools` — and a single-input search box across the lot *(packages/web/src/tools/ToolsPage2.tsx:48-103)*.
+
+## The three sections
+
+<CardGroup cols={3}>
+  <Card title="Connected apps">
+    One block per Composio toolkit the principal has authorised, split into **Streams** (sources Alfred can read from) and **Actions** (operations Alfred can perform). Each entry shows its slug, a one-line description, and a deprecation marker when applicable *(ToolsPage2.tsx:212-237, 346-384)*.
+  </Card>
+  <Card title="Built-in">
+    Primitives the Hermes runtime ships with — file operations, shell, vault read/write — independent of any connected toolkit *(ToolsPage2.tsx:240-285)*.
+  </Card>
+  <Card title="MCP servers">
+    Every tool registered through one of Alfred's MCP servers (`alfred`, `sure`, `plane`, `vaultwarden`, `execute`, `hermes`, `alfred-ctrl`). Each row is `name · server · description` *(ToolsPage2.tsx:287-338)*.
+  </Card>
+</CardGroup>
+
+The header shows the running total of entries across all three sections — typically around **155 to 165 tools** on a freshly-connected tenant *(ToolsPage2.tsx:105-108)*.
+
+## Command approval — the second gate
+
+The allowlist below the search box says what Alfred is *permitted to reach*. Hermes adds a second gate the legacy OpenClaw gateway never had: a privileged command — a shell action, a write, a sensitive tool call — **pauses for the principal's approval before it runs** *(ToolsPage2.tsx:139-166)*.
+
+Pending approvals arrive in two places:
+
+1. **The originating channel** — if the agent picked up the work from email, the approval prompt lands in email; from Telegram, in Telegram; from `/desk`, on `/desk`.
+2. **`/dashboard/devices`** — the catch-all surface, paired Hermes clients including the principal's Claude Desktop / Claude Code device.
+
+<Note>
+The MCP-server side of approval flow has two paths: a human form at `/authorize` that takes the `MCP_APPROVAL_SECRET`, and a programmatic bearer-token bypass for internal agents. Both use timing-safe comparison; both issue tokens with a one-hour TTL *(packages/mcp-server/src/index.ts:210-242, packages/mcp-server/src/oauth/provider.ts:35)*. The approval secret is rotated from [Settings → Agent Configuration → Hand off to Claude](/surfaces/study).
+</Note>
+
+## Per-app status
+
+Inside Connected apps, each toolkit row carries an `auto_config_state` chip — `configured` (brass) means streams and skills were wired automatically after the OAuth handshake; anything else (marginalia) means Alfred reached the toolkit but the auto-config reconciler has not closed the loop yet. The `reconcileComposioAutoConfig` Wasp job runs every minute to catch laggards *(packages/web/main.wasp:1253-1262)*.
+
+## Search
+
+One input across everything. Type a slug fragment, a toolkit name, or a description term — the page filters all three sections in parallel and updates each count. The filter is a plain `includes` match on slug, display name, server, and description *(ToolsPage2.tsx:57-103)*.
+
+<Tip>
+If a tool you expect is missing here, check [Connections](/surfaces/connections) first — Composio toolkits only surface after the auto-config reconciler runs. If a row says `configured` but you still can't invoke the tool, the **command approval** gate is probably holding it.
+</Tip>

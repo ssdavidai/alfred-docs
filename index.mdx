@@ -1,0 +1,59 @@
+---
+title: "Alfred Black"
+description: "An AI butler you can self-host on a single VM. Open source."
+---
+
+<Note>
+Alfred Black is in active development. These docs are versioned alongside the
+[main repository](https://github.com/ssdavidai/alfred); some sections are still
+being filled in.
+</Note>
+
+## What it is
+
+Alfred Black is a single-VM reframing of an AI-butler stack: one repository, one
+`docker compose up`, one stack. There is no SaaS multi-tenancy, no provisioning
+layer, no billing surface. You bring a Linux VM, a domain name, and a couple of
+API keys; the bootstrap script handles the rest.
+
+Once running, a user with a Linux VM can:
+
+```sh
+git clone https://github.com/ssdavidai/alfred.git
+cd alfred && cp .env.example .env   # fill DOMAIN, ACME_EMAIL, owner, API keys
+./scripts/bootstrap.sh              # generates secrets, validates env
+docker compose up -d
+```
+
+…and have a working Alfred at `https://<their-domain>` with TLS, the dashboard,
+and the full intelligence layer.
+
+## Where to start
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="rocket" href="/quickstart/prerequisites">
+    DNS, env, bootstrap, first signup. About 15 minutes if your VM is ready.
+  </Card>
+  <Card title="What is Alfred?" icon="book-open" href="/introduction/what-is-alfred">
+    The principal model, why a single VM, and the vocabulary you'll use everywhere.
+  </Card>
+  <Card title="Architecture" icon="diagram-project" href="/architecture/overview">
+    The four-store model, the signal pipeline, and the Hermes runtime.
+  </Card>
+  <Card title="Contributing" icon="code-branch" href="/contributing/bug-fixing-protocol">
+    The lane fan-out protocol, the commit gate, and how to ship a fix.
+  </Card>
+</CardGroup>
+
+## What's in the box
+
+- **A daily decision queue** (the Desk) with an audit ledger — every decision you take, recorded.
+- **A daily brief** in plain prose, composed at 06:00 local from the matters on your plate.
+- **A Markdown vault** with twelve canonical record types — readable in Obsidian, written by Alfred.
+- **An intelligence layer** that learns from your decisions and promotes hunches into autonomous actions over time.
+- **A connections catalogue** that exposes ~165 tools across Gmail, Calendar, Drive, Plane, Sure, Vaultwarden, and the Composio surface (every connected third-party app) to Alfred — and to Claude Desktop or Claude Code via MCP.
+
+## Open source
+
+Alfred Black is licensed under [`<TBD>`](./appendices/license). Contributions
+welcome — start with the [bug-fixing protocol](/contributing/bug-fixing-protocol).

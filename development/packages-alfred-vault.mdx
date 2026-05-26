@@ -1,0 +1,201 @@
+---
+title: "Package — alfred-vault"
+description: "The standalone Python vault daemon, invoked by ctrl-api via dockerExec."
+---
+
+`packages/alfred-vault/` is a **standalone Python pip package** (`alfred-vault`
+v1.0+) — the daemon ctrl-api invokes to read and write vault records. It
+ships its own CLI (`alfred vault …`), its own scope enforcement, and its
+own broader vocabulary of entity types. In production it never writes to
+disk directly: ctrl-api shells into the container via `dockerExec` and
+parses the JSON it emits.
+
+<Warning>
+  The daemon's validator supports 20+ entity types, but in production
+  **ctrl-api enforces only the twelve canonical vault types** via
+  `assertCanonicalVaultPath()`. The wider type set is supported for legacy
+  data, migrations, and dev experiments — it does not extend the
+  production vault schema. See [Package — ctrl](/development/packages-ctrl)
+  for the promotion contract.
+</Warning>
+
+## Layout
+
+```
+packages/alfred-vault/
+├── pyproject.toml             alfred-vault 1.0.0, MIT, Python ≥3.11
+├── LICENSE
+├── README.md
+├── CLAUDE.md                  scope + prompt-builder constraints
+├── config.yaml.example        config schema
+├── src/alfred/
+│   ├── __main__.py            entrypoint: python -m alfred
+│   ├── cli.py                 top-level CLI dispatcher
+│   ├── daemon.py              long-running daemon mode
+│   ├── orchestrator.py        coordinator for the four workers
+│   ├── _bundled/scaffold/     bundled vault scaffold (_templates/, dirs)
+│   ├── vault/
+│   │   ├── cli.py             vault subcommand parser
+│   │   ├── ops.py             read / search / list / create / edit / move / delete
+│   │   ├── schema.py          KNOWN_TYPES + per-type status vocab
+│   │   ├── scope.py           curator | janitor | distiller | surveyor scopes
+│   │   └── mutation_log.py    JSONL session tracker
+│   ├── curator/               inbox processor + entity extractor
+│   ├── janitor/               structural repair + link fixer
+│   ├── distiller/             knowledge extraction
+│   ├── surveyor/              embedding + clustering pipeline
+│   └── tui/, dashboard.py     interactive UIs (dev)
+└── docs/
+    ├── Architecture.md, Vault-Schema.md, CLI-Commands.md, …
+```
+
+## Entity types — the daemon's wider vocabulary
+
+The daemon's `KNOWN_TYPES` set covers ~20 entity types
+*(packages/alfred-vault/src/alfred/vault/schema.py)*:
+
+```
+project    task        session     input        person
+org        location    note        decision     process
+run        event       account     asset        conversation
+assumption constraint  contradiction synthesis   note
+```
+
+Of these, **twelve** are written to the vault in production — `matter`,
+`task`, `note`, `person`, `org`, `place`, `asset`, `chore`, `instinct`,
+`decision`, `briefing`, `daybook` — enforced by ctrl-api
+*(packages/ctrl/src/db/promotionContract.ts:29-42)*. The remaining types
+either correspond to demoted records (now stored in `alfred-state.db`) or
+exist for the daemon's own internal use during curation, distillation, and
+surveying passes.
+
+### Validator vocab per canonical type
+
+The daemon's `vault/ops.py` validates required fields and per-type status
+vocabularies. The production-relevant subset:
+
+| Type | Required fields | Status vocabulary |
+|---|---|---|
+| `matter` | `type`, `created`, `name` | `active \| dormant \| completed \| archived` |
+| `task` | `type`, `created`, `title`, `parent_matter`, `matter_ref` | `active \| blocked \| cancelled \| done \| todo` |
+| `decision` | `type`, `created`, `principal`, `source`, `intent`, `state`, `source_record` | `open \| executing \| completed \| reversed` |
+| `chore` | `type`, `created`, `name`, `workflow_class_name` | `active \| paused` |
+| `instinct` | `type`, `created`, `name`, `tier` | `unconfirmed \| active \| deprecated` |
+| `briefing` | `type`, `created`, `slot` | `composed \| dismissed` |
+| `daybook` | `type`, `created`, `date` | n/a (free body) |
+| `note` | `type`, `created`, `name` | `draft \| active \| review \| final` |
+| `person` | `type`, `created`, `name` | `active \| inactive` |
+| `org`, `place`, `asset` | `type`, `created`, `name` | `active \| inactive` (asset extends with `retired \| maintenance \| disposed`) |
+
+A type mismatch, a missing required field, an invalid status, or a wrong
+list-vs-scalar field raises a `VaultError` exception with a clear message
+*(packages/alfred-vault/src/alfred/vault/ops.py:61-93)*. ctrl-api catches
+the error and returns it as JSON to the caller.
+
+<Warning>
+  The task `status` field has bitten contributors more than once. The
+  validator accepts `active | blocked | cancelled | done | todo`. A value
+  like `queued` (which appears in some older comments) is **rejected
+  with an HTTP 500**. Use `status: todo` for "not yet started", and pair
+  it with the matters-aggregator's `state: pending` *(CLAUDE.md §15.2)*.
+</Warning>
+
+## The CLI surface
+
+Ctrl-api invokes the daemon via `docker exec alfred vault <subcommand>`
+*(packages/ctrl/src/api/routes/vault.ts:954-989)*. Every subcommand emits
+JSON on stdout and exits 1 with a JSON error body on failure
+*(packages/alfred-vault/src/alfred/vault/cli.py:232-276)*.
+
+| Command | Shape |
+|---|---|
+| `alfred vault read <path>` | `{path, frontmatter, body}` |
+| `alfred vault search --glob <pattern> --grep <regex>` | `{results[], count}` |
+| `alfred vault list <type>` | `{results[], count}` |
+| `alfred vault context` | compact whole-vault summary |
+| `alfred vault create <type> <name> --set k=v --body-stdin` | created record |
+| `alfred vault edit <path> --set k=v --append k=v --body-stdin` | updated record |
+| `alfred vault move <source> <dest>` | new path |
+| `alfred vault delete <path>` | confirmation |
+
+The ctrl-api PATCH route maps its body shape onto these flags:
+
+| HTTP body | CLI flags |
+|---|---|
+| `{set: {…}}` | `--set k=v --set k=v …` |
+| `{append: {…}}` | `--append k=v --append k=v …` |
+| `{body_append: "…"}` | `--body-append` with text on stdin |
+| `{json_set: {…}}` | Direct YAML frontmatter read-modify-write (bypasses the CLI) |
+
+A **bare field-keyed body** with none of these wrappers returns 200 with no
+mutation — the `hasCliArgs` check at the top of the PATCH handler
+short-circuits before any `dockerExec` call. Wrap the fields *(CLAUDE.md §15.1)*.
+
+## Scope enforcement
+
+The daemon's four workers each carry a different scope, set via
+`ALFRED_VAULT_SCOPE` *(packages/alfred-vault/src/alfred/vault/scope.py:15-63)*:
+
+| Scope | Read | Create | Edit | Delete |
+|---|---|---|---|---|
+| **curator** | all | inbox moves only | full | — |
+| **janitor** | all | — | full | full |
+| **distiller** | all | learn types minus `decision` | `distiller_fields_only` | — |
+| **surveyor** | all | — | only `alfred_tags`, `relationships` | — |
+
+Any out-of-scope operation raises `VaultError`. The CLI sets the scope at
+invocation time; daemon mode reads it from config.
+
+## Indexes & mutation logging
+
+The daemon **does not maintain a vault index**. ctrl-api owns the
+`vault_index` table in `alfred-state.db` and updates it on every successful
+write *(packages/ctrl/src/api/routes/vault.ts:72-85)*. The daemon is a
+write-through layer that touches markdown files directly.
+
+Mutations are journaled to a per-session JSONL file (path set via
+`ALFRED_VAULT_SESSION`) so the orchestrator can roll back or audit a run.
+This is separate from ctrl-api's audit ledger; the two record different
+slices.
+
+## Build, run, test
+
+<Tabs>
+  <Tab title="Build">
+    ```sh
+    cd packages/alfred-vault
+    pip install -e ".[temporal,surveyor]"
+    ```
+
+    The package builds as a standard hatchling wheel. The `[surveyor]`
+    extras pull in `pymilvus`, `scikit-learn`, `leidenalg`, `igraph`,
+    `numpy`, `openai` — only needed if you run the embedding + clustering
+    pipeline.
+  </Tab>
+  <Tab title="Run">
+    The container image bakes the package as an entrypoint:
+    ```sh
+    docker compose up -d alfred
+    docker compose exec alfred alfred vault read matter/inbox.md
+    ```
+
+    Env vars consumed: `ALFRED_VAULT_PATH` (vault root),
+    `ALFRED_VAULT_SCOPE` (per-worker scope),
+    `ALFRED_VAULT_SESSION` (mutation log path).
+  </Tab>
+  <Tab title="Test">
+    ```sh
+    pytest packages/alfred-vault/tests
+    ```
+
+    Tests cover the validator (every entity type's required-field and
+    status-vocab rules), scope enforcement (curator can't delete, distiller
+    can't write `decision`, etc.), and the CLI's JSON output contract.
+  </Tab>
+</Tabs>
+
+## Where to look next
+
+- The production canonical-12 enforcement: [Package — ctrl](/development/packages-ctrl)
+- Per-worker docs (Curator, Janitor, Distiller, Surveyor): under `packages/alfred-vault/docs/`
+- The shared CLAUDE.md: `packages/alfred-vault/CLAUDE.md`

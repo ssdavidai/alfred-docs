@@ -1,0 +1,89 @@
+---
+title: "Study (now Settings)"
+description: "The unified back office — agent config, workspace files, API keys, audit, theme."
+---
+
+<Info>
+This page used to live at `/study`. F83 renamed it to **`/settings`**; `/study` and `/back-office` are thin redirects that preserve hash anchors *(packages/web/main.wasp:269-289)*. The component file is still called `StudyPage.tsx` and the page's left-rail still reads "The Study" — a small nod to its origin *(packages/web/src/dashboard/StudyPage.tsx:104-179)*.
+</Info>
+
+`/settings` is the one place where the principal configures Alfred outside of the day-to-day surfaces. Sidebar layout, five sections; each section is its own self-contained block backed by a small set of Wasp ops.
+
+## The five sections
+
+<Tabs>
+  <Tab title="Agent Configuration">
+    The largest section. Three stacked sub-blocks:
+
+    **Model matrix** — one row per Hermes profile (`main` / `workers` / `heavy`), each with a model picker bound to `getModelCatalog`'s `groups` field. Changing a profile's model moves every agent riding that profile, because Hermes binds the model per-profile, not per-agent *(StudyPage.tsx:243-403)*. Default profile assignments:
+
+    | Profile | Used for | Default model |
+    |---|---|---|
+    | `main` | The principal's conversational Alfred on every channel | Grok-4.3 (configurable) |
+    | `workers` | Clerk (extraction, reflection), chore execution, surveyor labelling — cheap, high-volume | GPT-4.1-nano (configurable) |
+    | `heavy` | Onboarding facts/patterns + heavy reasoning — slow, expensive, used sparingly | Claude Opus 4.6 (configurable) |
+
+    **Agent autonomy** — three Live / Shadow toggles for the mode flags that gate how aggressively Alfred acts on its own *(StudyPage.tsx:515-714)*:
+
+    | Flag | Controls |
+    |---|---|
+    | `signal_action_mode` | Whether the signal router dispatches autonomously when an instinct clears the discretion bar |
+    | `state_mutator_mode` | Whether `state_mutator` patches matter/task frontmatter or only writes an audit row |
+    | `auto_task_create_mode` | Whether signals auto-create vault tasks |
+
+    An env var override on any of the three locks the toggle and shows a small "set via env" footnote — emergency override wins *(StudyPage.tsx:597-645)*.
+
+    **Standing rules** — the principal's RULES.md as a bullet list with inline edit. Save serialises `# Standing rules\n\n- …` back to the vault via `updateWorkspaceFile` *(StudyPage.tsx:251-291, 407-483)*.
+
+    **Hand off to Claude** — the relocated `/claude` page body: MCP server URLs, the approval secret, Skill downloads, Composio skills, Vault login (see [Claude](/surfaces/claude)).
+  </Tab>
+
+  <Tab title="Account">
+    Single-VM, single-tenant: no billing, no subscription plan. Just the principal's email, optional username, and role (`Owner` or `Member`) *(StudyPage.tsx:1061-1096)*.
+  </Tab>
+
+  <Tab title="API keys">
+    `listApiKeys` / `createApiKey` / `revokeApiKey` for programmatic SaaS access to ctrl-api. Each row shows the prefix, the human label, the created/last-used timestamps. The full key is only echoed once at creation time — never on a subsequent load *(StudyPage.tsx:716-940)*.
+  </Tab>
+
+  <Tab title="Audit">
+    `getAuditFeed`, paginated 50 at a time. Every state change, signal action, decision, and chore run that ctrl-api records. The kind labels come from `auditLedgerCore.auditKindLabel` — same vocabulary as the [Decisions](/surfaces/decisions) page's State Changes tab *(StudyPage.tsx:943-1026)*.
+  </Tab>
+
+  <Tab title="Theme">
+    Day / Night toggle backed by the `useTheme` context (`ab-theme` localStorage key). The pre-paint inline script in `<head>` avoids flash on dark-mode loads *(StudyPage.tsx:1102-1136, packages/web/src/client/lib/theme.tsx:1-48)*.
+  </Tab>
+</Tabs>
+
+## Deep links
+
+The page reads `location.hash` on mount and resolves any of these anchors to a section *(StudyPage.tsx:65-86, 104-123)*:
+
+| Anchor | Section |
+|---|---|
+| `#agent` (or legacy `#settings`) | Agent Configuration |
+| `#account` | Account |
+| `#api-keys` | API keys |
+| `#audit` | Audit |
+| `#theme` | Theme |
+
+Selecting a section in the sidebar replaces the hash so the URL stays bookmarkable.
+
+## The retired Credentials section
+
+`/dashboard/credentials` used to live as a sixth section: a paste-zone for LLM provider keys (Anthropic, OpenAI, OpenRouter), the Composio API key, the Vaultwarden master password, and a handful of Twilio fields. It was retired because:
+
+1. **It mixed principal choices with operational dangers.** "Which LLM to use" belongs in Agent Configuration; the Vaultwarden master password belongs nowhere in the UI at all.
+2. **It competed with the vault as the source of truth for secrets.** Vaultwarden already holds those values; surfacing a second-source paste-zone invited drift.
+
+The redirect now lands on Settings (no fragment), since `credentials` is no longer a valid hash *(StudyPage.tsx:14-22)*. Provider keys are configured via `.env` + `bootstrap.sh`; channel-specific secrets (Twilio, AgentMail, Groq) are entered on the [Channels](/surfaces/channels) cards that consume them.
+
+The **Ledger** sub-section had the same fate — no workflow ever produced `ledger_entry` records, so the surface had no producer. It will resurface only when there is a real financial-tracking feature to populate it *(StudyPage.tsx:19-22)*.
+
+## Why one back office
+
+The Alfred Black redesign collapses *six* legacy surfaces (`/dashboard/settings`, `/dashboard/credentials`, `/dashboard/api-docs`, `/back-office`, `/study`, `/claude`) into this one page. Every one of those URLs still resolves — as a redirect into Settings on the right hash *(packages/web/main.wasp:275-296)* — so old emails, in-product links, and bookmarks survive the rename.
+
+<Tip>
+If you change the agent's model, the running profile reloads with the new model on the next request. There is no "restart Hermes" button; the gateway picks up `default_model` from each agent record on every call.
+</Tip>

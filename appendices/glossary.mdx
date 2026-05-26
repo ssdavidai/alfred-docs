@@ -1,0 +1,369 @@
+---
+title: "Glossary"
+description: "Every domain term in Alfred Black, alphabetised, with a short definition and a deep-dive link."
+---
+
+This is the canonical alphabetical glossary. The
+[introduction glossary](/introduction/glossary) is a shorter version organised
+by topic; this page is the comprehensive list.
+
+## A
+
+**alfred-deliver** — the single butler-voiced outbound endpoint
+(`POST /api/v1/alfred-deliver`). Every Alfred-spoken message goes through it
+so each one is journaled and voiced consistently across channels. See
+[Continuity → One-Alfred](/architecture/one-alfred).
+
+**alfred-journal** — an append-only table in `alfred-state.db` that records
+every outbound Alfred message and every inbound principal turn, keyed by
+`principal_id × channel × chat_id`. The `one-alfred` Hermes plugin reads
+recent entries to inject continuity into each new turn.
+
+**alfred-state.db** — Store 2 of the four-store model. SQLite with WAL +
+`sqlite-vec`, holds the machine's working memory: signals, observations,
+audit, settings, instinct counts. **Sole writer is ctrl-api**. See
+[Architecture → Storage](/architecture/storage).
+
+**alfred-vault** — the Python daemon (`packages/alfred-vault/`) that owns
+curator / janitor / distiller / surveyor logic over the vault. Also the
+pip-installable CLI of the same name. Version 1.0.0+.
+
+**alfred-worker** — the running container that hosts the `alfred-vault`
+daemon inside the platform deploy. Lane IV's territory in the
+[lane gate](/contributing/lane-gate).
+
+**Asking / Confirming / Acting** — the three [instinct](#i) tiers. Promotion
+is clerk-driven via `ReflectionWorkflow`.
+
+**auto_task_create_mode** — one of three [mode flags](#m). Controls whether
+signals auto-create tasks via `task_creation.create_task_from_signal`.
+Default `live`.
+
+## B
+
+**Brief** — the daily letterpress letter Alfred composes for the principal,
+served at `/brief`. Written by `write_brief_opus`; first one lands at the
+end of onboarding. See [Surfaces → Brief](/surfaces/brief).
+
+**briefing (record type)** — one of the twelve canonical vault types.
+Persisted at `vault/briefing/<date>.md`.
+
+**BriefingWorkflow** — the Temporal workflow that composes briefs on a
+tenant-local cron (typically morning 05:00 + evening 17:00).
+
+## C
+
+**Caddy** — the reverse proxy that handles ingress for all seven Alfred
+hostnames and auto-issues Let's Encrypt certificates. Config at
+`caddy/Caddyfile`. See [Deployment → Caddy](/deployment/caddy).
+
+**canonical vault types** — the twelve record types ctrl-api allows in the
+vault: matter, task, note, person, org, place, asset, chore, instinct,
+decision, briefing, daybook. Enforced by `assertCanonicalVaultPath` at every
+vault write *(packages/ctrl/src/db/promotionContract.ts)*.
+
+**Channels** — the surface at `/channels` where the principal connects
+email, phone (Twilio), Telegram, Slack, OMI, the Terminal card.
+
+**chore** — a canonical vault record at `vault/chore/<slug>.md` plus a
+matching `.py` workflow class. Schedule lives in Temporal as a `chore-<slug>`
+schedule. See [Surfaces → Chores](/surfaces/chores).
+
+**clerk** — the disciplined-terminology name for the LLM call layer.
+Synonym for what other systems call "the model" or "the agent" — but in
+`packages/learn` the word **must** be `clerk` (never `subken`, `agent`,
+`model`) per the project's terminology constraint *(packages/learn/CLAUDE.md)*.
+
+**cold.db** — Store 3. zstd-compressed SQLite for the forensic long-tail
+(>90 days). Daily TTL compactor moves aged rows out of `state.db`.
+
+**Composio** — the integrations layer that backs the `execute` MCP server
+and ~1,000 third-party apps. See [Credits](/appendices/credits).
+
+**current_state** — a 2-4 sentence narrative paragraph on every matter and
+task, owned by the `NightlyNarrativeWorkflow`. Paired with `as_of`.
+
+**ctrl-api** — the dashboard backend on `:3100`. Lane I's territory. Sole
+writer to `alfred-state.db` and `ingest.db`; serves all `/api/v1/*` routes.
+
+## D
+
+**Decision** — the canonical vault record at `vault/decision/<ts>-<sha8>.md`.
+States: `open | executing | completed | reversed`. Closure of the learning
+loop: `extract_observation_from_decision` runs for every decision in
+`state=open`. See [State machines → Decision](/architecture/state-machines#decision).
+
+**DecisionRouter** — the Temporal workflow that processes open decisions,
+fires side-effects (or skips them when `synchronous_flip=true`), and
+crucially always runs `extract_observation_from_decision` so the learning
+loop closes.
+
+**Desk** — the surface at `/desk`. The principal's daily decision queue plus
+audit ledger.
+
+**discretion** — the per-instinct threshold (computed from `observation_count`)
+that gates autonomous fire. High threshold for low-observation_count
+instincts. See [Architecture → instincts](/architecture/instincts).
+
+**dispatching** — a transient signal status that signals are flipped to
+during the agent dispatch round-trip, then to `agent_responded` on success.
+
+## E
+
+**EventProcessorWorkflow** — the Temporal workflow that consumes
+`ingest.db.stream_event` every 2 minutes and marks them `processed_at`.
+
+**execute (MCP server)** — the stdio MCP app that exposes every connected
+Composio integration through a single `execute` primitive.
+
+**extract_observation_from_decision** — the activity that runs at the end
+of `DecisionRouter` and lands a `kind=decision` observation into `state.db`.
+**This is the loop-closer**. If observations aren't landing, this isn't running.
+
+## F
+
+**Fix-fan-out (Mode A / Mode B)** — the project's
+[bug-fixing protocol](/contributing/bug-fixing-protocol). Mode A = read-only
+investigation; Mode B = gate-protected parallel fix lanes.
+
+**forbidden zone** — the eight globs in the lane gate that only the
+orchestrator (phase0) can edit: schema, migrations, server.ts, CONTRACT.md
+files, `FIX-*` docs, `scripts/hooks/**`, `CLAUDE.md`.
+
+**four-store model** — Alfred's storage architecture: vault (markdown),
+`alfred-state.db` (SQLite), `cold.db` (SQLite zstd), `ingest.db` (SQLite,
+7-day TTL). See [Architecture → Storage](/architecture/storage).
+
+## H
+
+**Hermes** — the AI runtime
+([NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent))
+that replaces OpenClaw. Three supervised profiles in one container: `main`
+(:18789, user-facing chat), `workers` (:18790, background agents), `heavy`
+(:18791, Opus-class reasoning).
+
+**hermes-lcm** — the cross-session memory plugin baked into the main Hermes
+profile. Verified at supervisor boot.
+
+**Household** — the surface at `/household`. The principal's `RULES.md`
+editor.
+
+## I
+
+**ingest.db** — Store 4. SQLite, holds raw stream events with a hard
+**7-day TTL**. Consumed by `EventProcessorWorkflow` and `SignalExtractWorkflow`.
+
+**init container** — `ssdavidai00/alfred-init:latest`. One-shot bootstrap
+that scaffolds the vault, renders Hermes profile configs, writes
+`/alfred-data/.gateway-token`, seeds `matter/inbox.md`. Restart: "no".
+
+**instinct** — a canonical vault record at `vault/instinct/<slug>.md` that
+encodes a pattern Alfred should watch for and a tier (`Asking`,
+`Confirming`, `Acting`). Tier promotion is clerk-driven via
+`ReflectionWorkflow`.
+
+**intuition** — the disciplined-terminology name for the matching layer
+(not "skill-graph"). Lives in `packages/learn/src/activities/matching/`.
+
+## J
+
+**JudgmentWorkflow** — the Temporal workflow (every 2m) that routes inputs
+via instinct matching.
+
+## L
+
+**lane gate** — the pre-commit hook at `scripts/hooks/check_lane.py` that
+enforces lane boundaries, the forbidden zone, the 200-LOC scope cap, and the
+regression verify. See [The lane gate](/contributing/lane-gate).
+
+**Lane I / II / III / IV / V** — package-scoped contribution territories.
+I: ctrl-api. II: learn. III: web. IV: alfred-vault. V: edges-infra.
+
+**LearningWorkflow** — the Temporal workflow (every 5m) that extracts
+instincts from accumulated observations.
+
+**learn (package)** — `packages/learn/`. The Python intelligence layer that
+hosts the 30+ Temporal workflows and the signal pipeline.
+
+## M
+
+**main profile** — the user-facing Hermes profile on `:18789`. The
+`one-alfred` plugin and `hermes-lcm` are enabled here.
+
+**matched_instinct** — a column on `alfred-state.db.signal` stamped by
+`route_signal_action` when the matcher binds. Persists end-to-end so
+`/instincts` reflects what fired.
+
+**Matter** — a canonical vault record at `vault/matter/<slug>.md`. The
+principal-facing unit of work. States: `active | dormant | completed |
+archived`. Rolled up `state` (`done | active | waiting`) derived at read
+time from linked tasks. See [State machines → Matter](/architecture/state-machines#matter).
+
+**Matters** — the surface at `/matters`. The aggregator across the
+household. Reads from `parent_matter`, `matter_ref`, `project` task
+frontmatter.
+
+**MCP servers** — the seven Model Context Protocol servers registered on
+each Hermes profile: `alfred-ctrl` (HTTP), and six stdio apps (`alfred`,
+`sure`, `plane`, `vaultwarden`, `execute`, `hermes`). See
+[MCP catalog](/development/mcp-catalog).
+
+**mode flags** — `signal_action_mode`, `state_mutator_mode`,
+`auto_task_create_mode`. Live | shadow | off. Default `live`. See
+[Gotchas → Mode flags](/troubleshooting/gotchas#mode-flags--defaults).
+
+## N
+
+**needs_attention card** — the historical name for what shows up on `/desk`.
+Newer code uses `decision/<ts>.md` cards via `POST /api/v1/decisions`; the
+legacy `/admin/needs-attention/:id/*` routes survive as compatibility shims.
+
+**notify_principal** — the Alfred tool that the agent calls to speak to the
+principal. Now a thin wrapper over `/api/v1/alfred-deliver`.
+
+## O
+
+**observation** — a row in `alfred-state.db.observation`. Kinds: `signal`,
+`decision`, `synthesis`, `contradiction`, `assumption`, `constraint`,
+`pattern_proposal`. The atomic unit of learning. Demoted from a vault record
+in the promotion contract.
+
+**OMI** — the always-on wearable. Streams ambient audio into `/channels`
+OMI card; transcripts feed the `alfred_journal`.
+
+**one-alfred plugin** — the Hermes plugin in
+`packages/hermes/plugins/one-alfred/` that journals turns and injects
+recent journal context as authoritative continuity.
+
+**onboarding ritual** — the sequential `/awaken → /reading-the-room →
+/verify → /soul → /composing → /preparing → /first-brief → /desk` path that
+a new principal walks once. Behind it: Gmail OAuth, Composio account
+creation, ~100-day email backfill, fact extraction, pattern discovery,
+personalisation, pack materialisation, day-one Desk seeding, first Brief.
+
+**OpenClaw** — the previous-generation runtime that Hermes replaces.
+References in code (e.g. `OPENCLAW_GATEWAY_URL`) survive as historical
+aliases.
+
+**OpenRouter** — the LLM router. Alfred Black requires `OPENROUTER_API_KEY`;
+`ANTHROPIC_API_KEY` is optional and used directly for some heavy paths.
+
+## P
+
+**phase0** — the orchestrator lane. The main checkout with no `.lane` file.
+Allow-all; the only lane that can edit forbidden-zone files.
+
+**Plane** — the project management sidecar (open-source Linear clone).
+Eleven services. Surfaces at `/plane`.
+
+**principal** — the person Alfred works for. Always singular per Alfred
+Black instance (one VM, one principal). The dashboard uses "the principal"
+or the principal's name in surface copy.
+
+**promotion contract** — the rule that a record exists in the vault only if
+the principal has a reason to read or edit it. Everything else is SQLite.
+Enforced in code by `assertCanonicalVaultPath` *(packages/ctrl/src/db/promotionContract.ts:54)*.
+
+## R
+
+**ReflectionWorkflow** — the Temporal workflow (daily 02:00 UTC) that feeds
+accumulated observations to Opus and applies the proposed instinct changes.
+**Sole writer** of `observation_count`, `confidence_score`, `tier` via
+`apply_instinct_change`.
+
+**RULES.md** — the principal's standing-rules singleton at `vault/RULES.md`.
+Editable from `/household`.
+
+## S
+
+**SaaS — single-VM** — Alfred Black's deployment model. One Linux VM,
+`docker compose up`, no multi-tenant control plane.
+
+**settings (page)** — `/settings`. Formerly `/study`; the rename happened in
+the 2026-05-24 release. `/study` redirects.
+
+**signal** — a row in `alfred-state.db.signal` (never a vault record).
+Statuses: `unrouted | routed_human | routed_agent | routed_suppressed |
+dispatching | agent_responded`.
+
+**SignalExtractWorkflow** — Temporal workflow (every 5m) that extracts
+signals from `ingest.db.stream_event` via the clerk and lands them in
+`alfred-state.db.signal`.
+
+**SignalRouterWorkflow** — Temporal workflow (every 2m) that scores signals
+against active instincts, applies the discretion gate, and branches to
+HIGH/HUMAN/SUPPRESSED.
+
+**signal_action_mode** — one of three mode flags. Controls whether
+SignalRouter dispatches autonomously when discretion clears the bar.
+
+**single-writer discipline** — ctrl-api is the **only** process with a
+write handle to `alfred-state.db` and `ingest.db`. Everything else writes
+via HTTP. Eliminates SQLite multi-process contention.
+
+**SOUL.md** — the Alfred persona singleton. Written once during onboarding
+at `vault/SOUL.md`; consolidated to `$HERMES_HOME/SOUL.md` at supervisor
+boot so the runtime loads the persona.
+
+**state_mutator** — the shared library function every state-change writer
+must call: `apply_state_change_v2`. Mode-gated. Writes a `state_change`
+audit row plus a frontmatter patch atomically.
+
+**state_mutator_mode** — one of three mode flags. Controls whether the
+state mutator patches frontmatter (`live`) or only writes the audit row
+(`shadow`).
+
+**Steward** — the principal-facing name for the state-change layer. Not a
+process; a contract.
+
+**Sure** — the personal-finance sidecar (open-source Maybe Finance clone).
+116 tools via the `sure` MCP server. Surfaces at `/finances`.
+
+## T
+
+**Task** — canonical vault record at `vault/task/<slug>.md`. Has both
+`status` (validator vocab) **and** `state` (aggregator vocab). See
+[Gotchas → task status vs state](/troubleshooting/gotchas#task-status-vs-state).
+
+**TaskClosureWatcherWorkflow** — Temporal workflow (every 5m) that matches
+inbound signals against open tasks' `closure_predicate`.
+
+**Temporal** — the workflow engine driving `packages/learn`. UI on `:8233`,
+worker port `:7233`.
+
+**TTL compactor** — the daily process that moves aged rows from
+`alfred-state.db` to `cold.db` (zstd-compressed). Cross-tier reads via
+`GET /api/v1/state/audit` are transparent.
+
+## V
+
+**Vault** — Store 1. Markdown files under `vault_data` volume. **Sole
+writer is ctrl-api** (via the alfred daemon). The principal's published
+surface.
+
+**Vaultwarden** — the secrets-manager sidecar (Bitwarden-compatible). Lives
+at `vault.{$DOMAIN}`. Surfaces in the dashboard via the `vaultwarden` MCP
+server. **Note**: the password manager is "Vaultwarden", not "Vault" — the
+latter is the markdown surface, and the 2026-05-24 release renamed it
+consistently.
+
+**vault_index** — the SQL read-index over Store 1 in `alfred-state.db`,
+updated on every vault write via hooks. Eliminates the "walk the filesystem
+on every read" cost.
+
+**verify** — the regression command each lane runs at pre-commit. Mirrors
+CI; see [PR conventions → CI requirements](/contributing/pr-conventions#ci-requirements).
+
+**Vexa** — the optional meeting-transcription stack. Off by default; enable
+with `docker compose --profile vexa up -d`.
+
+**voice-bridge** — the Twilio Media Streams ↔ OpenAI gpt-realtime bridge at
+`voice.{$DOMAIN}`. Provides Alfred's phone-call surface.
+
+## W
+
+**Wasp** — the full-stack framework powering the dashboard
+(`packages/web/`). Compiles `main.wasp` to a Node/React stack.
+
+**workers profile** — the background-agent Hermes profile on `:18790`. Hosts
+clerk, curator, janitor, distiller, ephemeral runs. Concurrency-capped.

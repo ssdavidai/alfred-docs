@@ -1,0 +1,63 @@
+---
+title: "Decisions"
+description: "The audit ledger of every choice Alfred has made on the principal's behalf."
+---
+
+`/desk` shows the **outstanding** decisions. `/decisions` shows the **ledger** — every choice Alfred has made on the principal's behalf, every signal the steward acted on, every state change cascaded through the system, sorted newest-first with a 30-day stacked-bar chart at the top *(packages/web/src/dashboard/DecisionsPage.tsx:1-13)*.
+
+## Two tabs
+
+Phase I (#897) split the page into two top-level tabs *(DecisionsPage.tsx:28-30, 304-342)*:
+
+<Tabs>
+  <Tab title="Decisions (legacy)">
+    The HANDLED / HELD / ASKED ledger plus the 30-day chart. Source is the merge of three queries — `getRecentJudgments` (deprecated, kept for back-compat), `getStewardFeed` (event/steward-action records from the background workflow), and `getRecentDecisions` (the new decision/* records written by every Desk click) *(DecisionsPage.tsx:128-148)*.
+
+    Each row is normalised into `{ when, input, conf, outcome, state, intent, matterRef, taskRef, sourceSignal }` so the three sources land in the same table.
+  </Tab>
+  <Tab title="State Changes">
+    The cross-target `state_change` feed shipped by Phase A (#889). Reads `getStateChanges` and `getStateChangeSources`. This is the source-of-truth audit for every mutation that flowed through the state-mutator — matter status flips, task transitions, narrative refreshes, briefing-driven changes.
+  </Tab>
+</Tabs>
+
+## The 30-day stacked-bar chart
+
+A hand-drawn inline SVG (no recharts dependency — the redesign keeps the chart austere). Each bar represents one of the last 30 days; the bar is stacked in three segments — **handled**, **held**, **asked** *(DecisionsPage.tsx:248-291)*.
+
+- *Handled* = decisions with `intent: done` or `intent: take_mine` (the principal closed the loop, themselves or via Alfred)
+- *Held* = `intent: defer` (decision parked, no agent fired)
+- *Asked* = `intent: delegate` (an agent was asked to do the work)
+
+Hovering a bar shows the per-outcome counts; the totals row sums them across the window. The y-axis is auto-scaled to the busiest day in the window.
+
+## The filter pills
+
+Four toggles below the chart — **All** (default), **Handled**, **Held**, **Asked** *(DecisionsPage.tsx:26-27, 149)*. They filter the rows below the chart without rebucketing the chart itself.
+
+## The decision intents
+
+A Desk click can carry one of five intents *(DecisionsPage.tsx:215-221, packages/web/src/dashboard/DeskPage.tsx:73-78)*:
+
+| Intent | Outcome pill | What ctrl-api does |
+|---|---|---|
+| **Done** | Handled | Flip the source NA card to handled, stamp `synchronous_flip: true`, write `decision/<ts>.md` with `state: open`. `DecisionRouterWorkflow` skips the action path; `extract_observation_from_decision` still fires. |
+| **Defer** | Held | Park the card with an optional `execute_at`; the scheduled-decisions worker re-surfaces it at that time. |
+| **Noise** | Handled | One-tap gesture — materialises a `signal_noise_pattern` instinct so future events of the same kind are suppressed at the router. No note, no panel. |
+| **Delegate** | Asked | Dispatch the action to an agent. `DecisionRouterWorkflow` calls `dispatch_action_to_agent` directly with three idempotency layers (state guard, `dispatching` mark, `side_effects.agent_dispatched`). |
+| **Take mine** | Handled | Spawn a `to_do/<ts>.md` so the item lands in the principal's persistent Backstage tray on `/desk`. |
+
+Each row also carries a **state badge** showing the decision's lifecycle position — `open`, `scheduled`, `executing`, `completed`, or `reversed` *(DecisionsPage.tsx:33-38)* — so the principal can scan what's settled vs what's in flight.
+
+## Provenance — what the row came from
+
+Each row carries up to three provenance pills *(DecisionsPage.tsx:51-75, 234-237)*:
+
+- **Matter** — derived from the decision's `matter_ref` (stem only — `[[matter/foo]]` → `foo`)
+- **Task** — same treatment for `task_ref`
+- **Source signal** — the originating `signal/...` path or `source_record` ULID, shown as a short label
+
+These pills link back to the live record so the principal can trace any audit row to the signal that started it.
+
+<Note>
+The ledger polls `getRecentDecisions` every 15 seconds *(DecisionsPage.tsx:140-147)* so a freshly-clicked Desk decision lands on `/decisions` within a quarter-minute. The judgments and steward queries refresh every 60 seconds because their writers are slower-cadence.
+</Note>

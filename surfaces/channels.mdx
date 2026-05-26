@@ -1,0 +1,95 @@
+---
+title: "Channels"
+description: "Every inbound door — email, phone, SMS, voice, Telegram, Slack, OMI, Vexa, Terminal."
+---
+
+`/channels` is one card per door into Alfred. Same Alfred, same memory; the page just lets the principal pick which medium fits the moment *(packages/web/src/dashboard/ChannelsPage.tsx)*. Each card is self-contained: live status from a dedicated `get*ChannelStatus` Wasp query, provisioning form when unconfigured, test-message + disconnect controls when running.
+
+## The ten cards
+
+<CardGroup cols={2}>
+  <Card title="Web app" icon="browser">
+    `/chat` and `/desk`. Always on; no provisioning *(ChannelsPage.tsx:263-277)*.
+  </Card>
+  <Card title="Email" icon="envelope">
+    AgentMail-backed inbox at a tenant-scoped address. Forward anything; Alfred reads attachments and PDFs *(ChannelsPage.tsx:280-330, F57/C14)*.
+  </Card>
+  <Card title="Phone (SMS + Voice)" icon="phone">
+    A two-section card: SMS via Twilio (Lane III, 2026-05-25), Voice via the `voice-bridge` compose service reusing the same Twilio credentials *(ChannelsPage.tsx:338-355)*.
+  </Card>
+  <Card title="Meeting bot" icon="video">
+    Vexa auto-join for Zoom / Meet / Teams. Gated on `--profile vexa` being up *(ChannelsPage.tsx:357-374)*.
+  </Card>
+  <Card title="OMI" icon="microphone">
+    Wearable audio stream (Phase-6b, Lane III). Four states: unconfigured / needs Groq key / configured / error *(ChannelsPage.tsx:377-382)*.
+  </Card>
+  <Card title="Slack" icon="slack">
+    DMs and mentions inside the household's workspace. New in 2026-05-25 *(ChannelsPage.tsx:384-388)*.
+  </Card>
+  <Card title="Telegram" icon="telegram">
+    For when the principal is abroad. New in 2026-05-25 *(ChannelsPage.tsx:389-392)*.
+  </Card>
+  <Card title="Terminal" icon="terminal">
+    SSH straight into the VM, then `docker exec` into Hermes for the lowest-latency door *(ChannelsPage.tsx:394-396)*.
+  </Card>
+</CardGroup>
+
+## Status pills
+
+Every card carries one of: **Connected** (active), **Not connected** (available), **Starting** (a provisioning save in flight, waiting on Hermes to pick up the new config), **Needs attention** (an error state), **Coming soon** (placeholder). The pill color flips brass for active/error, marginalia for the rest *(ChannelsPage.tsx:511-549)*.
+
+## Per-channel provisioning
+
+<AccordionGroup>
+  <Accordion title="Email (AgentMail)">
+    Single field: paste the AgentMail API key. `provisionEmail` writes the credential and provisions the inbox; the card flips to `Connected` showing the assigned `inbox_address` *(ChannelsPage.tsx:184-201)*. Forwarded mail lands in the vault's `inbox/` folder.
+  </Accordion>
+
+  <Accordion title="SMS (Twilio)">
+    Three fields: Account SID (`AC` + 32 hex), Auth Token (32 hex), Twilio phone number in E.164 format. Optional fold-out: a comma-separated `SMS_ALLOWED_USERS` allowlist *(ChannelsPage.tsx:1498-1569)*. Once running, the principal can flip between **Open** (anyone can text) and **Allowlist** (only listed E.164 numbers) via the shared `AllowlistEditor` *(ChannelsPage.tsx:1336-1496)*. `Send test SMS` confirms Twilio accepts the message.
+  </Accordion>
+
+  <Accordion title="Voice (voice-bridge)">
+    Read-only: voice reuses the SMS section's Twilio credentials. Surfaces deploy-readiness only; the principal manages only the **Open / Allowlist** of authorised callers via the same `AllowlistEditor` *(ChannelsPage.tsx:348-355)*.
+  </Accordion>
+
+  <Accordion title="Telegram">
+    Single field: bot token from `@BotFather` in shape `digits:secret`. `setTelegramBotToken` persists; the card moves through `configured_starting → configured_running` as Hermes restarts to pick up the token *(ChannelsPage.tsx:572-880, packages/web/src/dashboard/telegramCardCore.ts)*. When running, every paired chat is listed with a per-chat Revoke; `Send test message` confirms delivery.
+  </Accordion>
+
+  <Accordion title="Slack">
+    Two-token Socket-Mode flow. Step 1: copy the auto-generated app manifest from `getSlackManifest` and paste it into `api.slack.com/apps → Create New App → From an app manifest`. Step 2: paste the Bot User OAuth Token (`xoxb-…`) and an App-Level Token (`xapp-…` with `connections:write`). Optional Phase-2 fields: home channel, allowed users, allowed channels *(ChannelsPage.tsx:884-1280)*.
+  </Accordion>
+
+  <Accordion title="OMI">
+    The transcription path needs a Groq API key (stored server-side in Vaultwarden; `alfred-learn` reads it at transcription time). Card states: `unconfigured` (no Groq key) → `needs_groq_key` (key invalid) → `configured` (working) → `error` *(packages/web/src/dashboard/omiCardCore.ts)*. Pair the wearable itself via [Connections](/surfaces/connections) — `alfred-omi` is the synthetic slug that mints the device's audio endpoint.
+  </Accordion>
+
+  <Accordion title="Vexa (meeting bot)">
+    Single toggle. Calls `setVexaAutoJoin({enabled})`; the bot starts/stops auto-joining the principal's standing calendar events. Requires `docker compose --profile vexa up -d` to add the nine transcript containers *(ChannelsPage.tsx:230-240)*.
+  </Accordion>
+
+  <Accordion title="Terminal (SSH + Hermes)">
+    Pure-read card. `getSshInfo` returns `{hostname, port, user, pubkey, hermes_exec}` — the public key for the principal to drop into `authorized_keys`, plus the exact `docker exec … hermes` command to talk to Alfred from a shell. Both have copy/download affordances *(ChannelsPage.tsx:407-509)*. The empty state points at `/settings#credentials`.
+  </Accordion>
+</AccordionGroup>
+
+## How the cards talk to ctrl-api
+
+Each card is backed by a tightly-scoped pair of Wasp queries and actions that proxy `/api/v1/channels/<channel>/*` on ctrl-api. The page imports **25+ operations** in one block *(ChannelsPage.tsx:9-42)*. The state-derivation logic for the four newer cards (Telegram, Slack, SMS, Voice, OMI, Terminal) is split into pure `<channel>CardCore.ts` files so the visual-state machines are unit-tested without React or Wasp imports — useful when changing the card's empty/error copy without booting the SPA.
+
+<Note>
+Tokens for SMS, Slack, Telegram are written to Vaultwarden and reflected into `.env`. A save triggers a Hermes restart so the new credentials are picked up by the running profile. The "Starting" pill is the visible window of that restart *(ChannelsPage.tsx:584-616, 949-969)*.
+</Note>
+
+## Authorisation discipline
+
+SMS and Voice carry an **Open / Allowlist** radio that controls who can reach Alfred through Twilio. The two channels share one editor component because the UX is identical (radio + CSV of E.164 numbers); only the verb ("text" / "call") and the wire field name differ. Save is disabled in `Allowlist` mode when the list is empty — preventing the principal from accidentally locking themselves out *(ChannelsPage.tsx:1336-1496)*.
+
+Slack and Telegram have their own per-chat or per-user revoke flows on the live card. Email has no allowlist — any forwarded message lands.
+
+## Hardening notes
+
+- The Phone card's old `twilio_number` / `authorized_numbers` keys never matched what ctrl-api returned, so the card stayed "Not yet provisioned" even after wiring (F58/C15 fix) *(ChannelsPage.tsx:85-89)*.
+- Email status reads `inbox_address`, which is only present once `configured: true` *(ChannelsPage.tsx:77-80)*.
+- The Terminal `hermes_exec` command is composed by ctrl-api — never reconstructed client-side — so it stays correct when container names change *(packages/web/src/dashboard/terminalCardCore.ts)*.

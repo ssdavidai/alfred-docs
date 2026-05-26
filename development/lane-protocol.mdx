@@ -1,0 +1,164 @@
+---
+title: "The lane protocol"
+description: "Five package lanes, frozen cross-lane contracts, and the providers-before-consumers merge rule."
+---
+
+Alfred is changed by many parallel agents — humans and Claude Code workers
+alike. The **lane protocol** is the discipline that makes those changes
+land without merge conflicts, contract drift, or partial rollouts.
+
+The full source-of-truth narrative is in [`CLAUDE.md` §11](https://github.com/ssdavidai/alfred/blob/main/CLAUDE.md);
+this page is its practical contributor-facing summary.
+
+## The five lanes
+
+A *lane* is a package-scoped slice of the repo plus the regression check
+that proves its slice still works. Lane boundaries are non-overlapping —
+two lanes can never edit the same file, so they can ship in parallel and
+merge cleanly *(scripts/hooks/lanes.json:15-62)*.
+
+| Lane | Name | Glob territory | VERIFY |
+|------|------|----------------|--------|
+| **I** | `ctrl-api` | `packages/ctrl/**` | `cd packages/ctrl && npm run build` |
+| **II** | `learn` | `packages/learn/**` | `cd packages/learn && python3 -m pytest -q` |
+| **III** | `web` | `packages/web/**` | `cd packages/web && npx tsc --noEmit` |
+| **IV** | `alfred-vault` | `packages/alfred-vault/**` | `cd packages/alfred-vault && python3 -m pytest -q` |
+| **V** | `edges-infra` | `packages/hermes/**`, `packages/mcp-server/**`, `packages/vault-init/**`, `scripts/**`, `caddy/**`, `docker-compose.yaml`, `.env.example`, `Makefile`, `docs/**` | `docker compose config -q` |
+
+The sixth lane, **`phase0`**, is the orchestrator's lane — the main
+checkout has no `.lane` manifest, so the gate treats it as `phase0`
+with allow-all globs and no scope cap *(scripts/hooks/check_lane.py:77-82,
+scripts/hooks/lanes.json:56-61)*. Cross-cutting work happens here,
+serially, by a single person.
+
+<Warning>
+**At most one agent per lane at a time.** Lanes are parallel; tasks
+within a lane are serial. Two agents claiming Lane II will overwrite
+each other's `.lane` manifest and stomp each other's commits.
+</Warning>
+
+## The forbidden zone
+
+Some files are shared *by design* — every lane reads them, no lane should
+write them. They are owned by `phase0` and the commit gate rejects any
+non-orchestrator commit that touches them *(scripts/hooks/check_lane.py:98-106,
+scripts/hooks/lanes.json:3-13)*:
+
+- `packages/ctrl/src/db/schema.sql`
+- `packages/ctrl/src/db/migrations/**`
+- `packages/ctrl/src/db/migrate.ts`
+- `packages/ctrl/src/api/server.ts`
+- Any `CONTRACT.md`
+- `docs/FIX-CONTRACTS.md`, `docs/FIX-PLAN.md`, `docs/FAILURE-MODES.md`
+- `scripts/hooks/**`
+- `CLAUDE.md`
+
+Editing one of these from a lane fails the [commit gate](/development/commit-gate)
+with `FORBIDDEN ZONE`. If you need a schema change or a new contract
+clause, hand the work to the orchestrator instead of trying to push it
+through a lane.
+
+## Frozen contracts (C1–C19)
+
+The forbidden zone exists because changes there are *cross-cutting*:
+they affect more than one lane. To let consumer lanes build against a
+new provider behaviour without waiting for the provider's code,
+`docs/FIX-CONTRACTS.md` records the interface as a **frozen contract**
+*before* either side codes against it.
+
+Every contract has a stable identifier `Cn` and three fields:
+
+- **Freezes** — the exact route shape, frontmatter field, or env-var
+  name that all parties agree on
+- **Producer** — which lane will implement it
+- **Consumers** — which lanes (or external callers) read it
+
+There are currently nineteen *(docs/FIX-CONTRACTS.md, C1–C19)*. Examples:
+
+- **C1** — `GET /api/v1/state/instinct-counts` shape + `mark-processed`
+  semantics
+- **C5** — the migration-runner mechanism + the `0001` baseline migration
+- **C11** — the promotion-contract stance: `assertCanonicalVaultPath`
+  runs on *all* vault writes; non-canonical types route to `state.db`
+- **C18** — `POST /api/v1/decisions` is the single source of truth;
+  delegate-flip happens *after* dispatch
+- **C19** — `GET /api/v1/vault/graph` returns `{nodes, edges, backlinks}`
+
+### Adding a new C-clause
+
+A new contract gets numbered as the next available `Cn`. Three rules:
+
+1. **Phase 0 only.** `docs/FIX-CONTRACTS.md` is in the forbidden zone,
+   so the orchestrator writes the clause from the main checkout.
+2. **Freeze before code.** A new clause MUST land in a commit
+   *before* the producer or any consumer starts on the implementation.
+   This is the whole point: a downstream lane needs to know exactly
+   what shape the provider will emit so it can build against the
+   contract, not the provider's HEAD.
+3. **Test against the contract.** The producer ships a unit test that
+   asserts the contract shape; consumers stub the producer to that
+   shape in their own tests.
+
+If a contract turns out to be wrong, the lane that hits the wall
+**stops and reports** — it does not improvise across the boundary. The
+orchestrator amends the clause from `phase0`, then the lanes resume.
+
+## Providers before consumers
+
+Lanes ship in **dependency order**: any PR that *consumes* a new
+shape merges *after* the PR that produces it. Concretely, if Lane I
+exposes a new `/api/v1/vault/graph` endpoint and Lane III's web app
+calls it:
+
+1. Lane I lands first with the new route + a test that asserts the
+   contract.
+2. Lane III lands second, stubbing the route in its tests and
+   pointing the real client at the live endpoint.
+
+Sequencing the other way leaves the consumer dead-on-arrival for
+however long the producer's PR is in review.
+
+This works the same for two services in one lane: the database
+migration (handled by `phase0` because migrations live in the
+forbidden zone) lands first; the route that reads the new column
+lands second.
+
+## Worktrees and parallelism
+
+Each lane agent works in a **linked git worktree** so its `.lane`
+manifest and its node_modules don't collide with the main checkout
+or with other lanes. The gate refuses to commit from a linked
+worktree that has no `.lane` file *(scripts/hooks/check_lane.py:77-81)* —
+this is the fail-safe that catches an agent that forgot to declare
+its lane.
+
+<Warning>
+**`isolation: worktree` is necessary but not sufficient.** A Claude
+Code agent can still share the working tree if its harness misroutes
+the worktree path, and then two agents overwrite each other's
+`.lane`. Always run `git show --stat` on every agent's commit to
+confirm it touched only its lane's files before trusting it.
+</Warning>
+
+A few hard-won rules from running this at scale:
+
+- **Agents must never run `npm install`, `npm ci`, or `npm prune`.**
+  The worktrees share a symlinked `node_modules`; install churn
+  corrupts it for every lane. VERIFY uses existing deps.
+- **Stage only your own files** (`git add <paths>`, never `git add -A`).
+  A sweeping add picks up lockfile churn or another lane's untracked
+  work.
+- **Clean up stale `.lane`** before an orchestrator commit. A
+  leftover lane marker in `main` blocks a legitimate cross-cutting
+  commit.
+
+## What to read next
+
+<CardGroup cols={2}>
+  <Card title="The commit gate" href="/development/commit-gate">
+    How `check_lane.py` rejects bad commits before they reach the orchestrator.
+  </Card>
+  <Card title="CI workflows" href="/development/ci-workflows">
+    The path-filtered image build pipeline that ships `:latest` after a lane PR merges.
+  </Card>
+</CardGroup>

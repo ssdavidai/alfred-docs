@@ -1,0 +1,60 @@
+---
+title: "Household"
+description: "Standing rules, chores, and matters — the principal's confirmation seam."
+---
+
+`/household` is the page where the principal **confirms how their household should be run**. It sits at two places in the product:
+
+1. As a step in the [onboarding ritual](/surfaces/onboarding-ritual), between `/first-brief` and `/desk` — the principal reviews what Alfred composed during onboarding and edits it before the first real workday *(packages/web/src/onboarding/HouseholdPage.tsx:537-570)*.
+2. As a standing page reachable any time later — the same editor, with the data the principal already saved.
+
+## Three sections
+
+<CardGroup cols={3}>
+  <Card title="Matters">
+    Read-only summary of every long-running concern Alfred is tracking, from `getMattersIndex`. Each row links into `/matters/:id` for the full detail page *(HouseholdPage.tsx:473-531)*.
+  </Card>
+  <Card title="Chores">
+    Live list from `getChores`. Pause / Resume / Remove per chore. Removing stops the Temporal schedule and marks the chore record completed — the run history is preserved for audit *(HouseholdPage.tsx:322-467)*.
+  </Card>
+  <Card title="Standing rules">
+    The RULES.md editor, split into four canonical sections *(HouseholdPage.tsx:76-307)*.
+  </Card>
+</CardGroup>
+
+## The standing-rules pattern
+
+Standing rules are short, plain-English instructions Alfred re-reads at the start of every turn. They are the cheapest, sharpest way to tell Alfred what is and is not acceptable for *this* household.
+
+The editor splits rules into **four canonical sections** *(packages/web/src/onboarding/rulesEditorCore.ts)*:
+
+| Section | What goes here | Example |
+|---|---|---|
+| **Sovereignty** | Rules about the principal's own time, body, attention | *"Never schedule anything before 9 a.m. without asking."* |
+| **Household** | Rules about the family, the home, shared assets | *"My partner is copied on anything about the kids."* |
+| **Communication** | Rules about how Alfred writes and on whose behalf | *"Sign off with my full name for first-time recipients."* |
+| **Decision** | Rules about when Alfred should ask vs act | *"Pay any bill under $200 without asking. Everything else, ask."* |
+
+Each section renders its own bullet list with inline edit, an Add input, and a Remove control. Save serialises all four sections back to `vault/RULES.md` via `createVaultRecord` *(HouseholdPage.tsx:142-165)*. Frontmatter from the existing record is preserved verbatim — only the body is replaced.
+
+<Note>
+RULES.md is a **principal-facing vault note** (`type: note, subtype: standing_rules`), not the agent-facing AGENTS.md sentinel block. An earlier version of this page read from `/api/v1/admin/workspace/RULES.md`, which 404'd and left `/household` stuck on "still composing" — the routing was corrected in C-OB2 *(HouseholdPage.tsx:1-9)*.
+</Note>
+
+## The "still composing" state
+
+On a fresh tenant the file doesn't exist yet — the onboarding pipeline writes it only after the first brief lands. The page distinguishes the expected absence (`view === "composing"`) from a real fetch failure and renders polite copy instead of a generic retry button *(HouseholdPage.tsx:171-204, packages/web/src/onboarding/rulesEmptyStateCore.ts)*:
+
+> *"Alfred is still composing your standing rules from the facts you confirmed. They'll appear here once your first brief is ready."*
+
+## Why standing rules matter for instincts
+
+Every time the [signal pipeline](/architecture/signals) routes work, it weights the principal's instincts against the situation at hand. Standing rules cut through the discretion gate: a rule like *"never reply to recruiters"* will keep the recruiter signal from ever auto-firing the reply instinct, even if observation_count is high. The clerk reads RULES.md as part of every prompt construction; instinct application reads it as a hard filter. Editing here updates both, on the next turn.
+
+## On chores
+
+Chores rows are not editable inline — they are managed in detail on [Chores](/surfaces/chores) (cadence editor, run history, source code, manual trigger). On `/household` the principal sees the same Pause / Resume / Remove actions as the dedicated page, kept here for the post-onboarding confirmation moment.
+
+<Tip>
+If you find yourself adding the same instruction to standing rules repeatedly, consider promoting it to an instinct instead — instincts are observed-and-confirmed patterns, rules are imperative declarations. The two layers complement each other.
+</Tip>

@@ -1,0 +1,231 @@
+---
+title: "Package — hermes"
+description: "The agent runtime image, the three-profile supervisor, and the init container."
+---
+
+`packages/hermes/` builds the **agent runtime image** — one Docker image
+running [Hermes Agent](https://github.com/NousResearch/hermes-agent) under
+a supervisor that supervises three isolated gateway processes
+(`main`, `workers`, `heavy`) on three TCP ports. Hermes speaks the OpenAI
+Responses API natively; ctrl-api and the MCP bundle talk to it over plain
+HTTP with a shared Bearer token.
+
+## Layout
+
+```
+packages/hermes/
+├── Dockerfile                 the multi-stage build
+├── VERSION                    pinned Hermes pip version
+├── MODELS.md                  per-profile model defaults
+├── docker/
+│   └── supervisor.sh          the 3-process supervisor (tini → here)
+├── init/
+│   └── entrypoint.sh          the init container — runs once before hermes
+├── hermes-config.yaml.njk     per-profile config.yaml template
+├── hermes-profile.env.njk     per-profile .env template
+├── config.yaml.tpl            vault-daemon (alfred) config — rendered by init
+├── plugins/
+│   └── one-alfred/            in-repo plugin for journal hooks
+├── workspace-template/        skills + AGENTS.md + TOOLS.md staged into profiles
+├── mcp/                       ctrl-server.mjs (the HTTP MCP proxy)
+├── setup.sh, openclaw-wrapper/  bootstrap helpers
+└── docs/, dockerfiles/, vexa-example.yaml, tests/
+```
+
+## The Dockerfile — two stages
+
+**Stage 1: `mcp-builder`** *(packages/hermes/Dockerfile:28-35)*. A Node 22
+build compiles the `packages/mcp-server/` TypeScript into a single dist
+plus its `node_modules`. This is the same source the standalone HTTP
+mcp-server image uses — see [Package — mcp-server](/development/packages-mcp-server)
+for the two-deploy-shape detail.
+
+**Stage 2: runtime** *(packages/hermes/Dockerfile:40-202)*. Python
+3.12-slim-bookworm base. Installs:
+
+| What | Why |
+|---|---|
+| `tini` | PID-1 init that reaps MCP stdio child zombies |
+| `git`, `build-essential`, `gcc`, `python3-dev`, `libffi-dev` | Hermes pip installs from a GitHub ref and builds native wheels |
+| `ripgrep`, `ffmpeg`, `procps`, `openssh-client`, `curl` | Runtime tools the agent uses |
+| Node.js 22 (NodeSource) | The MCP stdio bundle runs as Node subprocesses |
+| Hermes pip wheel (pinned in `VERSION`) | `hermes-agent[cron,cli,mcp,web,messaging,google]` *(packages/hermes/Dockerfile:96-98)* |
+| `hermes-lcm` v0.11.1 (pinned SHA) | The lossless context-reload plugin, cloned to `/opt/hermes-lcm` *(packages/hermes/Dockerfile:111-113)* |
+| `one-alfred` plugin (in-repo) | The journal-hooks plugin, copied to `/opt/one-alfred` *(packages/hermes/Dockerfile:129)* |
+| MCP stdio bundle from stage 1 | Copied to `/opt/mcp-stdio/` *(packages/hermes/Dockerfile:138-141)* |
+| `ctrl-server.mjs` | The HTTP MCP proxy, placed at `/opt/mcp/ctrl-server.mjs` |
+| Skills + `AGENTS.md` + `TOOLS.md` | Workspace assets at `/opt/hermes-assets/` |
+| Supervisor script | `/opt/hermes-supervisor/supervisor.sh` |
+
+Runtime env:
+
+```
+ENV HERMES_HOME=/opt/data
+ENV HERMES_ASSETS_DIR=/opt/hermes-assets
+ENV HERMES_MCP_STDIO_SRC=/opt/mcp-stdio
+ENV HERMES_MCP_CTRL_SRC=/opt/mcp/ctrl-server.mjs
+EXPOSE 18789 18790
+```
+
+Port 18791 (heavy) is not EXPOSEd — heavy is reachable only over the
+compose network *(packages/hermes/docker/supervisor.sh:287)*.
+
+Entrypoint: `["/usr/bin/tini","-g","--","/opt/hermes-supervisor/supervisor.sh"]`.
+
+## The three profiles
+
+The supervisor launches three independent `hermes gateway` processes, one
+per profile *(packages/hermes/docker/supervisor.sh)*:
+
+| Profile | Port | Default model | Memory | Concurrency | Role |
+|---|---|---|---|---|---|
+| **main** | 18789 | `x-ai/grok-4.3` | enabled | 3 children | User-facing chat, all messaging channels, cron |
+| **workers** | 18790 | `openai/gpt-4.1-nano` | off | 1 child | Background agents (classification, curation, ephemeral runs) |
+| **heavy** | 18791 | `anthropic/claude-opus-4-6` | off | 1 child | Heavy reasoning — onboarding, Reflection |
+
+All three route through OpenRouter (`provider: openrouter`,
+`base_url: https://openrouter.ai/api/v1`). The defaults live in
+`render_hermes.py`; operators override per-profile with `HERMES_MAIN_MODEL`,
+`HERMES_WORKERS_MODEL`, `HERMES_HEAVY_MODEL`
+*(packages/hermes/hermes-config.yaml.njk:50-66)*.
+
+Other per-profile differences from `hermes-config.yaml.njk`:
+
+- **Approvals** — `main` runs `mode: smart` (an auxiliary LLM risk-assesses
+  privileged commands); `workers`/`heavy` are `mode: off` (no human in the
+  loop). *(packages/hermes/hermes-config.yaml.njk:186-200)*
+- **Session reset** — `main` resets at hour 4 UTC daily *and* on 24 h idle;
+  `workers`/`heavy` reset on 30 min idle.
+- **Plugins** — `main` only: `hermes-lcm` (context engine, lossless reload)
+  and `one-alfred` (journal hooks). `workers`/`heavy` run plugin-free.
+- **Toolsets** — `main` has full messaging (telegram, slack, discord,
+  whatsapp, signal); `workers`/`heavy` have only the local CLI surface
+  (terminal, file, web, vision, skills, todo).
+
+## The supervisor — `docker/supervisor.sh`
+
+A bash script that owns the lifecycle of all three gateway processes
+*(packages/hermes/docker/supervisor.sh:1-342)*. Responsibilities:
+
+1. **Sticky-default profile** — `hermes profile use main` so bare CLI calls
+   land on the user-facing profile *(packages/hermes/docker/supervisor.sh:126)*.
+2. **Auth token propagation** — if `profiles/main/auth.json` exists and is
+   non-empty, mirror it to `profiles/workers/auth.json` and
+   `profiles/heavy/auth.json` *(packages/hermes/docker/supervisor.sh:128-153)*. A
+   size heuristic guards against partial copies; the operation is idempotent.
+3. **SOUL.md consolidation** — Hermes reads its persona from
+   `$HERMES_HOME/SOUL.md`. The supervisor copies the main profile's
+   `SOUL.md` upward when the destination is missing, smaller, or contains
+   the stock Nous identity marker. Hand-edited SOULs are preserved
+   *(packages/hermes/docker/supervisor.sh:155-281)*.
+4. **Plugin deployment** — copies `/opt/hermes-lcm` and `/opt/one-alfred`
+   into `profiles/main/plugins/` (idempotent guard on mtime).
+5. **Boot the three processes** — `hermes -p <profile> gateway run --replace`
+   for each, with a crash-loop guard (max 20 restarts, configurable delay).
+6. **LCM verification probe** — a backgrounded subprocess hits
+   `/v1/tools` on main and checks for `lcm_*` tools; logs a WARNING if the
+   plugin didn't load *(packages/hermes/docker/supervisor.sh:222-264)*.
+
+## The init container — `init/entrypoint.sh`
+
+Runs once before `hermes` boots, as a compose
+`service_completed_successfully` gate. All steps are idempotent (hash-gated
+or existence-checked) *(packages/hermes/init/entrypoint.sh:1-723)*.
+
+<Steps>
+  <Step title="Scaffold the vault directory">
+    Rsyncs the bundled scaffold to `/vault/` if `CLAUDE.md` is missing.
+    Creates the entity directories (`person/`, `project/`, `org/`, `matter/`,
+    `inbox/`, `decision/`, `intuition/instincts/`, …) and the `$HERMES_HOME/memories/`
+    dir with world-write permissions so alfred-learn (uid 1000) can seed
+    while Hermes (uid 10000) reads.
+  </Step>
+  <Step title="Render the per-profile config + env">
+    Calls `render_hermes.py` for each profile. Renders
+    `hermes-config.yaml.njk` → `config.yaml` once (operator-owned thereafter)
+    and `hermes-profile.env.njk` → `.env` on every init — preserving
+    runtime-managed keys like `TELEGRAM_*`, `SLACK_*`, `TWILIO_*`, `SMS_*`
+    *(packages/hermes/init/entrypoint.sh:438-465)*.
+  </Step>
+  <Step title="Deploy the MCP bundle">
+    Copies `ctrl-server.mjs` (the HTTP MCP proxy) into each profile's
+    `mcp/` directory, and rsyncs the 6-app stdio bundle from `/setup/mcp-stdio/`
+    into each profile's `mcp-stdio/` *(packages/hermes/init/entrypoint.sh:208-243)*.
+  </Step>
+  <Step title="Deploy skills">
+    Three skill categories — vault-worker (curator/janitor/distiller),
+    platform-native, and the canonical `TOOLS.md` reference — go into
+    each profile's `workspace/` with MD5 content-hash gating
+    *(packages/hermes/init/entrypoint.sh:102-206)*.
+  </Step>
+  <Step title="Generate the gateway token">
+    Writes `/alfred-data/.gateway-token` (32 random bytes via
+    `secrets.token_urlsafe(32)`) if not already present. The same value
+    becomes `API_SERVER_KEY` in every profile's `.env`, so callers
+    authenticate with one Bearer token regardless of which port they hit
+    *(packages/hermes/init/entrypoint.sh:327-352)*.
+  </Step>
+  <Step title="Seed matter/inbox.md and intuition/index.md">
+    Creates the orphan-task fallback target and the master index of learned
+    routing patterns, idempotent.
+  </Step>
+  <Step title="Fix permissions">
+    `chown -R 10000:10000 $HERMES_DATA_DIR` (hermes user),
+    `chmod -R 777 /alfred-data` (cross-container scratch),
+    token file 644 (alfred-learn uid 1000 reads it)
+    *(packages/hermes/init/entrypoint.sh:498-517)*.
+  </Step>
+</Steps>
+
+## The API contract
+
+```
+POST http://hermes:18789/v1/responses    # main, user-facing chat
+POST http://hermes:18790/v1/runs         # workers, ephemeral background runs
+POST http://hermes:18791/v1/responses    # heavy, onboarding + reflection
+GET  http://hermes:1879<n>/health        # liveness (main, workers only)
+GET  http://hermes:1879<n>/v1/models     # advertised model name per profile
+GET  http://hermes:1879<n>/v1/tools      # tool registry (used by the LCM probe)
+```
+
+Every call carries `Authorization: Bearer ${API_SERVER_KEY}` — the same
+token across all three ports. OAuth identities (`auth.json` per profile)
+are propagated from main at boot, so the three profiles share one
+identity.
+
+## Build, run
+
+<Tabs>
+  <Tab title="Build">
+    ```sh
+    docker build -t alfred-black-hermes:dev packages/hermes
+    ```
+
+    CI builds `ssdavidai00/alfred-black-hermes:latest` on push to `main`
+    when any of `packages/hermes/**` (Dockerfile, supervisor.sh, configs)
+    changes *(.github/workflows/build-hermes.yml)*.
+  </Tab>
+  <Tab title="Run">
+    Pulled and orchestrated by the top-level `docker-compose.yaml`. The
+    `init` service must finish first (`service_completed_successfully`
+    dependency); then `hermes` boots and supervisor.sh launches the three
+    gateway processes.
+
+    ```sh
+    docker compose up -d init hermes
+    docker compose exec hermes hermes profile list
+    docker compose exec hermes hermes config view
+    ```
+
+    The web dashboard accessible via `hermes dashboard` is **not** used —
+    the upstream wheel ships no `web_dist/` *(CLAUDE.md §9.3)*. Use the
+    `hermes config` / `hermes profile` / `hermes auth` CLI inside the
+    container instead.
+  </Tab>
+</Tabs>
+
+## Where to look next
+
+- The MCP bundle Hermes loads: [Package — mcp-server](/development/packages-mcp-server)
+- Per-profile model defaults: `packages/hermes/MODELS.md`
+- The package contract: `packages/hermes/CONTRACT.md`

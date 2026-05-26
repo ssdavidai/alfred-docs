@@ -1,0 +1,67 @@
+---
+title: "The onboarding ritual"
+description: "The eight-step sequential first session that turns a fresh signup into a working Alfred."
+---
+
+A new principal does not land on `/desk`. They land on `/awaken` and are walked through an **eight-step sequential ritual** that wires every channel, configures the persona, runs the backfill, composes the first brief, and seeds the desk before handing them the keys. Each step is its own URL and its own React component; the navigation between steps is deliberate (a quiet animation, a "Continue" button, a single decision) so the principal can feel the system coming online.
+
+The ritual lives under `packages/web/src/onboarding/`, with routes declared in `packages/web/main.wasp:191-239`. The two legacy entrypoints `/onboarding` and `/onboarding/orb` redirect to `/awaken` for back-compat with older signup emails.
+
+## The sequence
+
+<Steps>
+  <Step title="/awaken — the threshold">
+    A canned three-plane animation (account · wire · household) auto-advances after a fixed TICK while the backend creates the Composio entity, provisions Hermes, and stands up the four-store layer. *(packages/web/src/onboarding/AwakenPage.tsx, main.wasp:191-194)*
+  </Step>
+  <Step title="/reading-the-room — first listen">
+    Alfred reads the principal's standing calendar and inbox via the freshly authorised Composio connection. This is the first time the ingest pipeline writes `stream_event` rows; the page narrates what was found without showing raw data. *(packages/web/src/onboarding/ReadingTheRoomPage.tsx, main.wasp:197-200)*
+  </Step>
+  <Step title="/verify — the correctness gate">
+    A verification step that proves the right account is wired before any persona work begins. If the Composio connection or OAuth scope is wrong, the ritual stops here. *(packages/web/src/onboarding/VerifyPage.tsx, main.wasp:203-206)*
+  </Step>
+  <Step title="/soul — choose the preset">
+    A small preset chooser (#853) for the persona archetype — formal-British, plainspoken-American, terse-technical, etc. The choice is a seed for the next step, not a final state. *(packages/web/src/onboarding/SoulPresetPage.tsx, main.wasp:210-213)*
+  </Step>
+  <Step title="/composing — soul configuration">
+    Voice and tone configuration on top of the chosen preset. Writes the `SOUL.md` draft that the Hermes supervisor later consolidates into `$HERMES_HOME/SOUL.md` so the `main` profile loads the Alfred persona rather than the stock Nous identity. *(packages/web/src/onboarding/ComposingPage.tsx, main.wasp:216-219)*
+  </Step>
+  <Step title="/preparing — the heavy lift">
+    The final backfill before the first brief: chunked fact extraction (`extract_facts_opus`), pattern discovery (`discover_patterns_opus`), personalization writing `USER.md`, `RULES.md`, and the Hermes memory files. Pack materialisation runs here too — `generate_matter_pack_opus` and `generate_errand_pack_opus` seed the vault with the principal's first matters, tasks, and chores. *(packages/web/src/onboarding/PreparingPage.tsx, main.wasp:222-225)*
+  </Step>
+  <Step title="/first-brief — witness the composition">
+    The first run of `write_brief_opus` renders inside the ritual itself. The principal reads their first letterpress missive — intro paragraph plus the "This week, on your plate" actionable list pulled from matters with `next_action_due`, open chores, and any payment-failure signals already detected. *(packages/web/src/onboarding/FirstBriefPage.tsx, main.wasp:228-231)*
+  </Step>
+  <Step title="/household — set the standing rules">
+    The seam between the ritual and `/desk`. The principal edits `RULES.md` (the standing rules Alfred consults on every action) and confirms the auto-seeded chore set. The Household surface remains reachable later from the main nav. *(packages/web/src/onboarding/HouseholdPage.tsx, main.wasp:235-238)*
+  </Step>
+</Steps>
+
+After `/household` the principal lands on `/desk`. The `DeskOnboardingGate` component (wrapped around the desk content) checks tenant state and quietly redirects back into the ritual if any of the earlier steps were skipped or failed *(packages/web/src/dashboard/DeskPage.tsx:232-235)*.
+
+## What gets written, where
+
+The ritual is the only time the system performs a coordinated multi-store write. By the time the principal sees `/desk` for the first time, the following exist on disk:
+
+| Artifact | Location | Writer |
+|---|---|---|
+| Soul / persona | `vault/SOUL.md` (mirrored to `$HERMES_HOME/SOUL.md`) | `personalize_opus` → Hermes supervisor consolidation |
+| Principal profile | `vault/USER.md` (~1375 char cap, sentence-boundary truncated) | `personalize_opus` |
+| Standing rules | `vault/RULES.md` | `personalize_opus`, editable on `/household` |
+| Initial matters | `vault/matter/<slug>.md` | `generate_matter_pack_opus` |
+| Initial tasks | `vault/task/<slug>.md` with `parent_matter`, `state: pending`, `status: todo`, `closure_predicate` | `_build_rich_errand_content` |
+| Initial chores | `vault/chore/<slug>.md` + Python class under `/alfred-data/user-chores/` | `generate_chore_template_code` |
+| Hermes memories | `/hermes-state/memories/MEMORY.md`, `USER.md` (~2200 / ~1375 char caps) | `personalize_opus` |
+| First-day desk cards | `needs_attention/*.md` with `frontmatter.source = "onboarding_seed"` and `tags: [day_one]` | `seed_day_one_desk_cards` |
+| First brief | `briefing/<YYYY-MM-DD>-morning.md` | `write_brief_opus` |
+
+<Note>
+Day-one desk cards render with a subtle "Day-1 introduction" pill so the principal understands the card is a starter, not a fresh signal — see `extractDayOneMarkers` *(packages/web/src/dashboard/dayOneBadgeCore.ts)*.
+</Note>
+
+## Why the ritual is sequential
+
+Every step has a hard dependency on the previous one. `/composing` needs the Composio connection from `/awaken`. `/preparing` needs the persona seed from `/composing`. `/first-brief` needs the matters and tasks from `/preparing`. The system *could* run these in parallel, but the principal would be staring at a spinner. Sequencing them lets each step narrate honest progress: the animation on `/awaken` finishes when the backend is actually ready, not after a fixed timeout.
+
+<Tip>
+If the ritual is interrupted (browser crash, network blip), the principal can re-enter at `/awaken` and the steps will fast-forward through the ones already completed. The state of each step lives server-side, keyed off the User row in the web Postgres database.
+</Tip>

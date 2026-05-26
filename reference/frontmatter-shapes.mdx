@@ -1,0 +1,705 @@
+---
+title: "Frontmatter shapes"
+description: "Required and optional fields per canonical vault type."
+---
+
+Every file in Alfred's vault is a Markdown record with a YAML frontmatter block. The frontmatter is the machine-readable contract — Temporal workflows, the matters aggregator, the Desk, the briefing composer, and the principal's Obsidian editor all read it as structured data.
+
+This page documents the **12 canonical record types** ctrl-api enforces *(packages/ctrl/src/db/promotionContract.ts:29-42)* — every other "type" is demoted to `alfred-state.db` or `ingest.db`. The actual seed templates live in `packages/ctrl/src/templates/vault-seed/_templates/`; the validator vocabulary lives in `packages/alfred-vault/src/alfred/vault/schema.py`.
+
+<Info>
+**Twelve in production, 20+ in the daemon.** The standalone `alfred-vault` Python daemon supports 20+ entity types (`project`, `process`, `run`, `event`, `input`, `session`, `conversation`, `assumption`, `constraint`, `contradiction`, `synthesis`, `location`, `account`) *(packages/alfred-vault/src/alfred/vault/schema.py:7-12)*. ctrl-api enforces only **12 canonical types** for the principal-facing vault. The remaining types are reserved for legacy/dev use and are not written by any production code path.
+
+Demoted types like `signal`, `observation`, `pattern_proposal`, `synthesis`, `contradiction`, `assumption`, `constraint`, `signal-action`, `steward-action`, `desk-action`, `state-change`, `event`, `stream_event` live in `alfred-state.db` / `ingest.db`, not the vault *(promotionContract.ts:75-99)*. A `POST` / `PATCH` to a demoted path returns `422 PROMOTION_CONTRACT_VIOLATION` with a `destination` field pointing at the correct endpoint.
+</Info>
+
+## Universal rules
+
+Every record carries two **required fields** *(packages/alfred-vault/src/alfred/vault/schema.py:81-82)*:
+
+```yaml
+type:    <canonical type>
+created: "2026-05-26T14:00:00Z"   # ISO-8601 (or "{{date}}" in templates)
+```
+
+**List fields** *(schema.py:74-79)* must be YAML arrays, never strings. The validator rejects scalar values for: `tags`, `aliases`, `related`, `relationships`, `participants`, `outputs`, `depends_on`, `blocked_by`, `based_on`, `supports`, `challenged_by`, `approved_by`, `confirmed_by`, `invalidated_by`, `cluster_sources`, `governed_by`, `references`, `project`.
+
+**Title field.** Most types use `name`. Two daemon-supported types use `subject` instead: `conversation`, `input` *(schema.py:85-88)*. Of the canonical 12, `task` uses `title`, `daybook` uses `date`, everything else uses `name`.
+
+**Wikilinks.** Cross-record references use Obsidian wikilink syntax: `[[type/Record Name]]`. Unresolved links log warnings but do not fail validation.
+
+**Narrative fields.** Per RFC #884 (Living Narratives), `matter` and `task` carry an optional `current_state` (2–4 sentence paragraph) plus `as_of` (ISO timestamp) — populated nightly by `NightlyNarrativeWorkflow` *(packages/learn/src/activities/nightly_narrative.py)*.
+
+---
+
+## The 12 canonical types
+
+<Tabs>
+
+<Tab title="matter">
+
+**Purpose.** A long-running concern grouping related work — the principal's "things I care about". The Matters aggregator rolls up linked tasks into a derived `state` of `done | active | waiting` at read time *(packages/ctrl/src/api/routes/matters.ts:486-497, `deriveMatterState`)*.
+
+**File.** `vault/matter/<slug>.md`.
+
+**Frontmatter.**
+
+| Field | Required | Vocab / type | Notes |
+|---|---|---|---|
+| `type` | ✓ | `"matter"` | |
+| `created` | ✓ | ISO-8601 | |
+| `name` | ✓ | string | Human title. |
+| `status` | recommended | `active \| dormant \| completed \| archived` | Principal-facing lifecycle. Written by Steward / state-mutator. |
+| `current_state` | optional | string (2–4 sentences) | Living-narrative paragraph. |
+| `as_of` | optional | ISO-8601 | Timestamp of the `current_state` paragraph. |
+| `tags` | optional | `string[]` | |
+| `related` | optional | `string[]` | Wikilinks to related records. |
+| `key_people` | optional | `string[]` | Wikilinks to `person/`. |
+| `activity_score` | optional | float | Used by day-one seeding to surface time-anchored matters. |
+| `next_action_due` | optional | ISO-8601 | Surfaced in the brief. |
+
+**Sample**
+
+```yaml
+---
+type: matter
+name: "Acme contract renewal"
+status: active
+created: "2026-05-26T09:00:00Z"
+current_state: >
+  Legal returned redlines on the indemnity clause. Awaiting Sarah's
+  confirmation that the carve-out matches our standard form before
+  scheduling the close call.
+as_of: "2026-05-26T08:30:00Z"
+key_people:
+  - "[[person/Sarah Chen]]"
+  - "[[person/Tom Brown]]"
+related:
+  - "[[org/Acme Corp]]"
+tags: [legal, q2-2026]
+---
+
+# Acme contract renewal
+
+Long-running matter notes here...
+```
+
+</Tab>
+
+<Tab title="task">
+
+**Purpose.** A discrete piece of work, typically scoped to one matter. Tasks are signal-closeable — `TaskClosureWatcherWorkflow` matches inbound signals against open tasks' `closure_predicate` *(packages/learn/src/activities/task_closure.py)*.
+
+**File.** `vault/task/<slug>.md`.
+
+<Warning>
+**Dual state vocabulary.** `task` carries **two different fields that look like state** — readers must understand both.
+
+- **`status`** is the `alfred-vault` validator vocab: `active | blocked | cancelled | done | todo` *(packages/alfred-vault/src/alfred/vault/schema.py:31)*.
+- **`state`** is the matters-aggregator vocab: `pending | in_progress | done | archived` *(matters.ts:454, `normalizeTaskState`)*.
+
+**Writers must set BOTH.** The validator rejects any other value for `status` with HTTP 500. The seed template at `packages/ctrl/src/templates/vault-seed/_templates/task.md` still shows `status: queued` as default — **this value is rejected by the live validator**. Fresh tasks should default to `status: todo, state: pending` (CLAUDE.md §15.2, fix in commit `eed3799`).
+</Warning>
+
+**Frontmatter.**
+
+| Field | Required | Vocab / type | Notes |
+|---|---|---|---|
+| `type` | ✓ | `"task"` | |
+| `created` | ✓ | ISO-8601 | |
+| `title` | ✓ | string | Title field for tasks. |
+| `status` | ✓ | `active \| blocked \| cancelled \| done \| todo` | Validator vocab. |
+| `state` | ✓ | `pending \| in_progress \| done \| archived` | Aggregator vocab. |
+| `parent_matter` | ✓ | string | Wikilink to `matter/<slug>.md`. |
+| `matter_ref` | ✓ | string | Alias of `parent_matter` — set both. |
+| `owner` | optional | `alfred \| human \| <agent-id>` | Defaults to `"alfred"`. |
+| `tier` | optional | `1 \| 2 \| 3` | 1=classify, 2=synthesis, 3=agentic. |
+| `agent_id` | optional | string | e.g. `"learn-clerk"`. |
+| `skill_entry` | optional | string | Vault path to skill file. |
+| `budget_turns` | optional | int | Default `25`. |
+| `requires_approval` | optional | bool | Default `false`. |
+| `closure_predicate` | optional | object \| `null` | Deterministic or LLM-evaluated. |
+| `priority` | optional | `low \| medium \| high \| urgent` | |
+| `signal_sources` | optional | `string[]` | Provenance. |
+| `source_event` | optional | string | |
+| `source_instinct` | optional | string | Wikilink to `instinct/<slug>.md`. |
+| `created_by` | optional | `judgment \| propagation \| human \| session` | |
+| `depends_on` | optional | `string[]` | Wikilinks. |
+| `blocked_by` | optional | `string[]` | Wikilinks. |
+| `tags` | optional | `string[]` | |
+| `current_state`, `as_of` | optional | as in matter | Narrative layer. |
+
+**Closure predicates.** Two styles *(packages/learn/src/activities/task_closure.py)*:
+
+- **Deterministic** — e.g. `{kind: gmail_thread_reply, thread_id: "0x123"}`, `{kind: gmail_from_subject, from: "tax@…", subject_contains: "filing"}`, `{kind: calendar_event_accepted, event_id: "0x456"}`, `{kind: payment_to_merchant, merchant_id: "0x789", min_amount: 500}`.
+- **LLM** — `assess_closure` calls the clerk; auto-closes if `confidence ≥ 0.80`.
+
+**Sample**
+
+```yaml
+---
+type: task
+title: "Reply to Sarah re: indemnity carve-out"
+status: todo
+state: pending
+parent_matter: "[[matter/Acme contract renewal]]"
+matter_ref: "[[matter/Acme contract renewal]]"
+owner: alfred
+priority: high
+tier: 2
+agent_id: "learn-clerk"
+budget_turns: 25
+requires_approval: true
+closure_predicate:
+  kind: gmail_thread_reply
+  thread_id: "0x18f3a2b1c"
+signal_sources:
+  - "signal:01HZQRC5T8V3Y7K9XBWPMDFGJN"
+created: "2026-05-26T09:15:00Z"
+created_by: judgment
+tags: [reply, legal]
+---
+
+# Reply to Sarah re: indemnity carve-out
+
+## Context
+
+Sarah's email at 09:12 asked us to confirm the standard form carve-out.
+
+## Outcome
+
+Filled in on completion.
+```
+
+</Tab>
+
+<Tab title="decision">
+
+**Purpose.** A first-class record of every human action on the Desk — every Delegate / Defer / Done / Take-mine / Noise click *(packages/ctrl/src/api/routes/decisions.ts:1-30)*. The DecisionRouterWorkflow processes new decisions in `state=open` and writes the side effects; `extract_observation_from_decision` always runs, closing the learning loop.
+
+**File.** `vault/decision/<ts>-<sha8>.md` (e.g. `2026-05-26T091500Z-a1b2c3d4.md`).
+
+**Frontmatter.**
+
+| Field | Required | Vocab / type | Notes |
+|---|---|---|---|
+| `type` | ✓ | `"decision"` | |
+| `created` | ✓ | ISO-8601 | |
+| `principal` | ✓ | `principal \| alfred` | `"alfred"` when SignalRouter fires autonomously *(decisions.ts:98-99)*. |
+| `source` | ✓ | `needs_attention \| approval \| judgment \| to_do \| desk_originated \| pattern_proposal \| instinct_fire` | Origin path *(decisions.ts:84-92)*. |
+| `intent` | ✓ | `delegate \| defer \| done \| take_mine \| noise` | The click *(decisions.ts:81-83)*. |
+| `state` | ✓ | `open \| scheduled \| dispatching \| executing \| completed \| reversed` | Lifecycle *(decisions.ts:100-102)*. |
+| `source_record` | optional | string | Wikilink to the originating `needs_attention/` or task. |
+| `source_headline` | optional | string | Short headline carried from the source for the Desk. |
+| `note` | optional | string \| `null` | The principal's freeform comment. |
+| `matter_ref` | optional | string | Wikilink. |
+| `task_ref` | optional | string | Wikilink. |
+| `is_reversible` | optional | bool | Default `true`. |
+| `outcome_record` | optional | string \| `null` | Set when the agent completes (`status` flips to `completed`). |
+| `time_to_decision_ms` | optional | int | UX telemetry. |
+| `executing_at`, `completed_at`, `reversed_at` | optional | ISO-8601 | Lifecycle anchors. |
+| `execute_at`, `scheduled_at`, `scheduled_reasoning` | optional | ISO-8601, string | For `state=scheduled`. |
+| `side_effects` | optional | object | E.g. `{synchronous_flip: true, agent_dispatched: true}`. |
+| `decision_origin` | optional | string | Set by DecisionRouter to suppress mirror recursion (CLAUDE.md §15.3). |
+
+<Warning>
+**Always mint `state: open`.** Every write path — Desk click `POST /api/v1/decisions`, legacy `POST /api/v1/admin/needs-attention/:id/{done,dispatch,skip}`, and SignalRouter autonomous fire — mints `state: open` so DecisionRouter runs `extract_observation_from_decision`. The earlier `state=completed` shortcut on done/noise/take_mine broke the learning loop (fixed in commit `31fa11f`, 2026-05-24).
+</Warning>
+
+**Sample**
+
+```yaml
+---
+type: decision
+created: "2026-05-26T09:20:00Z"
+principal: principal
+source: needs_attention
+source_record: "[[needs_attention/2026-05-26-…-abc]]"
+source_headline: "Sarah asks about indemnity carve-out"
+intent: delegate
+note: "Reply with the standard form — pull from RULES.md."
+matter_ref: "[[matter/Acme contract renewal]]"
+state: open
+is_reversible: true
+outcome_record: null
+time_to_decision_ms: 4218
+side_effects:
+  synchronous_flip: true
+---
+
+# Decision
+
+Principal clicked Delegate on the Desk at 09:20.
+```
+
+</Tab>
+
+<Tab title="instinct">
+
+**Purpose.** A learned rule for how Alfred should act on a recurring pattern. Promoted from observations by the daily `ReflectionWorkflow` *(packages/learn/src/workflows/reflection.py)*. The matcher scores live signals against active instincts and feeds the discretion gate.
+
+**File.** `vault/instinct/<slug>.md`.
+
+**Frontmatter.**
+
+| Field | Required | Vocab / type | Notes |
+|---|---|---|---|
+| `type` | ✓ | `"instinct"` | |
+| `created` | ✓ | ISO-8601 | |
+| `name` | ✓ | string | |
+| `tier` | ✓ | `asking \| confirming \| acting` | Promoted by `apply_instinct_change`. |
+| `status` | ✓ | `unconfirmed \| active \| deprecated` (vault template uses `active \| paused \| retired`) | **Do not filter the matcher on `status=active`** — accept all non-deprecated *(CLAUDE.md §6.6, packages/learn/src/activities/signal_actions.py)*. |
+| `trigger` | recommended | string | Pattern the instinct fires on. |
+| `action` | recommended | string | What Alfred does when it fires. |
+| `discretion_threshold` | optional | float `[0,1]` | Default `0.7`. |
+| `observation_count` | system-set | int | Sole writer: `apply_instinct_change`. |
+| `confidence_score` | system-set | float `[0,1]` | Sole writer: `apply_instinct_change`. |
+| `tags`, `related` | optional | `string[]` | |
+
+<Info>
+**`live_observation_count` enrichment.** When ctrl-api serves an instinct (`GET /api/v1/learning/instincts/:id`), it overlays a live count of observations referencing the instinct. The frontmatter `observation_count` is the snapshot — the discretion gate uses the live value when available.
+</Info>
+
+**Sample**
+
+```yaml
+---
+type: instinct
+name: "Reply to Sarah within 1h"
+tier: confirming
+status: active
+trigger: >
+  Sarah Chen sends email containing "indemnity" or "carve-out"
+action: >
+  Draft a reply pulling the standard form from RULES.md. Pause for
+  confirmation before sending.
+discretion_threshold: 0.65
+observation_count: 14
+confidence_score: 0.82
+created: "2026-05-12T10:00:00Z"
+tags: [legal, sarah]
+related:
+  - "[[matter/Acme contract renewal]]"
+  - "[[person/Sarah Chen]]"
+---
+
+# Reply to Sarah within 1h
+```
+
+</Tab>
+
+<Tab title="chore">
+
+**Purpose.** Recurring work — a vault `chore/` record plus a Temporal schedule plus a `.py` workflow class at `/alfred-data/user-chores/`. The dynamic loader registers the class at worker boot.
+
+**File.** `vault/chore/<slug>.md`.
+
+**Frontmatter.**
+
+| Field | Required | Vocab / type | Notes |
+|---|---|---|---|
+| `type` | ✓ | `"chore"` | |
+| `created` | ✓ | ISO-8601 | |
+| `name` | ✓ | string | |
+| `status` | recommended | `active \| paused` | |
+| `template` | optional | string | Stock chore family this was generated from. |
+| `schedule` | optional | string | Cron expression (Temporal). |
+| `schedule_id` | optional | string | Temporal schedule id (`chore-<slug>`). |
+| `params` | optional | object | Per-chore parameters. |
+| `workflow_class_name` | optional | string | **MUST match `@workflow.defn(name=...)` exactly** — case-sensitive. |
+| `quarantine` | optional | bool | First 3 runs are quarantine dry-runs. |
+| `quarantine_remaining` | optional | int | Counts down to 0 then chore goes live. |
+| `last_run`, `last_result` | system-set | ISO-8601, string | Stamped by `record_chore_run`. |
+| `created_by` | optional | string | |
+| `tags` | optional | `string[]` | Defaults to `[chore]`. |
+
+<Warning>
+**`workflow_class_name` is case-sensitive.** A capitalization mismatch with the deployed `.py` class results in `Workflow not found` at fire time. The chore-generation autocorrect rewrites weekday names → `1-5` in the cron expression before validation (#181 fix).
+</Warning>
+
+**Sample**
+
+```yaml
+---
+type: chore
+name: "Weekly expense reconciliation"
+status: active
+template: "weekly-expense-recon"
+schedule: "0 9 * * 1"
+schedule_id: "chore-weekly-expense-recon"
+workflow_class_name: "WeeklyExpenseReconChore"
+params:
+  account_id: "0xabc"
+  threshold: 100
+quarantine: false
+quarantine_remaining: 0
+last_run: "2026-05-19T09:00:00Z"
+last_result: "ok"
+created: "2026-04-15T10:00:00Z"
+created_by: "ChorePromotionReflectionWorkflow"
+tags: [chore, finance]
+---
+```
+
+</Tab>
+
+<Tab title="briefing">
+
+**Purpose.** The daily letterpress brief — composed by `BriefingWorkflow` (`write_brief_opus`). One per slot (`morning`, optional `evening`).
+
+**File.** `vault/briefing/YYYY-MM-DD-<slot>.md` (e.g. `2026-05-26-morning.md`).
+
+**Frontmatter.**
+
+| Field | Required | Vocab / type | Notes |
+|---|---|---|---|
+| `type` | ✓ | `"briefing"` | |
+| `created` | ✓ | ISO-8601 | |
+| `title` | recommended | string | |
+| `status` | recommended | `draft \| delivered` | |
+| `period` | optional | `daily \| weekly` | |
+| `slot` | optional | `morning \| evening` | |
+| `composed_at` | optional | ISO-8601 | |
+| `prior_briefing` | optional | string | Wikilink to prior. |
+| `window_start`, `window_end` | optional | ISO-8601 | Time window the brief covers. |
+| `observed_matters_count` | optional | int | |
+| `state_changes_count` | optional | int | |
+| `signals_count` | optional | int | |
+| `decisions_count` | optional | int | |
+| `tags` | optional | `string[]` | |
+
+**Body conventions.** Letterpress prose. Includes an intro paragraph plus a "This week, on your plate" bulleted list pulled from matters with `next_action_due` + open chores + payment-failure signals.
+
+**Sample**
+
+```yaml
+---
+type: briefing
+title: "Morning Brief — 2026-05-26"
+status: delivered
+period: daily
+slot: morning
+composed_at: "2026-05-26T06:30:00Z"
+prior_briefing: "[[briefing/2026-05-25-morning]]"
+window_start: "2026-05-25T06:00:00Z"
+window_end: "2026-05-26T06:00:00Z"
+observed_matters_count: 7
+state_changes_count: 12
+signals_count: 41
+decisions_count: 8
+created: "2026-05-26T06:30:00Z"
+tags: [brief]
+---
+
+# Morning Brief — 2026-05-26
+
+Good morning, Sir. ...
+```
+
+</Tab>
+
+<Tab title="daybook">
+
+**Purpose.** The principal's daily journal — a freeform running log of notes, events, and observations as the day unfolds. Human-authored; Alfred never writes here unsolicited.
+
+**File.** `vault/daybook/YYYY-MM-DD.md`.
+
+**Frontmatter.**
+
+| Field | Required | Vocab / type | Notes |
+|---|---|---|---|
+| `type` | ✓ | `"daybook"` | |
+| `created` | ✓ | ISO-8601 | |
+| `date` | ✓ | `YYYY-MM-DD` | The day this daybook covers. |
+| `status` | optional | `open \| closed` | `closed` at end-of-day. |
+| `tags` | optional | `string[]` | |
+
+**Sample**
+
+```yaml
+---
+type: daybook
+date: "2026-05-26"
+status: open
+created: "2026-05-26T06:30:00Z"
+tags: []
+---
+
+# Daybook — 2026-05-26
+
+09:00 — Sarah called about the indemnity clause.
+11:15 — Tom confirmed Friday close.
+```
+
+</Tab>
+
+<Tab title="note">
+
+**Purpose.** Free-form reference notes the principal keeps. The catch-all for content that doesn't belong in a more structured type.
+
+**File.** `vault/note/<slug>.md`.
+
+**Frontmatter.**
+
+| Field | Required | Vocab / type | Notes |
+|---|---|---|---|
+| `type` | ✓ | `"note"` | |
+| `created` | ✓ | ISO-8601 | |
+| `title` | recommended | string | Title field for notes. |
+| `status` | optional | `draft \| active \| review \| final` *(validator)* / `active \| archived` *(seed template)* | Validator accepts the four; the seed template uses `active`. |
+| `tags`, `related` | optional | `string[]` | |
+
+**Sample**
+
+```yaml
+---
+type: note
+title: "Quarterly review template"
+status: active
+created: "2026-05-26T10:00:00Z"
+tags: [template, review]
+related:
+  - "[[matter/Acme contract renewal]]"
+---
+
+# Quarterly review template
+
+Free-form reference content.
+```
+
+</Tab>
+
+<Tab title="person">
+
+**Purpose.** A person who matters to the principal — colleague, family, contact.
+
+**File.** `vault/person/<slug>.md`.
+
+**Frontmatter.**
+
+| Field | Required | Vocab / type | Notes |
+|---|---|---|---|
+| `type` | ✓ | `"person"` | |
+| `created` | ✓ | ISO-8601 | |
+| `name` | ✓ | string | |
+| `status` | optional | `active \| inactive` (validator) / `active \| archived` (seed) | |
+| `aliases` | optional | `string[]` | |
+| `emails` | optional | `string[]` | |
+| `phones` | optional | `string[]` | |
+| `orgs` | optional | `string[]` | Wikilinks to `org/`. |
+| `role` | optional | string | Role at primary org. |
+| `tags`, `related` | optional | `string[]` | |
+
+**Sample**
+
+```yaml
+---
+type: person
+name: "Sarah Chen"
+status: active
+created: "2025-11-04T09:00:00Z"
+aliases: ["Sarah", "S. Chen"]
+emails:
+  - "sarah@acme.example"
+phones:
+  - "+1-555-0143"
+orgs:
+  - "[[org/Acme Corp]]"
+role: "General Counsel"
+tags: [legal]
+related:
+  - "[[matter/Acme contract renewal]]"
+---
+
+# Sarah Chen
+```
+
+</Tab>
+
+<Tab title="org">
+
+**Purpose.** An organisation (company, household, school, group).
+
+**File.** `vault/org/<slug>.md`.
+
+**Frontmatter.**
+
+| Field | Required | Vocab / type | Notes |
+|---|---|---|---|
+| `type` | ✓ | `"org"` | |
+| `created` | ✓ | ISO-8601 | |
+| `name` | ✓ | string | |
+| `status` | optional | `active \| inactive` / `active \| archived` | |
+| `people` | optional | `string[]` | Wikilinks to `person/`. |
+| `locations` | optional | `string[]` | Wikilinks to `place/`. |
+| `members` | optional | `string[]` | |
+| `tags`, `related` | optional | `string[]` | |
+
+**Sample**
+
+```yaml
+---
+type: org
+name: "Acme Corp"
+status: active
+created: "2025-09-12T10:00:00Z"
+people:
+  - "[[person/Sarah Chen]]"
+  - "[[person/Tom Brown]]"
+locations:
+  - "[[place/Acme HQ]]"
+tags: [vendor, legal]
+related:
+  - "[[matter/Acme contract renewal]]"
+---
+
+# Acme Corp
+```
+
+</Tab>
+
+<Tab title="place">
+
+**Purpose.** A place that matters to the principal — home, office, frequent locations.
+
+**File.** `vault/place/<slug>.md`.
+
+**Frontmatter.**
+
+| Field | Required | Vocab / type | Notes |
+|---|---|---|---|
+| `type` | ✓ | `"place"` | |
+| `created` | ✓ | ISO-8601 | |
+| `name` | ✓ | string | |
+| `status` | optional | `active \| inactive` / `active \| archived` | |
+| `address` | optional | string | |
+| `coordinates` | optional | string | E.g. `"37.7749,-122.4194"`. |
+| `description` | optional | string | |
+| `tags`, `related` | optional | `string[]` | |
+
+**Sample**
+
+```yaml
+---
+type: place
+name: "Acme HQ"
+status: active
+created: "2025-09-12T10:00:00Z"
+address: "1 Market Street, San Francisco, CA 94105"
+coordinates: "37.7749,-122.4194"
+tags: [office]
+related:
+  - "[[org/Acme Corp]]"
+---
+
+# Acme HQ
+```
+
+</Tab>
+
+<Tab title="asset">
+
+**Purpose.** A thing the principal owns or is responsible for — account, property, vehicle, device, subscription.
+
+**File.** `vault/asset/<slug>.md`.
+
+**Frontmatter.**
+
+| Field | Required | Vocab / type | Notes |
+|---|---|---|---|
+| `type` | ✓ | `"asset"` | |
+| `created` | ✓ | ISO-8601 | |
+| `name` | ✓ | string | |
+| `status` | optional | `active \| retired \| maintenance \| disposed` *(validator)* / `active \| archived \| disposed` *(seed)* | |
+| `category` | optional | `account \| property \| vehicle \| device \| subscription \| …` | |
+| `value` | optional | number | Current valuation (in account currency). |
+| `owner` | optional | string | Wikilink to `person/`. |
+| `tags`, `related` | optional | `string[]` | |
+
+**Sample**
+
+```yaml
+---
+type: asset
+name: "Tesla Model Y"
+status: active
+category: vehicle
+value: 42000
+owner: "[[person/Sir]]"
+created: "2024-04-18T10:00:00Z"
+tags: [vehicle]
+related:
+  - "[[chore/quarterly-vehicle-maintenance]]"
+---
+
+# Tesla Model Y
+```
+
+</Tab>
+
+</Tabs>
+
+---
+
+## Singletons
+
+Three top-level files bypass the type-directory check *(promotionContract.ts:52)*:
+
+| File | Purpose | Writer | Reader |
+|---|---|---|---|
+| `SOUL.md` | Alfred's persona / system prompt | `personalize_opus` activity + Hermes init container | Hermes `main` profile at boot (consolidated to `$HERMES_HOME/SOUL.md`) |
+| `RULES.md` | Household rules — standing instructions | Principal via `/household` editor → ctrl-api PATCH | Steward / DecisionRouter workflows for context |
+| `CLAUDE.md` | Development guidance | Repo (committed) | Engineers, Claude Code |
+
+---
+
+## Bypass directories
+
+These vault-relative directories accept writes without the canonical-12 check *(promotionContract.ts:55-69)*:
+
+| Directory | Purpose | Writer |
+|---|---|---|
+| `_templates/` | Per-type Markdown templates with `{{title}}` / `{{date}}` placeholders | Seed scaffold (ctrl-api init) |
+| `_archive/` | Terminal-archived records | `archival_sweep.py`, janitor |
+| `_migrated*/` | Historical migration staging | Human, migration tools |
+| `_rescue/` | Janitor-rescued orphaned/broken records | janitor daemon |
+| `_raw/` | Unprocessed inbox fallback | curator daemon |
+| `_migrate/` | Active migration staging | migration workflows |
+| `inbox/` | Inbound items waiting curator processing | inbound handlers |
+| `needs_attention/` | Desk decision queue — **ctrl-api-managed, not principal-authored** | signal router, ctrl-api |
+
+The `needs_attention/` directory holds the Desk queue. The long-term plan moves these to `alfred-state.db` as routed signals (storage epic cutover #28), but until that lands, the entire `/desk` read path is built around vault markdown, so writes here must be allowed *(promotionContract.ts:55-69)*.
+
+---
+
+## Demoted types (NOT vault markdown)
+
+`ctrl-api` rejects writes for any of these — they live in `alfred-state.db` or `ingest.db` *(promotionContract.ts:75-99)*. The 422 response includes a `destination` field pointing at the correct endpoint.
+
+| Demoted type | Lives in | Endpoint |
+|---|---|---|
+| `signal-action` | `alfred-state.db audit` | `POST /api/v1/state/audit` |
+| `steward-action` | `alfred-state.db audit` | `POST /api/v1/state/audit` |
+| `desk-action` | `alfred-state.db audit` | `POST /api/v1/state/audit` |
+| `state-change` | `alfred-state.db audit` | `POST /api/v1/state/audit` |
+| `needs_attention_action` | `alfred-state.db audit` | `POST /api/v1/state/audit` |
+| `event` | `alfred-state.db audit` | `POST /api/v1/state/audit` |
+| `signal` | `alfred-state.db signal` | `POST /api/v1/state/signals` |
+| `observation` | `alfred-state.db observation` | `POST /api/v1/state/observations` |
+| `pattern_proposal` | `alfred-state.db observation` (kind=pattern_proposal) | `POST /api/v1/state/observations` |
+| `decision_pattern` | `alfred-state.db observation` (kind=pattern_proposal) | `POST /api/v1/state/observations` |
+| `synthesis` | `alfred-state.db observation` (kind=synthesis) | `POST /api/v1/state/observations` |
+| `contradiction` | `alfred-state.db observation` (kind=contradiction) | `POST /api/v1/state/observations` |
+| `assumption` | `alfred-state.db observation` (kind=assumption) | `POST /api/v1/state/observations` |
+| `constraint` | `alfred-state.db observation` (kind=constraint) | `POST /api/v1/state/observations` |
+| `stream_event` | `ingest.db stream_event` | `POST /api/v1/ingest/events` |
+| `streams` | `ingest.db stream_event` | `POST /api/v1/ingest/events` |
+
+---
+
+## See also
+
+- [ctrl-api routes](/reference/ctrl-api-routes) — every endpoint that reads or writes the records above.
+- [`alfred-state.db` schema](/reference/state-db-schema) — the tables that hold the demoted types.
+- The seed templates: `packages/ctrl/src/templates/vault-seed/_templates/`.
+- The validator: `packages/alfred-vault/src/alfred/vault/schema.py`.

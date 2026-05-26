@@ -1,0 +1,194 @@
+---
+title: "The bug-fixing protocol"
+description: "Two modes — investigate read-only, then fix gate-protected. How the team fans bugs out across parallel agents without conflicts."
+---
+
+Alfred Black uses a deliberate two-mode workflow for handling bugs at scale.
+The goal is to run **as many parallel agents as the work allows** without
+contract violations or merge conflicts — by making a bad commit *impossible
+to land*, not by trusting agents to behave *(CLAUDE.md §11)*.
+
+## Mode A — investigation fan-out (read-only)
+
+Used when symptoms are unknown and you need to map breakage across many
+surfaces (e.g. a sweep over a live tenant after a release).
+
+**Rules:**
+
+- **One agent per issue**, scoped narrowly. Run them as parallel background tasks.
+- **Strictly read-only.** No code edits, no live writes. The agent's brief
+  must say so explicitly: *"no POST/PUT/DELETE, no `docker exec` writes"*. If
+  a probe has an unavoidable side-effect (e.g. triggering a workflow to
+  observe behaviour), the agent **must disclose** it in its report.
+- Each agent writes **one report** to a git-ignored path:
+  `debug/<MMDD>/<issue>-findings.md`. The report must contain:
+  - Exact code path (`file:line`) for the suspected bug.
+  - Live evidence (log excerpts, store query results, screenshots).
+  - **Root cause vs. environmental caveat** — separate real bugs from credit
+    quota / stale deploy / config noise.
+  - A "desired happy path" — what the working system would look like.
+  - A prioritized list of what to fix.
+
+**Synthesis.** When the reports come in, group them by **cross-cutting root
+cause**, not by surface. Most symptoms collapse into a small number of seams
+— the 2026-05-24 campaign reduced ~85 findings to twelve fixes by clustering
+them this way *(see [Incident history](/troubleshooting/incident-history))*.
+
+**Live access.** SSH is read-only. Inline the SSH options on every invocation
+(a shell variable won't word-split under zsh):
+
+```sh
+ssh -o ConnectTimeout=15 -o ServerAliveInterval=10 -o BatchMode=yes \
+    -o StrictHostKeyChecking=accept-new -o IdentityAgent=none \
+    -i ~/.ssh/alfred-black-verify root@<VM-IP>
+```
+
+## Mode B — fix fan-out (gate-protected, parallel-safe)
+
+Used when you have a ranked list of bugs and need to ship fixes fast without
+trampling each other.
+
+### Step 1 — rank with the exact code path. Failing-test-first.
+
+Bugs go into `FAILURE-MODES.md` with `file:line` references. For each one,
+**write a red repro test before you fix anything** — never fix against an
+assumption. See [Failing-test-first](/contributing/failing-test-first).
+
+### Step 2 — Phase 0 first, sequentially.
+
+The orchestrator lands shared foundations everything else sits on: migration
+runner, the cross-lane contracts (`docs/FIX-CONTRACTS.md`), the commit gate
+itself. These are **forbidden-zone files**; no parallel lane work starts
+until they land.
+
+### Step 3 — freeze the contracts before any lane codes.
+
+A consumer lane builds against the **frozen shape** and never needs the
+provider's code. If a contract is wrong, the lane **STOPs and reports** — it
+never improvises across the boundary. The contract set (`C1`…`C19` so far)
+lives in `docs/FIX-CONTRACTS.md` and is Phase-0-only territory
+*(see [Lane gate](/contributing/lane-gate))*.
+
+### Step 4 — package-scoped lanes with non-overlapping glob territory.
+
+Five lanes, each owning a disjoint slice of the tree, so merges never collide:
+
+| Lane | Name | Owns |
+|---|---|---|
+| **I** | ctrl-api | `packages/ctrl/**` — routes, the four-store layer, settings |
+| **II** | learn | `packages/learn/**` — Temporal activities, intelligence layer, scoring |
+| **III** | web | `packages/web/**` — Wasp app, dashboard pages, operations |
+| **IV** | alfred-vault | `packages/alfred-vault/**` — the Python vault daemon |
+| **V** | edges-infra | `packages/{hermes,mcp-server,vault-init}/**`, `scripts/**`, `caddy/**`, `docker-compose.yaml`, `.env.example`, `Makefile`, `docs/**` |
+
+**At most one agent per lane at a time.** Lanes parallel; tasks within a lane
+serial.
+
+### Step 5 — the commit gate makes violations impossible to land.
+
+`scripts/hooks/check_lane.py` rejects a commit if it:
+
+1. Leaves the lane's `allowed` globs (lane-jumping).
+2. Touches the **forbidden zone** (`schema.sql`, `db/migrations/**`,
+   `migrate.ts`, `api/server.ts`, `**/CONTRACT.md`, the `FIX-*` and
+   `FAILURE-MODES` docs, `scripts/hooks/**`, `CLAUDE.md`).
+3. Exceeds **~200 net LOC** *(packages/ctrl/scripts/hooks/check_lane.py:114)*.
+4. Fails the lane's **VERIFY** command (build / `tsc --noEmit` / pytest /
+   `docker compose config`).
+
+Each lane is declared by a `.lane` JSON manifest at the worktree root.
+The main checkout (no `.lane`) is `phase0` — orchestrator, allow-all. A
+linked worktree with **no `.lane` is rejected** (fail-safe).
+
+<Warning>
+**Never use `ALFRED_SKIP_VERIFY`.** The override exists only for emergencies
+and is logged in stderr; if you find yourself reaching for it, your change
+needs to be split, not waived.
+</Warning>
+
+### Step 6 — the agent brief.
+
+Every lane agent receives the same template:
+
+```
+LANE      : II (learn)
+GOAL      : One sentence of what to fix.
+ALLOWED   : packages/learn/**
+FORBIDDEN : docs/FIX-CONTRACTS.md, packages/learn/CONTRACT.md, …
+VERIFY    : cd packages/learn && python3 -m pytest -q
+CONTRACT  : C-OB1 §3 (the relevant clause from FIX-CONTRACTS.md)
+SCOPE     : ~200 LOC. If bigger, STOP and report.
+WHEN DONE : 3-line PR note. Start nothing else.
+
+Standing preamble:
+- First action: write `.lane`.
+- Read your contracts before coding.
+- Touch only ALLOWED.
+- Code against the frozen contracts.
+- A blocked commit means re-scope, not override.
+```
+
+### Step 7 — sequence vs parallelize.
+
+Fan out lanes **in parallel** when their globs are disjoint **and** the
+boundary contract is frozen. **Sequence** (provider PR → consumer PR) when a
+consumer needs a provider's new shape, or when a "disjoint" file turns out to
+be shared (move it to the forbidden zone, Phase-0-owned, and let lanes
+consume it). Merge order = **providers before consumers**.
+
+The gate surfaces a cross-lane collision **immediately** as a blocked commit,
+never as a tangled merge weeks later.
+
+### Step 8 — one PR per logical change → build → deploy → smoke → next.
+
+Push to `main` lets CI build `:latest`; never clobber a production `:latest`
+without verifying on a throwaway tag first.
+
+## Hard-won rules
+
+These bit us. Don't relearn them.
+
+<Warning>
+**`isolation: worktree` does not guarantee isolation.** Agents have shared
+the working tree and overwritten each other's `.lane`. Either confirm each
+agent got a real separate worktree, **or** run coordinated cross-package work
+yourself in the main checkout (phase0), one commit at a time. Always
+`git show --stat` each agent's commit to confirm it touched only its own
+files before trusting it *(CLAUDE.md §11.3)*.
+</Warning>
+
+<Warning>
+**Agents must never run `npm install/ci/prune`.** It corrupts the shared
+symlinked `node_modules`. VERIFY uses existing deps. Orchestrator-only:
+`npm ci` if needed for a fresh worktree.
+</Warning>
+
+<Warning>
+**Stage only your own files** (`git add <paths>`, never `git add -A`).
+Sweeping with `-A` accidentally includes `node_modules` churn, lockfiles, or
+another lane's in-progress work.
+</Warning>
+
+<Warning>
+**Clean up a stale `.lane`** before an orchestrator (phase0) commit. A
+leftover lane marker blocks a legitimate cross-cutting commit.
+</Warning>
+
+<Warning>
+**Forbidden-zone files** (contracts, migrations, `schema.sql`, `server.ts`,
+`scripts/hooks/**`, `CLAUDE.md`) are **orchestrator-only**, edited centrally.
+Never inside a lane.
+</Warning>
+
+<Warning>
+**Hot-patch + `--force-recreate` destroys the patch.** Use `docker restart`
+(preserves the overlay) when you've hot-patched files into a running
+container. See [Debugging guide](/troubleshooting/debugging-guide#docker-restart-vs-up--d---force-recreate).
+</Warning>
+
+<Warning>
+**The lane gate's regression VERIFY must actually pass.** Don't push failing
+tests to fix them in a follow-up — the gate exists to catch this. If you
+broke an existing test by changing the contract, **update the test as part of
+the same commit** *(see Failing-test-first; lesson from commit `e3c1ad2`)*.
+</Warning>

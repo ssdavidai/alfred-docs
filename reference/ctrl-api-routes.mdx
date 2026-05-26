@@ -1,0 +1,1119 @@
+---
+title: "ctrl-api routes"
+description: "Every HTTP route on the dashboard backend."
+---
+
+`ctrl-api` is the Node 22 single-binary HTTP server that backs the Alfred Black dashboard, the Wasp web app, the Hermes MCP servers, and every internal write to `alfred-state.db` / `ingest.db` / the vault. It boots from `dist/api.mjs` (a standalone esbuild bundle of `src/api/standalone.ts`) and listens on `AAS_PORT` (default `3100`) with `AAS_API_KEY` as the bearer token *(packages/ctrl/src/api/standalone.ts:1-94)*.
+
+The route registry is split across **55 route files** under `packages/ctrl/src/api/routes/` and exposes **roughly 425 HTTP endpoints** (counted by `addRoute(...)` calls). All routes are mounted under `/api/v1/`.
+
+<Note>
+**Authentication.** Every route requires `Authorization: Bearer ${AAS_API_KEY}` except `GET /api/v1/admin/health` (the liveness probe). The voice-bridge container uses a scoped `VOICE_BRIDGE_INTERNAL_TOKEN` for `/api/v1/phone/voice-context` only.
+</Note>
+
+<Tip>
+This page enumerates every public route grouped by surface. For the body-shape rules that bit production (the vault `PATCH` wrapper, the decision `state: open` invariant, the mode-flag precedence) see the inline notes inside each accordion.
+</Tip>
+
+## Storage architecture (one-paragraph recap)
+
+Four stores, one writer per store *(packages/ctrl/src/db/state.ts, ingest.ts, cold.ts; packages/ctrl/src/db/schema.sql:1-25)*:
+
+| Store | File | Sole writer | Purpose |
+|---|---|---|---|
+| 1. Vault | `/vault/*.md` | ctrl-api (delegates to `alfred vault edit` daemon) | Principal-facing markdown |
+| 2. `alfred-state.db` | `/state-data/alfred-state.db` | ctrl-api | Working memory: signals, observations, audit, links, vault index, embeddings |
+| 3. `cold.db` | `/cold-data/cold.db` | ctrl-api (compactor) | Forensic long tail (zstd-compressed) |
+| 4. `ingest.db` | `/ingest-data/ingest.db` | ctrl-api | Raw inbound stream events (7-day TTL) |
+
+`alfred-learn`, the `alfred` vault daemon, and every Hermes profile write to ctrl-api over HTTP rather than touching SQLite directly. This is the single-writer discipline that keeps the vault index and the audit ledger consistent.
+
+---
+
+## Vault surface
+
+The vault holds the **12 canonical record types** *(packages/ctrl/src/db/promotionContract.ts:29-42)*: `matter`, `task`, `note`, `person`, `org`, `place`, `asset`, `chore`, `instinct`, `decision`, `briefing`, `daybook`. Plus the singletons `SOUL.md` / `RULES.md` and the ctrl-api-managed dirs `_templates/` and `needs_attention/` *(promotionContract.ts:52-69)*.
+
+Every write route enforces `assertCanonicalVaultPath()` *(promotionContract.ts:149-178)* before any filesystem touch. Demoted types (signal, observation, *-action, stream_event, …) raise `HTTP 422 PROMOTION_CONTRACT_VIOLATION` with a `destination` field pointing at the correct store *(promotionContract.ts:75-119)*.
+
+<Accordion title="Vault routes (16)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/vault/index` | Title-index cache across all canonical types. |
+| GET | `/api/v1/vault/context` | Compact vault summary for agent context windows. |
+| GET | `/api/v1/vault/search` | Free-text search (glob/grep) over markdown bodies. |
+| GET | `/api/v1/vault/list/:type` | List all records of a canonical type. |
+| GET | `/api/v1/vault/records/*` | Fetch one record (`{path, frontmatter, body}`). |
+| POST | `/api/v1/vault/records` | Create a new record (body: `{type, name, fields, body}`). |
+| PATCH | `/api/v1/vault/records/*` | Edit a record — **see body-shape rule below**. |
+| DELETE | `/api/v1/vault/records/*` | Delete a record. |
+| POST | `/api/v1/vault/move` | Move / rename a record (status-driven moves use this). |
+| POST | `/api/v1/vault/promote-triage` | Convert an `inbox/` triage card into a `task/`. |
+| GET | `/api/v1/vault/graph` | Cross-record edges (`mentions`, `derived_from`, `blocks`, …). |
+| GET | `/api/v1/vault/nebula-data` | Graph-visualisation payload. |
+| GET | `/api/v1/vault/schema` | Per-type field schema (used by the SaaS editor). |
+| GET | `/api/v1/vault/inbox` | List inbox triage queue. |
+| POST | `/api/v1/vault/inbox` | Append to the inbox. |
+| POST | `/api/v1/vault/inbox/bulk` | Bulk-insert inbox items. |
+
+<Warning>
+**PATCH body wrapper.** A bare field-keyed body to `PATCH /api/v1/vault/records/*` returns `200` with no effect — the `hasCliArgs` check at `vault.ts:976` short-circuits before any docker exec. You must wrap edits in one of these envelopes *(packages/ctrl/src/api/routes/vault.ts:883-1100)*:
+
+```json
+{
+  "set":          { "status": "active", "owner": "alfred" },
+  "append":       { "tags": "urgent", "related": "matter/foo.md" },
+  "body_append":  "\n## Update\nNew details here.",
+  "json_set":     { "side_effects": { "agent_dispatched": true } },
+  "body_set":     "Full new body content (not yet implemented)"
+}
+```
+
+`set` / `append` / `body_append` dispatch to the `alfred vault edit` CLI inside the `alfred` container. `json_set` performs a direct YAML merge in-process — use it for nested/structured values that the CLI flattens.
+</Warning>
+
+<Info>
+**State-mutation gate.** If `PATCH` touches a declared `state` field on a `matter` or `task`, the route checks `STATE_CHANGE_ENFORCEMENT` *(vault.ts:901-952)*:
+- unset / `"warn"` (default): log a warning, proceed.
+- `"reject"`: return `403 STATE_CHANGE_REQUIRED` with the offending field list.
+
+Manual state edits via the SaaS editor route through `POST /api/v1/state-changes` instead.
+</Info>
+
+</Accordion>
+
+<Accordion title="Vault index routes (4)">
+
+The `vault_index` table in `alfred-state.db` is the read-index over the markdown vault — ctrl-api updates it on every write *(packages/ctrl/src/db/vaultIndex.ts)*.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/vault-index` | Paginated index dump. |
+| GET | `/api/v1/vault-index/*` | Index row for one path. |
+| GET | `/api/v1/vault-index/type-counts` | Per-type counts (matter: 47, task: 312, …). |
+| POST | `/api/v1/vault-index/reconcile` | Re-walk the vault to catch out-of-band edits. |
+
+</Accordion>
+
+---
+
+## Decisions surface
+
+A `decision/<ts>-<short>.md` record is the first-class artefact of every human action on the Desk — every Delegate / Defer / Done / Take-mine / Noise click *(packages/ctrl/src/api/routes/decisions.ts:1-30)*.
+
+**Lifecycle:** `open → dispatching → executing → completed` (terminal) or `reversed` *(decisions.ts:65-79)*.
+
+<Warning>
+**Always mint `state: open`.** The DecisionRouterWorkflow only fires `extract_observation_from_decision` for decisions in `state=open`. If you mint `state=completed` directly, the learning loop never closes. This is the regression caught on 2026-05-24 (CLAUDE.md §16).
+</Warning>
+
+<Accordion title="Decision routes (6)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/decisions` | Create a decision. Body: `{intent, source, source_record, note, principal?, decision_origin?}`. Always lands in `state=open`. |
+| GET | `/api/v1/decisions` | List with filters (`state`, `source`, `since`, `limit`). |
+| GET | `/api/v1/decisions/in-flight` | Decisions currently awaiting an agent outcome (`state=executing`). |
+| GET | `/api/v1/decisions/:id` | One decision record. |
+| PATCH | `/api/v1/decisions/:id` | Partial update (`state`, `outcome_record`, `executing_at`, `completed_at`). |
+| POST | `/api/v1/decisions/:id/reverse` | Flip to `state=reversed` and trigger inverse side effects. |
+
+**Valid `intent`:** `delegate | defer | done | take_mine | noise` *(decisions.ts:81-83)*.
+**Valid `source`:** `needs_attention | approval | judgment | to_do | desk_originated | pattern_proposal | instinct_fire` *(decisions.ts:84-92)*.
+**Valid `principal`:** `principal | alfred` (the latter when SignalRouter fires autonomously) *(decisions.ts:98-99)*.
+
+</Accordion>
+
+---
+
+## Attention / Desk surface
+
+The legacy "needs-attention" desk queue. ctrl-api owns `vault/needs_attention/` *(promotionContract.ts:55-69)* — the signal router writes cards here when a signal needs a human decision.
+
+<Accordion title="Attention routes (5)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/admin/needs-attention` | List pending cards (status filter). |
+| POST | `/api/v1/admin/needs-attention/:id/done` | Mark card resolved by the principal. |
+| POST | `/api/v1/admin/needs-attention/:id/dispatch` | Re-route the card to a Hermes agent. Mints a mirror `decision/` record **unless** `body.decision_origin` is set. |
+| POST | `/api/v1/admin/needs-attention/:id/skip` | Negative calibration — Sir doesn't want this. |
+| POST | `/api/v1/admin/desk-action` | Generic manual desk-action audit. |
+
+<Info>
+**The decision-mirror recursion guard.** `/dispatch` mints a `decision/<ts>.md` so the Desk shows a unified history. DecisionRouter also calls `/dispatch` to execute delegate intents — passing `decision_origin` so the mirror is skipped, preventing an infinite loop (CLAUDE.md §15.3, fix in commit `4466c68`).
+</Info>
+
+</Accordion>
+
+---
+
+## State (alfred-state.db) surface
+
+Direct write/read API over the four working-memory tables: `signal`, `observation`, `routing_decision`, `audit`. The `links` and `embeddings` tables also live here. Cold-tier reads merge `audit` from `cold.db` transparently *(packages/ctrl/src/db/coldRead.ts)*.
+
+<Accordion title="State routes (21)">
+
+**Signals** *(packages/ctrl/src/api/routes/state.ts)*
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/state/signals` | Mint a signal. Body: `{kind, source, headline, body?, salience?, matter_ref?, entity_ref?, stream_event_id?, status?, payload?}`. |
+| GET | `/api/v1/state/signals` | List with filters (`status`, `kind`, `since`, `limit`). |
+| GET | `/api/v1/state/signals/:id` | Fetch one. |
+| PATCH | `/api/v1/state/signals/:id` | Update `status` (`open | routed | dismissed | folded | dispatching | routed_human | routed_agent | routed_suppressed | agent_responded`) or `payload_json`. |
+
+**Observations**
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/state/observations` | Mint an observation. Body: `{subject, kind, summary, detail?, confidence?, decision_ref?, instinct_ref?}`. |
+| GET | `/api/v1/state/observations` | List with filters (`kind`, `subject`, `since`, `processed_at` null/not-null). |
+| GET | `/api/v1/state/observations/:id` | Fetch one. |
+| PATCH | `/api/v1/state/observations/:id` | Update `status` / `confidence` / `processed_at`. |
+
+**Routing decisions** (the *machine's* decisions — distinct from the principal-facing `decision/` vault records)
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/state/routing-decisions` | Record a routing choice. Body: `{signal_id, tier, chosen_path, agent?, instinct_ref?, discretion?, reason?}`. |
+| GET | `/api/v1/state/routing-decisions` | List. |
+| GET | `/api/v1/state/routing-decisions/:id` | Fetch one. |
+| PATCH | `/api/v1/state/routing-decisions/:id` | Update `outcome` (`pending | dispatched | completed | failed`). |
+
+**Audit ledger** — the universal action log (`signal_action`, `steward_action`, `desk_action`, `state_change`, `needs_attention_action`, `decision`, `vault_write`).
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/state/audit` | Append an audit row. Body: `{action_type, actor, summary, source?, target_path?, target_kind?, subject_ref?, changes?, mode?, confidence?, undo?}`. |
+| GET | `/api/v1/state/audit` | Cross-tier list (hot + cold transparently merged). |
+| GET | `/api/v1/state/audit/:id` | Fetch one. |
+
+**Cold compactor**
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/state/cold/compact` | Force-run the TTL compactor (signals/obs/decisions → 90d, audit/link → 365d). |
+| GET | `/api/v1/state/cold/status` | Compactor run history (`cold_compact_log`). |
+
+**Graph edges**
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/state/links` | Add an edge: `{src_ref, dst_ref, rel, weight?, payload?}`. |
+| GET | `/api/v1/state/links` | List by `src_ref`, `dst_ref`, or `rel`. |
+| DELETE | `/api/v1/state/links/:id` | Remove one. |
+
+**Embeddings** (sqlite-vec `embedding` vec0 table, 768-dim, nomic-embed-text)
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/state/embeddings` | Upsert a vector. Body: `{ref, ref_kind, model?, chunk_index?, text_preview?, vector}`. |
+| POST | `/api/v1/state/embeddings/search` | k-NN over an already-encoded vector. |
+| POST | `/api/v1/state/embeddings/search-text` | Encode `text` first via Ollama, then k-NN. |
+| DELETE | `/api/v1/state/embeddings` | Drop vectors by `ref` (full row + vec0). |
+
+</Accordion>
+
+---
+
+## State changes surface
+
+Persistent record of every `matter.status` / `task.status` / `task.state` mutation. The state-mutator activity in `alfred-learn` writes here as it patches frontmatter *(packages/ctrl/src/api/routes/stateChanges.ts)*.
+
+<Accordion title="State-changes routes (3)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/state-changes` | Record `{target_path, target_kind, field, before, after, reason, actor, mode?}`. |
+| GET | `/api/v1/state-changes` | List with filters (`target_path`, `field`, `since`). |
+| GET | `/api/v1/state-changes/sources` | Distinct source actors for filter UIs. |
+
+</Accordion>
+
+---
+
+## Matters surface
+
+Read-only aggregator. The matters list rolls up linked tasks (computing `done | active | waiting` per matter) *(packages/ctrl/src/api/routes/matters.ts:486-497, `deriveMatterState`)*.
+
+<Accordion title="Matters routes (2)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/matters` | List with task roll-up (`{slug, name, status, current_state, as_of, tasks_count, state}`). |
+| GET | `/api/v1/matters/:id` | Detail: matter + its tasks + key people + recent timeline. |
+
+</Accordion>
+
+---
+
+## Settings surface
+
+The three mode flags that gate Alfred's autonomy *(packages/ctrl/src/api/routes/settings.ts:56-72)*. All default `"live"` (do the thing); flipped to `"shadow"` they record what would happen but don't act.
+
+| Key | Controls | Env override |
+|---|---|---|
+| `signal_action_mode` | Whether SignalRouter dispatches autonomously when discretion clears the bar. | `STEWARD_SIGNAL_ACTION_LIVE_MODE` |
+| `state_mutator_mode` | Whether `state_mutator` patches matter/task frontmatter. | `STEWARD_LIVE_MODE` |
+| `auto_task_create_mode` | Whether signals auto-create tasks. | `STEWARD_SIGNAL_AUTOCREATE_TASKS` |
+
+**Read precedence** *(settings.ts:135-150)*: env var → `settings.json` → registered default. Writes are atomic (temp file + rename) to `/alfred-data/settings.json`.
+
+<Accordion title="Settings routes (3)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/settings` | Resolve all flags: `{<key>: {mode, source, env_override_active}}`. |
+| GET | `/api/v1/settings/:key` | Resolve one flag. |
+| PUT | `/api/v1/settings/:key` | Set: `{mode: "live" \| "shadow"}`. |
+
+Legacy hyphenated alias `/api/v1/settings/signal-action-mode` is preserved for backwards compatibility *(settings.ts:82-87)*.
+
+</Accordion>
+
+---
+
+## Chores surface
+
+Recurring work — one `chore/<slug>.md` plus a Temporal schedule and a `.py` workflow class at `/alfred-data/user-chores/`.
+
+<Accordion title="Chore routes (15)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/chores` | List chore templates. |
+| GET | `/api/v1/chores/:slug` | Fetch one with frontmatter + run history. |
+| GET | `/api/v1/chores/:slug/runs` | Past runs (from `/alfred-data/chore-run-history.jsonl`). |
+| GET | `/api/v1/chores/:slug/source` | The `.py` workflow source. |
+| POST | `/api/v1/chores` | Create a chore (writes vault record + materialises `.py` + registers Temporal schedule). |
+| PATCH | `/api/v1/chores/:slug` | Edit cron / params / status. |
+| POST | `/api/v1/chores/:slug/pause` | Pause the Temporal schedule. |
+| POST | `/api/v1/chores/:slug/resume` | Resume. |
+| POST | `/api/v1/chores/:slug/trigger` | Fire-now (out of schedule). |
+| DELETE | `/api/v1/chores/:slug` | Delete record + schedule. |
+| GET | `/api/v1/cron/preview` | Preview next N firings for a cron expression. |
+| GET | `/api/v1/chore-actions` | Catalogue of available chore-action primitives. |
+| POST | `/api/v1/admin/chores/refresh-tier` | Re-render chore templates from the registry. |
+| POST | `/api/v1/admin/chores/install-standard` | Install the stock chore pack. |
+| POST | `/api/v1/admin/chores/emergency-pause-all` | Pause every chore. |
+| GET | `/api/v1/admin/chore-generation-audit` | Chore-generation audit log. |
+| GET | `/api/v1/admin/chore-promotions` | Weekly promotion-reflection PR proposals. |
+
+</Accordion>
+
+---
+
+## Briefings surface
+
+The daily letterpress brief — composed by `BriefingWorkflow` in `alfred-learn`.
+
+<Accordion title="Briefings routes (2)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/briefings` | List recent briefings (`{slug, created, status, slot, …}`). |
+| GET | `/api/v1/briefings/:slugDate` | Fetch one (`2026-05-14-morning`, `2026-05-14-evening`). |
+
+</Accordion>
+
+---
+
+## Learning surface
+
+The intelligence layer — observations, instincts, the reflection queue *(packages/ctrl/src/api/routes/learning.ts)*.
+
+<Accordion title="Learning routes (17)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/learning/status` | Pipeline status (workflows up/down, queue depths). |
+| GET | `/api/v1/learning/observations` | List observations from `alfred-state.db`. |
+| GET | `/api/v1/learning/observations/:id` | One observation. |
+| GET | `/api/v1/learning/instincts` | List instincts (with `live_observation_count` enrichment). |
+| GET | `/api/v1/learning/instincts/:id` | One instinct (matched signals, observations, tier history). |
+| GET | `/api/v1/learning/reflections` | ReflectionWorkflow run history. |
+| GET | `/api/v1/learning/queue` | Pending Curator/Janitor/Distiller items. |
+| GET | `/api/v1/learning/sessions` | Recent agent sessions. |
+| GET | `/api/v1/learning/quarantine` | Items the Curator parked for retry. |
+| POST | `/api/v1/learning/quarantine/:id/retry` | Re-route a quarantined item. |
+| POST | `/api/v1/learning/quarantine/:id/dismiss` | Drop. |
+| POST | `/api/v1/curator/route-and-process` | One-shot Curator hop (used by the channel webhooks). |
+| POST | `/api/v1/learning/route` | Route a raw payload through Curator. |
+| POST | `/api/v1/learning/bootstrap` | Boot all learning workflows (idempotent). |
+| POST | `/api/v1/learning/enable` | Enable the pipeline. |
+| POST | `/api/v1/learning/disable` | Disable. |
+
+</Accordion>
+
+---
+
+## Workflows & schedules surface
+
+Temporal proxy. Lists running workflows, lets you signal / cancel / terminate, and exposes the schedule registry *(packages/ctrl/src/api/routes/workflows.ts)*.
+
+<Accordion title="Workflow + schedule routes (20)">
+
+**Workflows**
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/workflows` | List running workflows. |
+| GET | `/api/v1/workflows/:wfId` | One workflow status. |
+| GET | `/api/v1/workflows/:wfId/history` | Event history. |
+| POST | `/api/v1/workflows` | Start a workflow by name. |
+| POST | `/api/v1/workflows/:wfId/signal` | Send a signal. |
+| POST | `/api/v1/workflows/:wfId/cancel` | Cancel (graceful). |
+| POST | `/api/v1/workflows/:wfId/terminate` | Terminate (hard). |
+| POST | `/api/v1/workflows/onboarding/start` | Start the onboarding workflow. |
+
+**Onboarding helpers**
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/onboarding/suggested-streams` | Streams the Composio audit suggests connecting. |
+| GET | `/api/v1/onboarding/quality-report` | Quality of extracted facts / patterns. |
+| GET | `/api/v1/onboarding/progress` | Live progress (step, percent, last activity). |
+| POST | `/api/v1/onboarding/corrections` | Sir-edited corrections fed back to personalize_opus. |
+
+**Schedules** (one per chore + system schedules like the daily Reflection)
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/schedules` | List all schedules. |
+| GET | `/api/v1/schedules/:schId` | One schedule. |
+| POST | `/api/v1/schedules` | Create a schedule. |
+| DELETE | `/api/v1/schedules/:schId` | Delete. |
+| POST | `/api/v1/schedules/:schId/pause` | Pause. |
+| POST | `/api/v1/schedules/:schId/unpause` | Resume. |
+| POST | `/api/v1/schedules/:schId/trigger` | Fire-now. |
+| POST | `/api/v1/schedules/:schId/rewrite-cron` | Replace the cron expression. |
+
+</Accordion>
+
+---
+
+## Workers surface
+
+Direct control of the Curator / Janitor / Distiller worker daemons *(packages/ctrl/src/api/routes/workers.ts)*.
+
+<Accordion title="Worker routes (15)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/workers/status` | Liveness for every worker. |
+| POST | `/api/v1/workers/up` | Start all. |
+| POST | `/api/v1/workers/down` | Stop all. |
+| POST | `/api/v1/workers/restart` | Restart all. |
+| POST | `/api/v1/workers/ingest` | Force-run the ingest sweep. |
+| POST | `/api/v1/workers/process` | Force-run the event processor. |
+| GET | `/api/v1/workers/janitor/status` | Janitor's scan status. |
+| POST | `/api/v1/workers/janitor/scan` | Trigger a scan. |
+| POST | `/api/v1/workers/janitor/fix` | Apply queued fixes. |
+| POST | `/api/v1/workers/janitor/ignore` | Mark issues as ignored. |
+| GET | `/api/v1/workers/janitor/history` | Past janitor runs. |
+| GET | `/api/v1/workers/distiller/status` | Distiller status. |
+| POST | `/api/v1/workers/distiller/scan` | Trigger a Distiller scan. |
+| POST | `/api/v1/workers/distiller/run` | Force a Distiller run. |
+| GET | `/api/v1/workers/distiller/history` | Past runs. |
+
+</Accordion>
+
+---
+
+## Streams surface
+
+Stream catalogue + per-stream pause/resume, plus the event-quarantine queue *(packages/ctrl/src/api/routes/streams.ts)*. Distinct from `ingest/events` which writes raw events.
+
+<Accordion title="Streams routes (16)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/streams` | List configured streams. |
+| GET | `/api/v1/streams/:id` | One stream's config + last-event ts. |
+| PATCH | `/api/v1/streams/:id` | Update params. |
+| POST | `/api/v1/streams` | Create a stream. |
+| DELETE | `/api/v1/streams/:id` | Delete. |
+| GET | `/api/v1/streams/schema` | Per-stream-kind schema for config UIs. |
+| GET | `/api/v1/streams/events` | Recent events across streams. |
+| GET | `/api/v1/streams/:id/events` | Events for one stream. |
+| POST | `/api/v1/streams/:id/pause` | Pause polling/intake. |
+| POST | `/api/v1/streams/:id/resume` | Resume. |
+| POST | `/api/v1/streams/events/:id/processed` | Mark a single event consumed. |
+| POST | `/api/v1/streams/events/:id/quarantine` | Park an event for human review. |
+| POST | `/api/v1/streams/inbox/scan` | Sweep `inbox/` for new items. |
+| POST | `/api/v1/streams/ingest` | Force-ingest a payload. |
+| POST | `/api/v1/streams/prune` | Drop events older than TTL. |
+| POST | `/api/v1/streams/system/openclaw-sessions/report` | Legacy OpenClaw → Hermes session reporter. |
+
+</Accordion>
+
+---
+
+## Ingest surface
+
+The raw firehose into `ingest.db` *(packages/ctrl/src/api/routes/ingest.ts)*. Hard 7-day TTL, no archive.
+
+<Accordion title="Ingest routes (7)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/ingest/events` | Insert a `stream_event` row. Body: `{stream, channel?, external_id?, kind?, payload}`. |
+| GET | `/api/v1/ingest/events` | List recent events. |
+| GET | `/api/v1/ingest/events/pending` | Events with `processed_at IS NULL`. |
+| GET | `/api/v1/ingest/events/:id` | Fetch one. |
+| POST | `/api/v1/ingest/events/:id/processed` | Stamp `processed_at` / `processed_by`. |
+| POST | `/api/v1/ingest/sweep` | Force-run the 7-day TTL sweep. |
+| GET | `/api/v1/ingest/sweep` | Sweep audit log (`ingest_sweep_log`). |
+
+</Accordion>
+
+---
+
+## Agents & Hermes surface
+
+`agents.ts` is the Hermes integration: spawn tasks on the `main` profile, list workers, swap models *(packages/ctrl/src/api/routes/agents.ts, hermes.ts)*.
+
+<Accordion title="Agents + Hermes routes (11)">
+
+**Agents**
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/agents/main/task` | Spawn a task on the `main` Hermes profile (synchronous Responses API). |
+| GET | `/api/v1/admin/agents` | List the agent roster (clerk, curator, janitor, distiller, …). |
+| GET | `/api/v1/admin/agents/:agentId` | One agent's config (system prompt, model, MCP set). |
+| PATCH | `/api/v1/admin/agents/:agentId/model` | Swap the underlying model. |
+| GET | `/api/v1/admin/profiles` | Hermes profiles (`main`, `workers`, `heavy`). |
+
+**Hermes runs**
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/hermes/models` | Models currently configured per profile. |
+| POST | `/api/v1/hermes/runs` | Create a `/v1/runs` ephemeral run on the workers profile. |
+| POST | `/api/v1/hermes/runs/:id/stop` | Stop a run. |
+| GET | `/api/v1/hermes/cron` | List Hermes-native cron tasks. |
+| POST | `/api/v1/hermes/cron` | Create a Hermes-native cron task. |
+| DELETE | `/api/v1/hermes/cron/:id` | Delete. |
+
+</Accordion>
+
+---
+
+## Alfred journal & delivery surface
+
+The continuity layer — every Alfred↔Sir exchange across every channel lands in `alfred_journal` so the `main` profile sees a coherent conversation *(packages/ctrl/src/db/migrations/0002_alfred_journal.sql, packages/ctrl/src/api/routes/alfredJournal.ts, alfredDeliver.ts)*.
+
+<Accordion title="Journal + delivery routes (5)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/alfred-deliver` | Unified outbound: pick the right channel, deliver, journal. |
+| POST | `/api/v1/delegate-outcomes` | Hermes callback: stamp the outcome on a `decision/` record. |
+| POST | `/api/v1/alfred-journal` | Direct journal write (debug / migration tooling). |
+| POST | `/api/v1/alfred-journal/principal/bind` | Bind `(channel, chat_id) → principal_id`. |
+| GET | `/api/v1/alfred-journal/recent` | Recent entries — feeds the Hermes pre-gateway-dispatch hook. |
+
+</Accordion>
+
+---
+
+## Notifications surface
+
+The user-facing send-a-message API. Wraps `/api/v1/alfred-deliver` with simpler params.
+
+<Accordion title="Notifications routes (1)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/notifications` | Send an outbound message to the principal. Body: `{channel?, text, source_kind?, source_ref?}`. |
+
+</Accordion>
+
+---
+
+## Channels surface
+
+Configuration for inbound + outbound channels. One sub-surface per channel.
+
+<Accordion title="Email routes (8)">
+
+`email.ts` is for the **principal's own email** (Composio Gmail). `channels/email/inbound` is for the system mailbox webhook.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/email/status` | OAuth + provisioning status. |
+| POST | `/api/v1/email/provision` | Provision the connected Gmail. |
+| POST | `/api/v1/email/send` | Send. |
+| POST | `/api/v1/email/reply` | Reply within a thread. |
+| POST | `/api/v1/email/forward` | Forward. |
+| GET | `/api/v1/email/message/:message_id` | One message. |
+| GET | `/api/v1/email/thread/:thread_id` | Whole thread. |
+| GET | `/api/v1/email/attachment/:message_id/:attachment_id` | One attachment. |
+| POST | `/api/v1/channels/email/inbound` | Inbound webhook (system mailbox). |
+
+</Accordion>
+
+<Accordion title="Slack routes (5)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/channels/slack/status` | Configuration + last-seen ts. |
+| GET | `/api/v1/channels/slack/manifest` | Generated Slack-app manifest. |
+| PUT | `/api/v1/channels/slack/tokens` | Set bot + signing tokens. |
+| DELETE | `/api/v1/channels/slack/tokens` | Clear tokens. |
+| POST | `/api/v1/channels/slack/test` | Send a test DM. |
+
+</Accordion>
+
+<Accordion title="Telegram routes (5)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/channels/telegram/status` | Bot configuration + last-seen ts. |
+| PUT | `/api/v1/channels/telegram/token` | Set bot token. |
+| DELETE | `/api/v1/channels/telegram/token` | Clear token. |
+| DELETE | `/api/v1/channels/telegram/chats/:user_id` | Forget a paired chat. |
+| POST | `/api/v1/channels/telegram/test` | Send a test message. |
+
+</Accordion>
+
+<Accordion title="SMS routes (5)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/channels/sms/status` | Twilio credentials + allowlist. |
+| PUT | `/api/v1/channels/sms/allowlist` | Set the allowed `From:` numbers. |
+| PUT | `/api/v1/channels/sms/credentials` | Set Twilio SID + auth token. |
+| DELETE | `/api/v1/channels/sms/credentials` | Clear. |
+| POST | `/api/v1/channels/sms/test` | Send a test SMS. |
+
+</Accordion>
+
+<Accordion title="Voice routes (2)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/channels/voice/status` | Voice-bridge container status. |
+| PUT | `/api/v1/channels/voice/allowlist` | Allowed inbound caller IDs. |
+
+</Accordion>
+
+<Accordion title="Omi routes (5)">
+
+The omi (wearable) integration uses a Groq API key for low-latency transcription.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/channels/omi/status` | Pairing + Groq-key status. |
+| PUT | `/api/v1/channels/omi/groq-key` | Set the Groq key. |
+| DELETE | `/api/v1/channels/omi/groq-key` | Clear. |
+| POST | `/api/v1/channels/omi/test` | Test transcription path. |
+| GET | `/api/v1/credentials/groq-api-key` | Read-back for the voice container. |
+| POST | `/api/v1/streams/omi/audio` | Raw audio chunk intake (used by the omi sidecar). |
+
+</Accordion>
+
+<Accordion title="Phone routes (10)">
+
+The principal-facing phone surface. SMS routes here are user-facing (`/phone/sms`); the `/channels/sms/*` group is configuration.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/phone/voice-context` | Context payload for the voice-bridge (scoped Bearer). |
+| GET | `/api/v1/phone/config` | Provisioned numbers + capabilities. |
+| POST | `/api/v1/phone/provision` | Provision a phone number via Twilio. |
+| GET | `/api/v1/phone/authorized-numbers` | Allowlist read. |
+| PUT | `/api/v1/phone/authorized-numbers` | Replace allowlist. |
+| POST | `/api/v1/phone/authorized-numbers` | Append to allowlist. |
+| DELETE | `/api/v1/phone/authorized-numbers/:number` | Remove one. |
+| POST | `/api/v1/phone/sms/inbound` | Twilio inbound webhook. |
+| POST | `/api/v1/phone/sms` | Send SMS. |
+| POST | `/api/v1/phone/call` | Place an outbound call. |
+| POST | `/api/v1/phone/transcript` | Ingest a transcript chunk. |
+
+</Accordion>
+
+<Accordion title="Other channel-shaped routes">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/auth/senders` | Whitelisted authenticated senders. |
+| POST | `/api/v1/auth/senders` | Add. |
+| DELETE | `/api/v1/auth/senders/:email` | Remove. |
+| POST | `/api/v1/context/cross-channel` | Cross-channel context lookup (e.g. Slack DM ↔ Telegram). |
+| POST | `/api/v1/webhooks/inbound` | Generic inbound webhook registration. |
+| GET | `/api/v1/webhooks/inbound` | List registered hooks. |
+| DELETE | `/api/v1/webhooks/inbound/:id` | Delete. |
+| POST | `/api/v1/webhooks/in/:token` | The actual inbound URL each registered hook resolves to. |
+
+</Accordion>
+
+---
+
+## Integrations surface
+
+Composio. The integration shipped with full v3 (`/tools`) support after the v2 deprecation *(commit `d567ea9e`)*.
+
+<Accordion title="Integrations routes (23)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/integrations` | List connected accounts. |
+| GET | `/api/v1/integrations/catalog` | Composio catalogue (toolkits available to connect). |
+| GET | `/api/v1/integrations/:id/scope` | Per-connection scope (tools, streams). |
+| POST | `/api/v1/integrations/connect` | Start the OAuth flow. |
+| GET | `/api/v1/integrations/:toolkit/required-fields` | API-key shape for non-OAuth toolkits. |
+| POST | `/api/v1/integrations/connect-api-key` | Connect via API-key. |
+| POST | `/api/v1/integrations/omi/pair` | Pair an omi device. |
+| DELETE | `/api/v1/integrations/:id` | Disconnect. |
+| POST | `/api/v1/integrations/disconnect-all` | Disconnect every integration. |
+| POST | `/api/v1/integrations/:id/reconnect` | Force re-auth (token expiry). |
+| POST | `/api/v1/integrations/reconnect-cleanup` | Clean up orphaned reconnect state. |
+| GET | `/api/v1/integrations/:id/capabilities` | Live capability probe. |
+| POST | `/api/v1/integrations/:id/enable-stream` | Enable a stream from this connection. |
+| POST | `/api/v1/integrations/:id/migrate-stream` | Move stream config between connections. |
+| POST | `/api/v1/integrations/:id/disable-stream` | Disable. |
+| POST | `/api/v1/integrations/enable-tool` | Add a tool to the allowlist. |
+| POST | `/api/v1/integrations/disable-tool` | Remove. |
+| GET | `/api/v1/integrations/:toolkit/actions` | List actions for a toolkit (Composio v3 `/tools`). |
+| POST | `/api/v1/integrations/check-readiness` | Pre-flight: are all integrations healthy? |
+| POST | `/api/v1/integrations/execute` | Generic execute primitive (the MCP `execute` server proxies through here). |
+| GET | `/api/v1/integrations/:id/google-identity` | Google identity for Gmail / Calendar / Drive. |
+| POST | `/api/v1/integrations/:id/auto-config` | Auto-configure (post-connect smart defaults). |
+| POST | `/api/v1/integrations/regenerate-skills` | Re-render Composio skills (after a Hermes config change). |
+
+</Accordion>
+
+---
+
+## Sure surface
+
+Sure is the personal-finance app sidecar. ctrl-api proxies ~96 routes through to Sure's HTTP API *(packages/ctrl/src/api/routes/sure.ts)*. Listing the most-used groups:
+
+<Accordion title="Sure routes (~96)">
+
+**Accounts, transactions, transfers**
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET, POST | `/api/v1/sure/accounts` | List / create accounts. |
+| PATCH, DELETE | `/api/v1/sure/accounts/:id` | Edit / delete. |
+| POST | `/api/v1/sure/accounts/:account_id/shares` | Share account access. |
+| PATCH, DELETE | `/api/v1/sure/shares/:id` | Edit / revoke shares. |
+| GET, POST | `/api/v1/sure/transactions` | List / create. |
+| GET, PATCH, DELETE | `/api/v1/sure/transactions/:id` | Detail / edit / delete. |
+| POST | `/api/v1/sure/transactions/bulk_update` | Bulk update. |
+| POST | `/api/v1/sure/transactions/bulk_delete` | Bulk delete. |
+| POST | `/api/v1/sure/transactions/:id/split` | Split a transaction. |
+| POST | `/api/v1/sure/transactions/:id/unsplit` | Unsplit. |
+| POST | `/api/v1/sure/transactions/:id/merge_duplicate` | Merge with detected duplicate. |
+| POST | `/api/v1/sure/transactions/:id/dismiss_duplicate` | Dismiss dup detection. |
+| POST | `/api/v1/sure/transfers` | Create. |
+| POST | `/api/v1/sure/transfers/match` | Match candidate transfers. |
+| POST | `/api/v1/sure/transfers/:id/confirm` / `/reject` | Resolve. |
+| DELETE | `/api/v1/sure/transfers/:id` | Delete. |
+
+**Categories, tags, merchants, rules**
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET, POST | `/api/v1/sure/categories` | List / create. |
+| GET, PATCH, DELETE | `/api/v1/sure/categories/:id` | Detail / edit / delete. |
+| POST | `/api/v1/sure/categories/bootstrap` | Bootstrap defaults. |
+| GET, POST | `/api/v1/sure/tags` | List / create. |
+| GET, PATCH, DELETE | `/api/v1/sure/tags/:id` | Detail / edit / delete. |
+| POST | `/api/v1/sure/tags/:id/merge_into/:replacement_id` | Merge tags. |
+| GET, POST | `/api/v1/sure/merchants` | List / create. |
+| GET, PATCH, DELETE | `/api/v1/sure/merchants/:id` | Detail / edit / delete. |
+| POST | `/api/v1/sure/merchants/merge` | Merge merchants. |
+| POST | `/api/v1/sure/merchants/enhance` | Provider-merchant enhancement. |
+| GET, POST | `/api/v1/sure/rules` | List / create. |
+| GET, PATCH, DELETE | `/api/v1/sure/rules/:id` | Detail / edit / delete. |
+| POST | `/api/v1/sure/rules/:id/apply` | Apply one rule. |
+| POST | `/api/v1/sure/rules/apply_all` | Apply every rule. |
+| POST | `/api/v1/sure/rules/preview` | Dry-run preview. |
+
+**Holdings, trades, valuations, budgets, recurring**
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/sure/holdings` | List. |
+| GET, DELETE | `/api/v1/sure/holdings/:id` | Detail / delete. |
+| POST | `/api/v1/sure/holdings/:id/set_manual_cost_basis` | Override cost basis. |
+| POST | `/api/v1/sure/holdings/:id/unlock_cost_basis` | Unlock. |
+| POST | `/api/v1/sure/holdings/:id/remap_security` | Re-link to a different security. |
+| POST | `/api/v1/sure/holdings/:id/reset_security_to_provider` | Reset. |
+| GET, POST | `/api/v1/sure/trades` | List / create. |
+| GET, PATCH, DELETE | `/api/v1/sure/trades/:id` | Detail / edit / delete. |
+| POST | `/api/v1/sure/valuations` | Create. |
+| GET, PATCH, DELETE | `/api/v1/sure/valuations/:id` | Detail / edit / delete. |
+| POST | `/api/v1/sure/budgets/find_or_bootstrap` | Find or create. |
+| POST | `/api/v1/sure/budgets/:id/copy_from` | Copy from prior period. |
+| PATCH | `/api/v1/sure/budget_categories/:id` | Edit a budget line. |
+| POST | `/api/v1/sure/recurring/identify` | Identify recurring patterns. |
+| POST | `/api/v1/sure/recurring/cleanup_stale` | Drop stale. |
+| POST | `/api/v1/sure/recurring/:id/activate` / `/deactivate` | Toggle. |
+
+**Imports, exports, balance sheet, sync, assistant**
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET, POST | `/api/v1/sure/imports` | List / start import. |
+| GET | `/api/v1/sure/imports/:id` | Status. |
+| POST | `/api/v1/sure/exports` | Create export. |
+| GET | `/api/v1/sure/balance_sheet` / `balance-sheet` | Both spellings. |
+| POST | `/api/v1/sure/sync` | Force-sync providers. |
+| GET | `/api/v1/sure/usage` | API usage. |
+| POST | `/api/v1/sure/_bootstrap` | Full bootstrap (default categories + budget). |
+| POST | `/api/v1/sure/_cluster` | Cluster transactions. |
+| POST | `/api/v1/sure/_cluster/apply` | Apply cluster proposals. |
+| POST | `/api/v1/sure/assistant` | Sure-LLM chat. |
+| GET, POST | `/api/v1/sure/chats` | List / create chats. |
+| GET, PATCH, DELETE | `/api/v1/sure/chats/:id` | Detail / edit / delete. |
+| POST | `/api/v1/sure/chats/:chat_id/messages` | Send a message. |
+| POST | `/api/v1/sure/chats/:chat_id/messages/retry` | Retry. |
+| POST | `/api/v1/sure/invitations` | Invite a household member. |
+| DELETE | `/api/v1/sure/invitations/:id` | Cancel. |
+| PATCH | `/api/v1/sure/user/preferences` | Edit prefs. |
+| DELETE | `/api/v1/sure/users/me` | Delete own account. |
+| DELETE | `/api/v1/sure/users/reset` | Reset all data. |
+
+</Accordion>
+
+---
+
+## Plane surface
+
+Project management. ctrl-api wraps the Plane sidecar's REST API + ingests Plane webhooks for the steward action loop *(packages/ctrl/src/api/routes/plane.ts)*.
+
+<Accordion title="Plane routes (11)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/plane/projects` | List projects. |
+| GET | `/api/v1/plane/cycles` | List cycles. |
+| GET | `/api/v1/plane/states` | List workflow states. |
+| GET | `/api/v1/plane/labels` | List labels. |
+| GET | `/api/v1/plane/issues` | List issues. |
+| GET | `/api/v1/plane/issues/:project_id/:issue_id` | One issue. |
+| GET | `/api/v1/plane/issues/:project_id/:issue_id/comments` | Issue comments. |
+| POST | `/api/v1/plane/issues` | Create. |
+| POST | `/api/v1/plane/issues/search` | Search. |
+| PATCH | `/api/v1/plane/issues/:project_id/:issue_id` | Edit. |
+| POST | `/api/v1/plane/comment` | Post a comment. |
+| POST | `/api/v1/plane/webhook` | Plane webhook inbound. |
+| POST | `/api/v1/plane/steward-action` | Steward-driven action (assign, transition, comment). |
+| POST | `/api/v1/plane/steward-action/revert` | Revert. |
+
+</Accordion>
+
+---
+
+## Vaultwarden surface
+
+Vaultwarden sidecar proxy *(packages/ctrl/src/api/routes/vaultwarden.ts)*.
+
+<Accordion title="Vaultwarden routes (13)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/vaultwarden/status` | Service status. |
+| POST | `/api/v1/vaultwarden/sync` | Sync. |
+| GET | `/api/v1/vaultwarden/items` | List items. |
+| POST | `/api/v1/vaultwarden/items/search` | Search. |
+| GET | `/api/v1/vaultwarden/items/:id` | One item. |
+| POST | `/api/v1/vaultwarden/items` | Create. |
+| POST | `/api/v1/vaultwarden/items/:id` | Edit. |
+| DELETE | `/api/v1/vaultwarden/items/:id` | Delete. |
+| GET | `/api/v1/vaultwarden/folders` | List folders. |
+| POST | `/api/v1/vaultwarden/folders` | Create folder. |
+| GET | `/api/v1/vaultwarden/collections` | List collections. |
+| GET | `/api/v1/vaultwarden/organizations` | List orgs. |
+| POST | `/api/v1/vaultwarden/generate` | Generate a password. |
+
+</Accordion>
+
+---
+
+## Tools surface
+
+The MCP-tool inventory and a generic invoke primitive *(packages/ctrl/src/api/routes/tools.ts)*. See [MCP tool catalog](/reference/mcp-tool-catalog) for the per-server breakdown.
+
+<Accordion title="Tools routes (2)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/tools` | List every tool across every Hermes profile. |
+| POST | `/api/v1/tools/invoke` | Invoke a tool by `{server, name, args}`. |
+
+</Accordion>
+
+---
+
+## Approvals surface
+
+The principal's approval queue. Used by tools / agent actions tagged `requires_approval: true` *(packages/ctrl/src/api/routes/approvals.ts)*.
+
+<Accordion title="Approvals routes (3)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/approvals/pending` | List pending approvals. |
+| POST | `/api/v1/approvals/:path/approve` | Approve. Resumes the workflow. |
+| POST | `/api/v1/approvals/:path/reject` | Reject. |
+
+</Accordion>
+
+---
+
+## Steward surface
+
+The steward's undo log — `state_change` audit rows can be reverted if `undo_json` is set *(packages/ctrl/src/api/routes/steward.ts)*.
+
+<Accordion title="Steward routes (4)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/steward/recent-actions` | Reversible actions. |
+| POST | `/api/v1/steward/confirm/:action_id` | Confirm a pending action. |
+| POST | `/api/v1/steward/dismiss/:action_id` | Dismiss. |
+| POST | `/api/v1/steward/undo/:action_id` | Undo by replaying the inverse recipe. |
+
+</Accordion>
+
+---
+
+## To-dos surface
+
+A lightweight to-do list, distinct from `task/` (which is matter-linked, instinct-trained, signal-closed) *(packages/ctrl/src/api/routes/todos.ts)*.
+
+<Accordion title="To-do routes (4)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/todos` | Create. |
+| GET | `/api/v1/todos` | List. |
+| GET | `/api/v1/todos/:id` | Detail. |
+| PATCH | `/api/v1/todos/:id` | Edit / mark done. |
+
+</Accordion>
+
+---
+
+## Devices surface
+
+Per-user device approval (TOTP-style pairing) *(packages/ctrl/src/api/routes/devices.ts)*.
+
+<Accordion title="Devices routes (4)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/devices` | List paired devices. |
+| POST | `/api/v1/devices/approve` | Approve a pending device. |
+| POST | `/api/v1/devices/revoke` | Revoke. |
+| POST | `/api/v1/devices/clear-pending` | Drop the pending-approval queue. |
+
+</Accordion>
+
+---
+
+## System surface
+
+Surfaces the principal sees on `/channels` (the Terminal card) *(packages/ctrl/src/api/routes/system.ts)*.
+
+<Accordion title="System routes (1)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/system/ssh-info` | SSH host + pubkey for the Terminal card on `/channels`. |
+
+</Accordion>
+
+---
+
+## Apps & models surface
+
+<Accordion title="Apps + models routes (2)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/apps` | List installed sidecar apps (Plane, Sure, Vaultwarden, …). |
+| GET | `/api/v1/admin/models` | Available LLM models per provider. |
+
+</Accordion>
+
+---
+
+## Logs surface
+
+<Accordion title="Logs routes (1)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/logs` | Tail container logs (`{service, lines, since}`). |
+
+</Accordion>
+
+---
+
+## Cross-tenant surface
+
+Reserved for future multi-tenant federation *(packages/ctrl/src/api/routes/crossTenant.ts)*.
+
+<Accordion title="Cross-tenant routes (2)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/cross-tenant/peers` | List peer tenants. |
+| POST | `/api/v1/cross-tenant/ask` | Cross-tenant ask primitive. |
+
+</Accordion>
+
+---
+
+## Workspace surface
+
+Editor for files mounted into `/alfred-data` (used by the `/study` Files tab) *(packages/ctrl/src/api/routes/workspace.ts)*.
+
+<Accordion title="Workspace routes (2)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/admin/workspace/:filename` | Read file. |
+| PUT | `/api/v1/admin/workspace/:filename` | Write file. |
+
+</Accordion>
+
+---
+
+## Claude / setup surface
+
+For the `/claude` page (MCP setup, approval-secret rotation) *(packages/ctrl/src/api/routes/claudeSetup.ts)*.
+
+<Accordion title="Claude-setup routes (2)">
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/claude-setup` | Setup status + the MCP-server connection strings. |
+| POST | `/api/v1/claude-setup/approval-secret/rotate` | Rotate the `MCP_APPROVAL_SECRET`. |
+
+</Accordion>
+
+---
+
+## Admin surface
+
+Operations: container control, system info, backups, Temporal probes *(packages/ctrl/src/api/routes/admin.ts)*. Most routes mount under `/api/v1/admin/`.
+
+<Accordion title="Admin routes (25)">
+
+**Liveness + dashboard**
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/admin/health` | Liveness probe (no DB, no auth — used by `docker compose`). |
+| GET | `/api/v1/admin/dashboard` | Aggregate dashboard metrics. |
+| GET | `/api/v1/admin/activity` | Activity audit (rolling window). |
+| GET | `/api/v1/admin/audit` | Raw audit ledger (hot + cold). |
+| GET | `/api/v1/admin/system/info` | Disk, memory, runtime info. |
+| GET | `/api/v1/admin/debug/headers` | Echo request headers (debug only). |
+
+**Configuration**
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/admin/config/env` | List env vars (secrets redacted). |
+| PATCH | `/api/v1/admin/config/env` | Update env var (rewrites `.env`). |
+| POST | `/api/v1/admin/compose/fix-memory` | Tweak the compose memory caps. |
+
+**Container control**
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/admin/containers` | List containers (service status). |
+| POST | `/api/v1/admin/containers/:service/restart` | Restart. |
+| POST | `/api/v1/admin/containers/:service/start` | Start. |
+| POST | `/api/v1/admin/containers/:service/stop` | Stop. |
+| GET | `/api/v1/admin/containers/:service/logs` | Tail logs. |
+| POST | `/api/v1/admin/restart-learn` | Restart `alfred-learn` only. |
+
+**Backups**
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/api/v1/admin/backups/trigger` | Run a snapshot. |
+| GET | `/api/v1/admin/backups/snapshots` | List snapshots. |
+
+**Temporal diagnostics**
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/admin/temporal/cluster` | Temporal cluster info. |
+| GET | `/api/v1/admin/temporal/task-queues/:name` | Task-queue status. |
+
+**Tailscale**
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/admin/tailscale/status` | Status. |
+| GET | `/api/v1/admin/tailscale/serve` | Current `serve` config. |
+| POST | `/api/v1/admin/tailscale/cert` | Request cert. |
+
+**Credentials (third-party API keys, redacted)**
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/admin/credentials` | List (secrets masked). |
+| PATCH | `/api/v1/admin/credentials` | Set one. |
+| POST | `/api/v1/admin/vault/refresh` | Refresh the vault cache. |
+
+**Vexa (optional transcript stack)**
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/v1/admin/vexa/auto-join` | Auto-join config. |
+| POST | `/api/v1/admin/vexa/auto-join` | Update. |
+
+</Accordion>
+
+---
+
+## Quick reference — most-used endpoints
+
+```http
+# Sir's daily Desk write
+POST /api/v1/decisions
+  { "intent": "delegate",
+    "source": "needs_attention",
+    "source_record": "needs_attention/2026-05-24-…-abc.md",
+    "note": "Reply with the call link" }
+
+# Sir's vault edit (canonical body shape)
+PATCH /api/v1/vault/records/matter/acme.md
+  { "set":          { "status": "completed" },
+    "append":       { "tags": "resolved" },
+    "body_append":  "\n\nClosed out 2026-05-24." }
+
+# Settings flag toggle
+PUT /api/v1/settings/signal_action_mode
+  { "mode": "shadow" }
+
+# Audit append
+POST /api/v1/state/audit
+  { "action_type": "vault_write",
+    "actor": "alfred",
+    "summary": "Curator stitched inbox/foo.md → note/baz.md",
+    "target_path": "note/baz.md" }
+```
+
+---
+
+## See also
+
+- [Frontmatter shapes](/reference/frontmatter-shapes) — the YAML shape of every canonical vault type.
+- [`alfred-state.db` schema](/reference/state-db-schema) — every table the routes above read and write.
+- [Temporal workflows](/reference/temporal-workflows) — the 30 workflows that produce the rows ctrl-api stores.
+- [MCP tool catalog](/reference/mcp-tool-catalog) — the ~155-165 MCP tools that wrap these routes.
