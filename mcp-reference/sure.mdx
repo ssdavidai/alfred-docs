@@ -1,0 +1,261 @@
+---
+title: "sure"
+description: "Personal finance MCP surface — 95 tools across accounts, transactions, categories, rules, holdings, transfers, budgets, imports, and administration."
+---
+
+The `sure` app is by far the largest tool surface in the catalogue: 95 tools covering the full domain model of the self-hosted [Sure](https://github.com/we-promise/sure) personal-finance application. The taxonomy below mirrors Sure's internal model — accounts, transactions, categories, merchants, tags, rules, transfers, holdings, valuations, budgets, recurring, imports, sharing, administration.
+
+**Backend.** Every tool routes through `proxyToCtrl()` to ctrl-api's `/api/v1/sure/*` *(packages/mcp-server/src/tools/sure.ts:1-19)*. ctrl-api fronts the self-hosted Sure Rails app on `sure-web:3000` using two paths: **REST** for query endpoints, and **Rails-runner** — a sandboxed `bin/rails runner` shell-out — for mutations Sure's REST API does not expose. Both go through the same MCP call. Bearer auth uses `AAS_API_KEY`; ctrl-api holds the Sure API key seeded by `sure-init`.
+
+<AccordionGroup>
+
+<Accordion title="Balance sheet (1 tool)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `get_balance_sheet` | Net worth snapshot — family currency, total assets, total liabilities, classification breakdown. | — |
+
+</Accordion>
+
+<Accordion title="Accounts (4 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_accounts` | List banks, brokerages, crypto, property, manual loans. | `classification?`, `accountable_type?`, `currency?`, pagination |
+| `create_manual_account` | Create a manual account (Sure's REST is GET-only for accounts; this uses Rails-runner). | `name`, `balance`, `currency`, `accountable_type`, `accountable_attributes` |
+| `update_account` | Rename, correct balance, change loan interest rate. | `id` + any updatable field |
+| `delete_account` | Soft-delete. Refuses provider-linked accounts with HTTP 409. | `id` |
+
+</Accordion>
+
+<Accordion title="Transactions (10 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_transactions` | Workhorse read: date range, account, category, merchant, tag, amount, type, free-text. | `start_date`/`end_date`, `account_id(s)`, `category_id(s)`, `merchant_id(s)`, `tag_ids`, `min/max_amount`, `type`, `search` |
+| `get_transaction` | Full detail for one transaction. | `id` |
+| `create_transaction` | Log a manual transaction (cash, between-spouse, reimbursements). Signed amount. | `account_id`, `date`, `amount`, `name`, `category_id?`, `merchant_id?`, `tag_ids?` |
+| `update_transaction` | Recategorise, rename, retag, correct amount/date. | `id` + any updatable field |
+| `delete_transaction` | Permanently delete (no undo). | `id` |
+| `split_transaction` | Split a parent into multiple children; child sum must equal parent. | `id`, `splits[]` |
+| `unsplit_transaction` | Restore a previously-split parent. | `id` |
+| `bulk_update_transactions` | Update many transactions in one call. | `ids[]`, common patch payload |
+| `bulk_delete_transactions` | Delete many transactions; refuses split children. | `ids[]` |
+| `merge_duplicate_transaction` | Reconcile pending↔posted duplicates. | `id`, `merge_into_id` |
+| `dismiss_duplicate_transaction` | Tell Sure that a duplicate suggestion is wrong. | `id` |
+
+</Accordion>
+
+<Accordion title="Categories (6 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_categories` | List all categories (tree). | — |
+| `get_category` | Retrieve one. | `id` |
+| `bootstrap_default_categories` | Seed Sure's default category tree on a fresh install. | — |
+| `create_category` | Create a new category. | `name`, `parent_id?`, `color?`, `icon?` |
+| `update_category` | Rename, recolor, re-parent. | `id` + fields |
+| `delete_category` | Remove a category. | `id` |
+
+</Accordion>
+
+<Accordion title="Merchants (7 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_merchants` | List all merchants (family + provider). | — |
+| `get_merchant` | Retrieve one. | `id` |
+| `create_family_merchant` | Create a custom (family) merchant. | `name`, `color?`, `website_url?` |
+| `update_family_merchant` | Edit a family merchant (provider merchants are read-only). | `id` + fields |
+| `delete_family_merchant` | Destroy a custom merchant. | `id` |
+| `merge_merchants` | Merge a duplicate merchant into a canonical one. One-way. | `id`, `replacement_id` |
+| `enhance_provider_merchants` | Promote a provider merchant to a family one for editability. | `id` |
+
+</Accordion>
+
+<Accordion title="Tags (6 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_tags` | List all transaction tags. | — |
+| `get_tag` | Retrieve one. | `id` |
+| `create_tag` | Create a new tag. | `name`, `color?` |
+| `update_tag` | Rename or recolor. | `id` + fields |
+| `delete_tag` | Delete a tag. | `id` |
+| `merge_tags` | Merge a duplicate into a canonical tag. | `id`, `replacement_id` |
+
+</Accordion>
+
+<Accordion title="Rules (8 tools)">
+
+Rules are conditional automations that classify, categorise, or tag transactions as they sync.
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_rules` | List family rules (newest first). | — |
+| `get_rule` | Show one rule with conditions, actions, and affected count. | `id` |
+| `create_rule` | New rule with conditions + actions. | `name`, `conditions[]`, `actions[]`, `active?` |
+| `update_rule` | Edit rule structure or activation. | `id` + fields |
+| `delete_rule` | Delete a rule (existing classifications kept). | `id` |
+| `preview_rule` | Dry-run: show which transactions a rule would touch. | `id` |
+| `apply_rule` | Run one rule across the transaction set. | `id` |
+| `apply_all_rules` | Run every active rule. | — |
+
+</Accordion>
+
+<Accordion title="Holdings (7 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_holdings` | Investment positions — account, security, quantity, cost basis, current value. | — |
+| `get_holding` | Retrieve one. | `id` |
+| `delete_holding` | Remove a holding row. | `id` |
+| `set_holding_manual_cost_basis` | Override the provider cost basis. | `id`, `cost_basis`, `currency` |
+| `unlock_holding_cost_basis` | Clear the manual lock so the provider basis resumes. | `id` |
+| `remap_holding_security` | Point a holding at a different `Security` row. | `id`, `security_id` |
+| `reset_holding_security_to_provider` | Undo a manual remap. | `id` |
+
+</Accordion>
+
+<Accordion title="Trades (5 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_trades` | Buy/sell entries with security, quantity, price, date. | — |
+| `get_trade` | One trade. | `id` |
+| `create_trade` | Log a new trade. | `account_id`, `security_id`, `qty`, `price`, `date` |
+| `update_trade` | Correct date, quantity, or price (the holding recalculates). | `id` + fields |
+| `delete_trade` | Delete a trade (the holding recalculates). | `id` |
+
+</Accordion>
+
+<Accordion title="Valuations (4 tools)">
+
+Manual valuation snapshots for illiquid assets — property, vehicles, private investments.
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `create_valuation` | New valuation snapshot. | `account_id`, `amount`, `date`, `notes?` |
+| `get_valuation` | Retrieve one entry. | `id` |
+| `update_valuation` | Correct amount, date, notes. | `id` + fields |
+| `delete_valuation` | Delete an entry. | `id` |
+
+</Accordion>
+
+<Accordion title="Transfers (5 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `create_transfer` | Create a manual cross-account transfer pair. | `from_account_id`, `to_account_id`, `amount`, `date` |
+| `match_transfer` | Match two existing transactions as a transfer. | `from_transaction_id`, `to_transaction_id` |
+| `confirm_transfer` | Confirm a suggested transfer pairing. | `id` |
+| `reject_transfer` | Reject a suggestion (the system will not re-suggest it). | `id` |
+| `delete_transfer` | Destroy a confirmed transfer (legs revert to `standard`). | `id` |
+
+</Accordion>
+
+<Accordion title="Recurring (4 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `identify_recurring_patterns` | Run Sure's recurring-detection pass. | — |
+| `cleanup_stale_recurring` | Deactivate patterns whose last occurrence is stale. | — |
+| `activate_recurring` | Re-enable a pattern. | `id` |
+| `deactivate_recurring` | Hide a recurring without deleting it. | `id` |
+
+</Accordion>
+
+<Accordion title="Family sharing and invitations (5 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `create_account_share` | Share an account with a family member. | `account_id`, `email`, `permission`, `include_in_finances?` |
+| `update_account_share` | Change permission or `include_in_finances`. | `id` + fields |
+| `delete_account_share` | Revoke a share. | `id` |
+| `create_invitation` | Invite a new family member. | `email`, `name?`, `role?` |
+| `delete_invitation` | Revoke a pending invitation. | `id` |
+
+</Accordion>
+
+<Accordion title="Budgets (3 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `find_or_bootstrap_budget` | Get-or-create the budget for a month. | `year`, `month` |
+| `copy_budget_from` | Copy line items from a previous month. | `from_year`, `from_month`, `to_year`, `to_month` |
+| `update_budget_category` | Set an allocated amount for one category. | `budget_id`, `category_id`, `amount` |
+
+</Accordion>
+
+<Accordion title="Imports and exports (4 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_imports` | List CSV bulk imports with their status. | — |
+| `create_import` | Start a CSV import job. | `account_id`, `file_contents`, `mapping` |
+| `get_import` | Check import status and parsed rows. | `id` |
+| `create_export` | Full-family data dump (async job). | — |
+
+</Accordion>
+
+<Accordion title="Sure-internal AI chats (7 tools)">
+
+These drive Sure's own AI chat UX inside the Sure web app — distinct from any Alfred conversation. Use them only when the principal explicitly wants to seed or manage a chat in Sure's own UI.
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_sure_chats` | List Sure-internal chats. | — |
+| `create_sure_chat` | Start a new Sure-internal chat. | `title?` |
+| `get_sure_chat` | Retrieve one with its messages. | `id` |
+| `update_sure_chat` | Rename a chat. | `id`, `title` |
+| `delete_sure_chat` | Delete a chat. | `id` |
+| `post_sure_chat_message` | Post a message into a chat. | `chat_id`, `content` |
+| `retry_sure_chat_message` | Re-run the last assistant turn. | `chat_id` |
+
+</Accordion>
+
+<Accordion title="Clustering, sync, bootstrap (4 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `trigger_sync` | Force a provider re-sync (Plaid, Lunchflow, Binance, others). | `account_id?` |
+| `cluster_transactions` | LLM-driven merchant and category clustering pass. Cost: roughly $0.10–0.30 per run. | — |
+| `apply_cluster_proposals` | Commit the latest clustering proposals as transaction updates. | — |
+| `bootstrap_sure_full` | One-shot: bootstrap categories, default rules, currency. | — |
+
+</Accordion>
+
+<Accordion title="User preferences (1 tool)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `update_user_preferences` | Toggles for AI features, theme, locale. | `ai_enabled?`, `theme?`, `locale?` |
+
+</Accordion>
+
+<Accordion title="Administration — destructive (3 tools)">
+
+<Warning>
+These tools mutate or destroy account-wide state. They require explicit principal confirmation before invocation.
+</Warning>
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `get_api_usage` | Inspect API quota usage for the active key. | — |
+| `deactivate_api_user` | Disable an API key. | `id` |
+| `reset_all_data` | Wipe the family's data. Destructive, admin only. | `confirm` |
+
+</Accordion>
+
+</AccordionGroup>
+
+## Related
+
+<CardGroup cols={2}>
+ <Card title="Sure integration" href="/integrations/sure">
+ How Alfred talks to the self-hosted Sure Rails application, the Plaid/Lunchflow wiring, and the rules system.
+ </Card>
+ <Card title="execute" href="/mcp-reference/execute">
+ Third-party app surface — Composio toolkits for the apps that do not live in your compose stack.
+ </Card>
+</CardGroup>

@@ -1,0 +1,31 @@
+---
+title: "List with filters (`status`, `kind`, `since`, `limit`)"
+description: "List with filters (`status`, `kind`, `since`, `limit`)."
+api: "GET /api/v1/state/signals"
+---
+
+## Purpose
+
+List with filters (`status`, `kind`, `since`, `limit`). See the live route handler at `packages/ctrl/src/api/routes/state.ts:201` for the authoritative request/response contract.
+
+<Note>
+This endpoint is part of the Alfred Black API. The OpenAPI spec for this endpoint is being authored — Mintlify will render parameters, request examples, and response examples here once the spec lands. Until then, see the source citation above for the authoritative shape.
+</Note>
+
+## Try it
+
+<CodeGroup>
+
+```bash cURL
+curl -X GET https://alfred.black/api/v1/state/signals \
+ -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+```javascript JavaScript
+const r = await fetch('https://alfred.black/api/v1/state/signals', {
+ method: 'GET',
+ headers: { 'Authorization': `Bearer ${process.env.AAS_API_KEY}` },
+});
+```
+
+</CodeGroup>

@@ -1,0 +1,122 @@
+---
+title: "alfred"
+description: "Vault read/write, agent delegation, Temporal workflows, briefings, gateway diagnostics, notifications — the Alfred control surface as 24 MCP tools."
+---
+
+The `alfred` app is the Alfred control surface for LLM clients. It surfaces the parts of ctrl-api that are safe to drive from a one-hour bearer token: read or write any vault record, kick off Temporal workflows, inspect the Hermes gateway, send notifications, and approve pending device pairings *(packages/mcp-server/src/tools/alfred.ts:18-28)*.
+
+**Backend.** Every tool routes through `proxyToCtrl()` to ctrl-api's `/api/v1/*` endpoints *(packages/mcp-server/src/tools/alfred.ts:46-562)*. Bearer auth uses `AAS_API_KEY`. The real backends are the vault filesystem (accessed through the alfred CLI under a per-path mutex), the Temporal CLI via `docker exec`, the Hermes pairing CLI, and ctrl-api ledger queries.
+
+**Deliberately withheld.** Restart, rotate-secret, fleet-pause, log streaming, and config-env mutation are not exposed here *(packages/mcp-server/src/tools/alfred.ts:18-28)*. Those remain available to in-tenant agents through `alfred-ctrl` where scoped trust is much higher.
+
+<AccordionGroup>
+
+<Accordion title="Vault — read, search, create, update, promote (6 tools)">
+
+The vault surface enforces the [promotion contract](/architecture/promotion-contract): `create_vault_record` accepts only the 12 canonical record types. Non-canonical types (`observation`, `reflection`, `project`, `event`) are rejected by ctrl-api with HTTP 422 *(packages/mcp-server/src/tools/alfred.ts:108-113)*.
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_vault_by_type` | List every record of a given vault type with frontmatter + body preview. | `type` (one of 12), `preview` (0-2000) |
+| `search_vault` | Free-text grep and/or glob search. Requires at least one of `grep`/`glob`. | `grep`, `glob`, `limit` (max 500) |
+| `get_vault_record` | Read one record's frontmatter + body by exact vault-relative path. | `path` (e.g. `matter/acme.md`) |
+| `create_vault_record` | Create a new record from `type` + `name` + optional `fields` (scaffold) or `content` (raw). | `type` (12 canonical), `name`, `content` or `fields` |
+| `update_vault_record` | Patch under per-path mutex. Four orthogonal ops: `set`, `append`, `body_append`, `body_set`. | `path` + one or more ops |
+| `promote_triage_to_task` | Convert a `triage/*` record into a `task/*` and mark the triage resolved. | `triagePath`, `matter?`, `owner?`, `priority?` |
+
+`update_vault_record` writes to `matter/*` and `task/*` records trigger Plane forward-sync within 15 seconds *(packages/mcp-server/src/tools/alfred.ts:133)*. `set` is idempotent; `append` and `body_append` are not.
+
+</Accordion>
+
+<Accordion title="Agents — delegate to main, list catalogue (2 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `spawn_alfred_task` | Hand a one-shot task to the principal's main Alfred agent via a Hermes main-profile cron job that fires once and self-destroys. | `task`, `channel?`, `to?`, `at_seconds?`, `name?`, `announce?` |
+| `list_agents` | List the static agent catalogue: `main`, `learn-clerk`, `vault-curator`, `vault-janitor`, `vault-distiller`, plus surveyor config. | — |
+
+`spawn_alfred_task` creates a cron job with `--at 1s --delete-after-run` *(packages/mcp-server/src/tools/alfred.ts:187)*. Set `announce: false` for silent background work that should not DM the principal. Not idempotent — calling twice schedules two runs.
+
+</Accordion>
+
+<Accordion title="Temporal workflows (4 tools)">
+
+Direct control over the tenant's Temporal server through `docker exec` into the temporal container *(packages/mcp-server/src/tools/alfred.ts:229)*.
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_workflows` | List running + recently closed executions; optional visibility query. | `query?` (Temporal SQL-ish) |
+| `describe_workflow` | Full detail for one execution — status, start/close, pending activities, last failure. | `wfId`, `run_id?` |
+| `start_workflow` | Start a new execution by registered class name. | `workflow_type`, `task_queue`, `input?`, `workflow_id?` |
+| `signal_workflow` | Send a Temporal signal to a running workflow. | `wfId`, `signal_name`, `input?`, `run_id?` |
+
+Common workflow types on `alfred-learn`: `OnboardingPipelineWorkflow`, `BriefingWorkflow`, `EventProcessorWorkflow`, `ReflectionWorkflow`, `JudgmentWorkflow`, `TaskRunnerWorkflow` *(packages/mcp-server/src/tools/alfred.ts:261)*. `start_workflow` is idempotent only when paired with a stable `workflow_id` and Temporal's reuse-policy semantics on the worker side.
+
+</Accordion>
+
+<Accordion title="Briefings, decisions, state-changes, in-flight agents (7 tools)">
+
+The Desk-and-delegation surface — what just happened, what is open, what Alfred is still working on. All routes are under `packages/ctrl/src/api/routes/{briefings,decisions,stateChanges,attention,openclaw}.ts`.
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_briefings` | Morning/evening brief snapshots written by `BriefingWorkflow`, with `composed_at` + observed counts. | `slot?`, `since?`, `until?`, `limit?` |
+| `get_briefing` | Read one brief by slug-date (`YYYY-MM-DD-<slot>`). | `slug_date` |
+| `list_decisions` | Decision records — `intent` (delegate/done/noise/defer/hold), `state`, `source`. | `state?`, `source?`, `since?`, `limit?` |
+| `get_decision` | Read one decision's full body and outcome record. | `id` |
+| `list_pending_decisions` | Cards currently awaiting the principal — what is on `/desk` right now. | `include?` (pending/all), `limit?` |
+| `list_state_changes` | Audit ledger of every `matter` / `task` mutation through state_mutator v2. | `target?`, `source?`, `since?`, `until?`, `limit?`, `offset?` |
+| `list_in_flight_agents` | Ephemeral `exec-*` subagents currently spawned and not yet torn down. | — |
+
+`list_state_changes` is the canonical audit feed (`docs/STATE-MUTATION.md`). `source` values include `briefing.morning`, `steward`, `nightly_narrative`, `manual.<userid>`.
+
+</Accordion>
+
+<Accordion title="Hermes gateway diagnostics (3 tools, read-only)">
+
+Read-only diagnostics on the Hermes runtime that fronts every Alfred LLM call. Restart and tool-allowlist mutation are intentionally not exposed here *(packages/mcp-server/src/tools/alfred.ts:307)*.
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `get_openclaw_health` | Health envelope from the gateway — provider auth, queue depth, cron tick latency, MCP availability. | — |
+| `list_openclaw_agents` | Agents as the gateway sees them — model bindings, provider auth, fallback chain. Distinct from `list_agents` (static config). | — |
+| `list_openclaw_allowed_tools` | Gateway tool inventory — `builtin_tools[]` (sessions_*, web_search, web_fetch, composio_execute) + `mcp_tools[]`. | — |
+
+Composio per-app actions are not in `list_openclaw_allowed_tools` — they enumerate separately through [`list_composio_tools`](/mcp-reference/execute).
+
+</Accordion>
+
+<Accordion title="Device pairing approval (1 tool)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `approve_device` | Approve a pending Hermes DM-pairing code for Telegram, Slack, Discord, WhatsApp, or Signal. | `platform`, `code` (8-char) |
+
+When an unknown messaging account DMs Alfred's gateway, Hermes hands it a one-hour pairing code that needs operator approval. The dashboard's `/dashboard/devices` page lists pending codes; this tool drives the approval programmatically. Revoke and clear-pending are not exposed — those can lock the principal's channels out and should not be driven by a remote LLM *(packages/mcp-server/src/tools/alfred.ts:333)*.
+
+</Accordion>
+
+<Accordion title="Notifications (1 tool)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `notify_principal` | Send a message to the principal on their preferred channel (Telegram, Slack). | `message`, `channel?` (auto/telegram/slack), `urgency?`, `to?` |
+
+<Warning>
+`notify_principal` is the right tool for any "ping the principal" flow — never `composio_execute`. Telegram is not a Composio toolkit; it is a Hermes main-profile channel and only the main runtime can reach it. ctrl-api creates a one-shot Hermes main-profile cron job that delivers the message and returns `delivered: true` only once the channel send is confirmed *(packages/mcp-server/src/tools/alfred.ts:511-515)*.
+</Warning>
+
+</Accordion>
+
+</AccordionGroup>
+
+## Related
+
+<CardGroup cols={2}>
+ <Card title="ctrl-api routes" href="/reference/ctrl-api-routes">
+ The full ctrl-api surface that `alfred-ctrl` exposes unfiltered.
+ </Card>
+ <Card title="hermes" href="/mcp-reference/hermes">
+ Runtime delegation and cron scheduling for the voice agent.
+ </Card>
+</CardGroup>

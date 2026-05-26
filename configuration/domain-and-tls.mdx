@@ -37,15 +37,15 @@ Caddy auto-issues a Let's Encrypt cert for each host using the **HTTP-01 challen
 ### Cert lifecycle
 
 <Steps>
-  <Step title="Issuance">
-    On first boot Caddy contacts Let's Encrypt for each host listed in `Caddyfile`. It serves the HTTP-01 challenge on port 80, receives the cert, and stores it in the `caddy_data` volume.
-  </Step>
-  <Step title="Renewal">
-    Caddy auto-renews each cert 30 days before expiry. Renewal also uses HTTP-01, so port 80 must remain reachable.
-  </Step>
-  <Step title="Self-healing">
-    If issuance fails (DNS not pointing at the VM, port 80 blocked, rate limit), Caddy retries on a backoff. A stale A-record only delays the first cert — the stack still boots, the affected host just won't be reachable over HTTPS until ACME completes.
-  </Step>
+ <Step title="Issuance">
+ On first boot Caddy contacts Let's Encrypt for each host listed in `Caddyfile`. It serves the HTTP-01 challenge on port 80, receives the cert, and stores it in the `caddy_data` volume.
+ </Step>
+ <Step title="Renewal">
+ Caddy auto-renews each cert 30 days before expiry. Renewal also uses HTTP-01, so port 80 must remain reachable.
+ </Step>
+ <Step title="Self-healing">
+ If issuance fails (DNS not pointing at the VM, port 80 blocked, rate limit), Caddy retries on a backoff. A stale A-record only delays the first cert — the stack still boots, the affected host just won't be reachable over HTTPS until ACME completes.
+ </Step>
 </Steps>
 
 <Warning>
@@ -86,15 +86,15 @@ If you need to add a host (e.g. a custom internal tool), do not edit the Caddyfi
 If you ever move the stack to a new domain (e.g. `test.example.com` → `home.example.com`):
 
 <Steps>
-  <Step title="Update .env">
-    Set the new `DOMAIN=` value.
-  </Step>
-  <Step title="Restart caddy">
-    `docker compose restart caddy` — Caddy re-reads the env var, the new Caddyfile renders, and ACME auto-issues fresh certs for every host on the new domain.
-  </Step>
-  <Step title="Update third-party callbacks">
-    Twilio webhooks, AgentMail console URLs, Composio OAuth callback URLs — any URL pinned to the old `DOMAIN` needs to be updated in the upstream's console.
-  </Step>
+ <Step title="Update .env">
+ Set the new `DOMAIN=` value.
+ </Step>
+ <Step title="Restart caddy">
+ `docker compose restart caddy` — Caddy re-reads the env var, the new Caddyfile renders, and ACME auto-issues fresh certs for every host on the new domain.
+ </Step>
+ <Step title="Update third-party callbacks">
+ Twilio webhooks, AgentMail console URLs, Composio OAuth callback URLs — any URL pinned to the old `DOMAIN` needs to be updated in the upstream's console.
+ </Step>
 </Steps>
 
 The original Let's Encrypt certs for the old domain remain in `caddy_data` and auto-expire after 90 days; nothing else needs to be cleaned up.

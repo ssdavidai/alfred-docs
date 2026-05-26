@@ -78,31 +78,31 @@ install is idempotent across restarts. Failure now surfaces in `docker compose l
 A 21-finding sweep over the live product produced eight image deploys and
 twenty-one fixes shipped as PRs. This is the campaign that produced the
 current lane protocol: gate-protected fix fan-out, contract freezes
-(`C12–C19`), failing-test-first discipline. See [Contributing →
+(`<batch>`), failing-test-first discipline. See [Contributing →
 Bug-fixing protocol](/contributing/bug-fixing-protocol) for the rules.
 
 Notable individual fixes:
 
 - **Composio bulk pull >4MB**. `composio_pull` was returning a
-  >4MB payload to the Temporal activity, blowing past the gRPC limit. Fix:
-  self-ingest oversized batches with chunked pagination.
+ >4MB payload to the Temporal activity, blowing past the gRPC limit. Fix:
+ self-ingest oversized batches with chunked pagination.
 - **Chore cron-DOW mismatch**. Generated chores were stuck in a
-  validator loop because the cron string used `Mon-Fri` instead of `1-5`. Fix:
-  `_autocorrect_cron_dow_for_description` rewrites before validation.
+ validator loop because the cron string used `Mon-Fri` instead of `1-5`. Fix:
+ `_autocorrect_cron_dow_for_description` rewrites before validation.
 - **Onboarding context overflow**. `extract_facts_opus` was passing
-  the entire backfill (~2000 messages) to the LLM in one prompt, hitting
-  Hermes' max-compression-attempts ceiling. Fix: chunked extraction
-  (chunk_threshold=500, chunk_size=400).
+ the entire backfill (~2000 messages) to the LLM in one prompt, hitting
+ Hermes' max-compression-attempts ceiling. Fix: chunked extraction
+ (chunk_threshold=500, chunk_size=400).
 - **Empty Desk on day one**. New tenants landed on `/desk` with
-  zero cards. Fix: `seed_day_one_desk_cards` picks time-anchored matters
-  during onboarding so the first impression isn't empty.
+ zero cards. Fix: `seed_day_one_desk_cards` picks time-anchored matters
+ during onboarding so the first impression isn't empty.
 - **Delegate signal loops**. Documented above (2026-05-24); root
-  cause traces back here.
+ cause traces back here.
 - **Duplicate decision on dispatch**. The orchestrator suppresses
-  the decision mirror when the call originates from the router.
+ the decision mirror when the call originates from the router.
 - **Matters list vs detail tasks count diverge**. The list endpoint
-  counted tasks by one query, the detail endpoint by another. Fix: consolidate
-  on a single canonical query.
+ counted tasks by one query, the detail endpoint by another. Fix: consolidate
+ on a single canonical query.
 
 ## 2026-05-20 — the platform release
 
@@ -117,17 +117,17 @@ The `docs/FAILURE-MODES.md` audit identified six systemic classes that account
 for nearly every failure observed in production:
 
 1. **Silent under-extraction** — gpt-4.1-nano misses signals; no error, no
-   card, no surface. The class with the worst trust impact.
+ card, no surface. The class with the worst trust impact.
 2. **Autonomous wrong action** — a generated chore or instinct misfires
-   repeatedly, unattended.
+ repeatedly, unattended.
 3. **Promotion-contract gaps** — writers `422` silently after a store change,
-   losing audit/state without surfacing.
+ losing audit/state without surfacing.
 4. **Temporal stalls** — zombie or replay-failure workflows freeze autonomy
-   while the UI stays green.
+ while the UI stays green.
 5. **Resource exhaustion** — 32 GB single-VM has no HA; one pressure point
-   drops the whole butler.
+ drops the whole butler.
 6. **Cost blowup** — Opus everywhere + per-email extraction can bill quietly
-   high.
+ high.
 
 <Tip>
 **Meta-finding**: nearly every failure is silent. The highest-leverage fix is

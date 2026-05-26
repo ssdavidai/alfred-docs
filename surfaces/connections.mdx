@@ -18,18 +18,18 @@ Three stacked sections:
 The auth flow is decided per toolkit by ctrl-api's `auth_schemes` field *(ConnectionsPage.tsx:88-103)*:
 
 <Tabs>
-  <Tab title="OAuth">
-    Most toolkits. `Connect` opens a named popup at Composio's authorise URL; the page polls `popup.closed` then refetches `getConnectedIntegrations` up to six times at 2-second intervals to catch Composio's `INITIATED → ACTIVE` race. Once the connection lands, `autoConfigIntegration` wires the stream + skill + tool allowlist *(ConnectionsPage.tsx:219-299)*.
-  </Tab>
-  <Tab title="API key / bearer token">
-    A modal with one input — or, for toolkits whose required fields ctrl-api can enumerate via `getToolkitRequiredFields`, a dynamic multi-field form with secret masking *(ConnectionsPage.tsx:1100-1191)*. Bearer-token toolkits submit `auth_scheme: "BEARER_TOKEN"` so Composio doesn't reject the mismatch.
-  </Tab>
-  <Tab title="Device pair (alfred-omi)">
-    A synthetic slug. `Create pairing URL` calls `pairOmiDevice` → ctrl-api `POST /api/v1/integrations/omi/pair`, which creates-or-reuses the single `source: "omi"` stream and returns a tenant-scoped audio endpoint URL. The principal pastes that URL into the OMI app's developer settings; the device appears in the connected list once it starts streaming *(ConnectionsPage.tsx:420-446)*.
-  </Tab>
-  <Tab title="Inbound webhook (alfred-webhook)">
-    A synthetic slug. The modal asks for a short label; the page calls `createInboundWebhook`, receives a private URL, and copies it to the clipboard. Any POST to that URL lands as a stream event Alfred can curate. The URL is re-displayed on the connection row with a `Copy` affordance — it is otherwise write-once *(ConnectionsPage.tsx:448-471, 1311-1370)*.
-  </Tab>
+ <Tab title="OAuth">
+ Most toolkits. `Connect` opens a named popup at Composio's authorise URL; the page polls `popup.closed` then refetches `getConnectedIntegrations` up to six times at 2-second intervals to catch Composio's `INITIATED → ACTIVE` race. Once the connection lands, `autoConfigIntegration` wires the stream + skill + tool allowlist *(ConnectionsPage.tsx:219-299)*.
+ </Tab>
+ <Tab title="API key / bearer token">
+ A modal with one input — or, for toolkits whose required fields ctrl-api can enumerate via `getToolkitRequiredFields`, a dynamic multi-field form with secret masking *(ConnectionsPage.tsx:1100-1191)*. Bearer-token toolkits submit `auth_scheme: "BEARER_TOKEN"` so Composio doesn't reject the mismatch.
+ </Tab>
+ <Tab title="Device pair (alfred-omi)">
+ A synthetic slug. `Create pairing URL` calls `pairOmiDevice` → ctrl-api `POST /api/v1/integrations/omi/pair`, which creates-or-reuses the single `source: "omi"` stream and returns a tenant-scoped audio endpoint URL. The principal pastes that URL into the OMI app's developer settings; the device appears in the connected list once it starts streaming *(ConnectionsPage.tsx:420-446)*.
+ </Tab>
+ <Tab title="Inbound webhook (alfred-webhook)">
+ A synthetic slug. The modal asks for a short label; the page calls `createInboundWebhook`, receives a private URL, and copies it to the clipboard. Any POST to that URL lands as a stream event Alfred can curate. The URL is re-displayed on the connection row with a `Copy` affordance — it is otherwise write-once *(ConnectionsPage.tsx:448-471, 1311-1370)*.
+ </Tab>
 </Tabs>
 
 <Note>

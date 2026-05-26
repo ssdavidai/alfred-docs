@@ -14,9 +14,9 @@ There is no public route into your Alfred Cloud tenant. The Hetzner Cloud Firewa
 |---|---|---|---|
 | **Tailscale (WireGuard mesh)** | WireGuard ChaCha20-Poly1305, end-to-end | Tailscale ACL + per-node identity | `ctrl-api:3100`, `hermes:18789/18790/18791`, Temporal, Ollama, optional sidecars |
 | **Cloudflare Tunnel** | TLS 1.3 to Cloudflare edge, then **outbound** WireGuard from the tunnel daemon on the tenant | Tunnel token (per-tenant), then bearer at the origin | The mcp-server's OAuth + `/mcp` routes, optionally the dashboard reverse-proxy |
-| **SSH (port 22)** | OpenSSH (per-host key, per-instance ed25519 deploy key) | Public-key only — `PasswordAuthentication no`, `PermitRootLogin no` *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:121`)*, fail2ban on top | Shell on the host |
+| **SSH (port 22)** | OpenSSH (per-host key, per-instance ed25519 deploy key) | Public-key only — `PasswordAuthentication no`, `PermitRootLogin no`, fail2ban on top | Shell on the host |
 
-Everything else is denied at the Hetzner Cloud Firewall, which is labelled `managed-by: alfred-ctrl` and shared across the fleet. *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:33`)*
+Everything else is denied at the Hetzner Cloud Firewall, which is labelled `managed-by: alfred-ctrl` and shared across the fleet.
 
 ## The inbound port table
 
@@ -28,7 +28,7 @@ Concretely, here is every port on every tenant and who can reach it:
 | **ICMP** | ping | — | Anyone — for liveness checks only. |
 | **41641 / udp** | Tailscale WireGuard | `0.0.0.0` | Tailscale coordination + peer handshake. The actual traffic is then encapsulated WireGuard. |
 | **3100 / tcp** | `ctrl-api` | `127.0.0.1` | Localhost only. Reachable externally **only** through Tailscale or Cloudflare Tunnel. |
-| **18789 / tcp** | Hermes `main` profile (chat) | `127.0.0.1` | Localhost only. *(`/Users/ssd/dev/alfred/docker-compose.yaml:303`)* |
+| **18789 / tcp** | Hermes `main` profile (chat) | `127.0.0.1` | Localhost only. *(`docker-compose.yaml:303`)* |
 | **18790 / tcp** | Hermes `workers` profile (background) | `127.0.0.1` | Localhost only. |
 | **18791 / tcp** | Hermes `heavy` profile (Opus-class) | `127.0.0.1` | Localhost only. |
 | **7233 / tcp** | Temporal gRPC | `127.0.0.1` | Localhost only. |
@@ -52,7 +52,7 @@ You can verify this in the live compose file: every `ports:` mapping uses the `1
 
 ## Tailscale tailnet
 
-The tenant joins the operator's Tailscale tailnet at provision time with a one-time auth key generated on the fly by the provisioner. *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:47`)*
+The tenant joins the operator's Tailscale tailnet at provision time with a one-time auth key generated on the fly by the provisioner.
 
 | Node | Identity | What it reaches |
 |---|---|---|
@@ -78,9 +78,9 @@ Cloudflare authenticates the tunnel itself; the application layer behind it stil
 
 ## The voice channel exception
 
-The voice channel takes a different shape. Twilio's Media Stream WebSocket lands on `voice.alfred.black` — that hostname is **DNS-only at Cloudflare** (not proxied), because the Cloudflare WAF drops Twilio's WebSocket upgrade with error 31920. The Voice Bridge runs on the **SaaS host**, not on the tenant, and reaches into the tenant over Tailscale using a scoped bearer token that is allowlisted to exactly two routes: `GET /api/v1/phone/voice-context` and `POST /api/v1/phone/transcript`. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/auth.ts:38–98`)*
+The voice channel takes a different shape. Twilio's Media Stream WebSocket lands on `voice.alfred.black` — that hostname is **DNS-only at Cloudflare** (not proxied), because the Cloudflare WAF drops Twilio's WebSocket upgrade with error 31920. The Voice Bridge runs on the **SaaS host**, not on the tenant, and reaches into the tenant over Tailscale using a scoped bearer token that is allowlisted to exactly two routes: `GET /api/v1/phone/voice-context` and `POST /api/v1/phone/transcript`. *(`packages/ctrl/src/api/auth.ts:38–98`)*
 
-Even if the voice bridge were compromised, the blast radius is bounded to those two endpoints — the master `AAS_API_KEY` never leaves the tenant. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/auth.ts:19`)*
+Even if the voice bridge were compromised, the blast radius is bounded to those two endpoints — the master `AAS_API_KEY` never leaves the tenant. *(`packages/ctrl/src/api/auth.ts:19`)*
 
 ## SSH posture
 
@@ -90,33 +90,33 @@ SSH is the only port open to the public internet. It is hardened by cloud-init a
 - **`PasswordAuthentication no`** — public-key only. No passwords are configured.
 - **`MaxAuthTries 3`** — three failed attempts then a disconnect.
 - **per-instance ed25519 host key + per-instance ed25519 deploy key** — both generated at provision time, never reused.
-- **`fail2ban` on top** — repeat offenders get firewall-banned. *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:121`)*
+- **`fail2ban` on top** — repeat offenders get firewall-banned.
 - **`unattended-upgrades` enabled for security packages** — OpenSSH updates roll automatically.
 
-The deploy key lives at `data/ssh_keys/<instance-id>/id_ed25519` on the operator's machine, generated at provision time and never re-used between tenants. *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:29`)*
+The deploy key lives at `data/ssh_keys/<instance-id>/id_ed25519` on the operator's machine, generated at provision time and never re-used between tenants.
 
 ## Container-level hardening
 
 Every long-lived container runs with:
 
 - **`no-new-privileges: true`** — `setuid` binaries cannot escalate, even if one is found inside the image.
-- **`cap_drop: ALL`** with a narrow `cap_add` (e.g. `DAC_OVERRIDE`) only where required for `chown` on bind-mounts. *(`/Users/ssd/dev/alfred/docker-compose.yaml:311`)*
+- **`cap_drop: ALL`** with a narrow `cap_add` (e.g. `DAC_OVERRIDE`) only where required for `chown` on bind-mounts. *(`docker-compose.yaml:311`)*
 - **`mem_limit` of 1–6 GB** depending on workload. The two Hermes-heavy services (`hermes`, `alfred-learn`) get 6 GB; `ctrl-api` gets 1 GB.
 - **`pids_limit: 256–2048`** — caps a fork bomb's blast radius.
 - **All host ports bound to `127.0.0.1`.**
 - **UFW on the host** denies inbound except 22/tcp, ICMP, and 41641/udp — a defence-in-depth backstop in case the Hetzner firewall is misconfigured.
 
 <CardGroup cols={2}>
-  <Card title="Authentication" icon="key" href="/alfred-cloud/security/authentication">
-    What the Bearer-token check at the origin actually does.
-  </Card>
-  <Card title="Infrastructure isolation" icon="server" href="/alfred-cloud/security/infrastructure-isolation">
-    Per-tenant VM, the four shared dependencies, and how each is isolated.
-  </Card>
-  <Card title="Encryption at rest" icon="hard-drive" href="/alfred-cloud/security/encryption-at-rest">
-    LUKS2 layer underneath the network model.
-  </Card>
-  <Card title="Agent sandboxing" icon="lock" href="/alfred-cloud/security/agent-sandboxing">
-    What an in-tenant compromised process can and can't do.
-  </Card>
+ <Card title="Authentication" icon="key" href="/alfred-cloud/security/authentication">
+ What the Bearer-token check at the origin actually does.
+ </Card>
+ <Card title="Infrastructure isolation" icon="server" href="/alfred-cloud/security/infrastructure-isolation">
+ Per-tenant VM, the four shared dependencies, and how each is isolated.
+ </Card>
+ <Card title="Encryption at rest" icon="hard-drive" href="/alfred-cloud/security/encryption-at-rest">
+ LUKS2 layer underneath the network model.
+ </Card>
+ <Card title="Agent sandboxing" icon="lock" href="/alfred-cloud/security/agent-sandboxing">
+ What an in-tenant compromised process can and can't do.
+ </Card>
 </CardGroup>

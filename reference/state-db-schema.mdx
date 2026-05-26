@@ -14,10 +14,10 @@ Alfred Black persists machine state in three SQLite files plus the markdown vaul
 ctrl-api applies these PRAGMAs on every database open *(packages/ctrl/src/db/state.ts:59-62)*:
 
 ```sql
-PRAGMA journal_mode = WAL;        -- concurrent readers never block the writer
-PRAGMA busy_timeout = 5000;       -- 5s contention absorption
+PRAGMA journal_mode = WAL; -- concurrent readers never block the writer
+PRAGMA busy_timeout = 5000; -- 5s contention absorption
 PRAGMA foreign_keys = ON;
-PRAGMA synchronous = NORMAL;      -- good durability, acceptable fsync batching
+PRAGMA synchronous = NORMAL; -- good durability, acceptable fsync batching
 ```
 
 `sqlite-vec` is loaded at boot when `SQLITE_VEC_PATH` is set, and the `embedding` vec0 virtual table is created in-process (it cannot be created via a static `.sql` file because the extension must be loaded first) *(state.ts:74-98)*.
@@ -53,10 +53,10 @@ Working-memory unit of inbound salience the system extracted from a stream event
 **Indexes**
 
 ```sql
-idx_signal_ts        ON signal(ts DESC)
+idx_signal_ts ON signal(ts DESC)
 idx_signal_status_ts ON signal(status, ts DESC)
-idx_signal_matter    ON signal(matter_ref, ts DESC)
-idx_signal_kind      ON signal(kind, ts DESC)
+idx_signal_matter ON signal(matter_ref, ts DESC)
+idx_signal_kind ON signal(kind, ts DESC)
 ```
 
 **TTL**: 90 days → `archive_signal` in `cold.db`.
@@ -86,11 +86,11 @@ What the intuition engine learns by watching the principal act ("principal alway
 **Indexes**
 
 ```sql
-idx_observation_ts        ON observation(ts DESC)
-idx_observation_kind_ts   ON observation(kind, ts DESC)
-idx_observation_subject   ON observation(subject, ts DESC)
-idx_observation_status    ON observation(status, ts DESC)
-idx_observation_processed ON observation(processed_at)   -- added 0001
+idx_observation_ts ON observation(ts DESC)
+idx_observation_kind_ts ON observation(kind, ts DESC)
+idx_observation_subject ON observation(subject, ts DESC)
+idx_observation_status ON observation(status, ts DESC)
+idx_observation_processed ON observation(processed_at) -- added 0001
 ```
 
 **TTL**: 90 days → `archive_observation` in `cold.db`.
@@ -119,9 +119,9 @@ The intelligence layer's `decision`. Named `routing_decision` (not `decision`) t
 **Indexes**
 
 ```sql
-idx_routing_decision_ts     ON routing_decision(ts DESC)
+idx_routing_decision_ts ON routing_decision(ts DESC)
 idx_routing_decision_signal ON routing_decision(signal_id)
-idx_routing_decision_tier   ON routing_decision(tier, ts DESC)
+idx_routing_decision_tier ON routing_decision(tier, ts DESC)
 ```
 
 **TTL**: 90 days → `archive_routing_decision` in `cold.db`.
@@ -153,12 +153,12 @@ Every `signal-action`, `steward-action`, `desk-action`, `state-change`, `needs_a
 **Indexes**
 
 ```sql
-idx_audit_ts        ON audit(ts DESC)
-idx_audit_type_ts   ON audit(action_type, ts DESC)
-idx_audit_actor_ts  ON audit(actor, ts DESC)
-idx_audit_target    ON audit(target_path, ts DESC)
+idx_audit_ts ON audit(ts DESC)
+idx_audit_type_ts ON audit(action_type, ts DESC)
+idx_audit_actor_ts ON audit(actor, ts DESC)
+idx_audit_target ON audit(target_path, ts DESC)
 idx_audit_source_ts ON audit(source, ts DESC)
-idx_audit_subject   ON audit(subject_ref, ts DESC)
+idx_audit_subject ON audit(subject_ref, ts DESC)
 ```
 
 **TTL**: 365 days → `archive_audit` in `cold.db`. The `/api/v1/state/audit` reader transparently merges hot + cold *(packages/ctrl/src/db/coldRead.ts)*.
@@ -183,10 +183,10 @@ An explicit, queryable edge between two records. Either endpoint may be a vault 
 **Indexes**
 
 ```sql
-idx_link_unique  UNIQUE (src_ref, dst_ref, rel)
-idx_link_src     ON link(src_ref)
-idx_link_dst     ON link(dst_ref)
-idx_link_rel     ON link(rel)
+idx_link_unique UNIQUE (src_ref, dst_ref, rel)
+idx_link_src ON link(src_ref)
+idx_link_dst ON link(dst_ref)
+idx_link_rel ON link(rel)
 ```
 
 **TTL**: 365 days → `archive_link` in `cold.db`.
@@ -213,9 +213,9 @@ One row per canonical vault record. ctrl-api is the sole vault writer, so it upd
 **Indexes**
 
 ```sql
-idx_vault_index_type   ON vault_index(record_type, mtime DESC)
+idx_vault_index_type ON vault_index(record_type, mtime DESC)
 idx_vault_index_status ON vault_index(record_type, status)
-idx_vault_index_mtime  ON vault_index(mtime DESC)
+idx_vault_index_mtime ON vault_index(mtime DESC)
 ```
 
 **TTL**: none — drops only when the underlying vault record is deleted.
@@ -241,14 +241,14 @@ idx_vault_index_mtime  ON vault_index(mtime DESC)
 
 ```sql
 CREATE VIRTUAL TABLE IF NOT EXISTS embedding USING vec0(
-  embedding float[768]
+ embedding float[768]
 );
 ```
 
 **Indexes (on `embedding_meta`)**
 
 ```sql
-idx_embedding_meta_ref  ON embedding_meta(ref)
+idx_embedding_meta_ref ON embedding_meta(ref)
 idx_embedding_meta_kind ON embedding_meta(ref_kind, ts DESC)
 ```
 
@@ -337,10 +337,10 @@ Every outbound and inbound exchange, across every channel. The Hermes `pre_gatew
 **Indexes**
 
 ```sql
-idx_alfred_journal_lookup       ON alfred_journal(channel, chat_id, ts DESC)
+idx_alfred_journal_lookup ON alfred_journal(channel, chat_id, ts DESC)
 idx_alfred_journal_by_principal ON alfred_journal(principal_id, ts DESC)
-idx_alfred_journal_by_source    ON alfred_journal(source_kind, source_ref)
-idx_alfred_journal_pending      ON alfred_journal(status, ts) WHERE status='pending'
+idx_alfred_journal_by_source ON alfred_journal(source_kind, source_ref)
+idx_alfred_journal_pending ON alfred_journal(status, ts) WHERE status='pending'
 ```
 
 ---
@@ -461,8 +461,8 @@ Every email, Telegram message, Slack DM, omi transcript, webhook, …
 
 ```sql
 idx_stream_event_pending ON stream_event(processed_at, ts) WHERE processed_at IS NULL
-idx_stream_event_ts      ON stream_event(ts)
-idx_stream_event_stream  ON stream_event(stream, ts DESC)
+idx_stream_event_ts ON stream_event(ts)
+idx_stream_event_stream ON stream_event(stream, ts DESC)
 idx_stream_event_external UNIQUE (stream, external_id) WHERE external_id IS NOT NULL
 ```
 
@@ -534,7 +534,7 @@ LIMIT 50;
 
 ```sql
 -- ctrl-api does this merge automatically at /api/v1/state/audit
-SELECT id, ts, summary FROM audit  WHERE actor = 'alfred'
+SELECT id, ts, summary FROM audit WHERE actor = 'alfred'
 UNION ALL
 SELECT id, ts, summary FROM cold.archive_audit WHERE actor = 'alfred'
 ORDER BY ts DESC LIMIT 100;
@@ -546,7 +546,7 @@ ORDER BY ts DESC LIMIT 100;
 SELECT stream, COUNT(*) AS pending
 FROM stream_event
 WHERE processed_at IS NULL
-  AND ts < datetime('now', '-1 hour')
+ AND ts < datetime('now', '-1 hour')
 GROUP BY stream;
 ```
 

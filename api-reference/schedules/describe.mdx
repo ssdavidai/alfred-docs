@@ -1,0 +1,64 @@
+---
+title: "Describe Schedule"
+description: "Fetch full configuration and recent runs for a single schedule."
+api: "GET /api/v1/schedules/{schId}"
+---
+
+Returns Temporal's `schedule describe` payload for a single schedule: spec (cron, intervals, calendar), action (workflow type, task queue, input), state (paused, notes), and recent action history. Wraps `temporal schedule describe --schedule-id <id> --output json`.
+
+## Authentication
+
+Bearer token in the `Authorization` header.
+
+## Path parameters
+
+<ParamField path="schId" type="string" required>
+ Temporal schedule ID (e.g. `al-hourly-enrichment`).
+</ParamField>
+
+<RequestExample>
+
+```bash cURL
+curl -X GET https://alfred.black/api/v1/schedules/al-hourly-enrichment \
+ -H "Authorization: Bearer alf_your_key_here"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+ "schedule": {
+ "spec": {
+ "intervals": [{"every": "1h"}]
+ },
+ "action": {
+ "startWorkflow": {
+ "workflowType": {"name": "HourlyEnrichmentWorkflow"},
+ "taskQueue": {"name": "alfred-learn"}
+ }
+ },
+ "state": {"paused": false, "notes": ""},
+ "policies": {"overlapPolicy": "SCHEDULE_OVERLAP_POLICY_SKIP"}
+ },
+ "info": {
+ "recentActions": [
+ {"actualTime": "2026-04-25T09:00:00Z", "scheduleTime": "2026-04-25T09:00:00Z"}
+ ],
+ "nextActionTimes": ["2026-04-25T10:00:00Z"]
+ }
+}
+```
+
+</ResponseExample>
+
+## When to use
+
+- Confirming a schedule's overlap policy before triggering an out-of-band run.
+- Reading the workflow input that a scheduled run will be invoked with.
+- Checking next-fire times for monitoring or capacity planning.
+
+<Note>
+ This endpoint backs the rewrite-cron path on ctrl-api: it pulls the schedule, captures workflow type / task queue / input / overlap policy, then re-creates with a new cron. If you ever need to alter a schedule's cron, prefer Temporal's own update path; ctrl-api's `rewrite-cron` is a workaround for the missing CLI verb.
+</Note>

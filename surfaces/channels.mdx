@@ -8,30 +8,30 @@ description: "Every inbound door — email, phone, SMS, voice, Telegram, Slack, 
 ## The ten cards
 
 <CardGroup cols={2}>
-  <Card title="Web app" icon="browser">
-    `/chat` and `/desk`. Always on; no provisioning *(ChannelsPage.tsx:263-277)*.
-  </Card>
-  <Card title="Email" icon="envelope">
-    AgentMail-backed inbox at a tenant-scoped address. Forward anything; Alfred reads attachments and PDFs *(ChannelsPage.tsx:280-330)*.
-  </Card>
-  <Card title="Phone (SMS + Voice)" icon="phone">
-    A two-section card: SMS via Twilio, Voice via the `voice-bridge` compose service reusing the same Twilio credentials *(ChannelsPage.tsx:338-355)*.
-  </Card>
-  <Card title="Meeting bot" icon="video">
-    Vexa auto-join for Zoom / Meet / Teams. Gated on `--profile vexa` being up *(ChannelsPage.tsx:357-374)*.
-  </Card>
-  <Card title="OMI" icon="microphone">
-    Wearable audio stream. Four states: unconfigured / needs Groq key / configured / error *(ChannelsPage.tsx:377-382)*.
-  </Card>
-  <Card title="Slack" icon="slack">
-    DMs and mentions inside the household's workspace *(ChannelsPage.tsx:384-388)*.
-  </Card>
-  <Card title="Telegram" icon="telegram">
-    For when the principal is abroad *(ChannelsPage.tsx:389-392)*.
-  </Card>
-  <Card title="Terminal" icon="terminal">
-    SSH straight into the VM, then `docker exec` into Hermes for the lowest-latency door *(ChannelsPage.tsx:394-396)*.
-  </Card>
+ <Card title="Web app" icon="browser">
+ `/chat` and `/desk`. Always on; no provisioning *(ChannelsPage.tsx:263-277)*.
+ </Card>
+ <Card title="Email" icon="envelope">
+ AgentMail-backed inbox at a tenant-scoped address. Forward anything; Alfred reads attachments and PDFs *(ChannelsPage.tsx:280-330)*.
+ </Card>
+ <Card title="Phone (SMS + Voice)" icon="phone">
+ A two-section card: SMS via Twilio, Voice via the `voice-bridge` compose service reusing the same Twilio credentials *(ChannelsPage.tsx:338-355)*.
+ </Card>
+ <Card title="Meeting bot" icon="video">
+ Vexa auto-join for Zoom / Meet / Teams. Gated on `--profile vexa` being up *(ChannelsPage.tsx:357-374)*.
+ </Card>
+ <Card title="OMI" icon="microphone">
+ Wearable audio stream. Four states: unconfigured / needs Groq key / configured / error *(ChannelsPage.tsx:377-382)*.
+ </Card>
+ <Card title="Slack" icon="slack">
+ DMs and mentions inside the household's workspace *(ChannelsPage.tsx:384-388)*.
+ </Card>
+ <Card title="Telegram" icon="telegram">
+ For when the principal is abroad *(ChannelsPage.tsx:389-392)*.
+ </Card>
+ <Card title="Terminal" icon="terminal">
+ SSH straight into the VM, then `docker exec` into Hermes for the lowest-latency door *(ChannelsPage.tsx:394-396)*.
+ </Card>
 </CardGroup>
 
 ## Status pills
@@ -41,37 +41,37 @@ Every card carries one of: **Connected** (active), **Not connected** (available)
 ## Per-channel provisioning
 
 <AccordionGroup>
-  <Accordion title="Email (AgentMail)">
-    Single field: paste the AgentMail API key. `provisionEmail` writes the credential and provisions the inbox; the card flips to `Connected` showing the assigned `inbox_address` *(ChannelsPage.tsx:184-201)*. Forwarded mail lands in the vault's `inbox/` folder.
-  </Accordion>
+ <Accordion title="Email (AgentMail)">
+ Single field: paste the AgentMail API key. `provisionEmail` writes the credential and provisions the inbox; the card flips to `Connected` showing the assigned `inbox_address` *(ChannelsPage.tsx:184-201)*. Forwarded mail lands in the vault's `inbox/` folder.
+ </Accordion>
 
-  <Accordion title="SMS (Twilio)">
-    Three fields: Account SID (`AC` + 32 hex), Auth Token (32 hex), Twilio phone number in E.164 format. Optional fold-out: a comma-separated `SMS_ALLOWED_USERS` allowlist *(ChannelsPage.tsx:1498-1569)*. Once running, the principal can flip between **Open** (anyone can text) and **Allowlist** (only listed E.164 numbers) via the shared `AllowlistEditor` *(ChannelsPage.tsx:1336-1496)*. `Send test SMS` confirms Twilio accepts the message.
-  </Accordion>
+ <Accordion title="SMS (Twilio)">
+ Three fields: Account SID (`AC` + 32 hex), Auth Token (32 hex), Twilio phone number in E.164 format. Optional fold-out: a comma-separated `SMS_ALLOWED_USERS` allowlist *(ChannelsPage.tsx:1498-1569)*. Once running, the principal can flip between **Open** (anyone can text) and **Allowlist** (only listed E.164 numbers) via the shared `AllowlistEditor` *(ChannelsPage.tsx:1336-1496)*. `Send test SMS` confirms Twilio accepts the message.
+ </Accordion>
 
-  <Accordion title="Voice (voice-bridge)">
-    Read-only: voice reuses the SMS section's Twilio credentials. Surfaces deploy-readiness only; the principal manages only the **Open / Allowlist** of authorised callers via the same `AllowlistEditor` *(ChannelsPage.tsx:348-355)*.
-  </Accordion>
+ <Accordion title="Voice (voice-bridge)">
+ Read-only: voice reuses the SMS section's Twilio credentials. Surfaces deploy-readiness only; the principal manages only the **Open / Allowlist** of authorised callers via the same `AllowlistEditor` *(ChannelsPage.tsx:348-355)*.
+ </Accordion>
 
-  <Accordion title="Telegram">
-    Single field: bot token from `@BotFather` in shape `digits:secret`. `setTelegramBotToken` persists; the card moves through `configured_starting → configured_running` as Hermes restarts to pick up the token *(ChannelsPage.tsx:572-880, packages/web/src/dashboard/telegramCardCore.ts)*. When running, every paired chat is listed with a per-chat Revoke; `Send test message` confirms delivery.
-  </Accordion>
+ <Accordion title="Telegram">
+ Single field: bot token from `@BotFather` in shape `digits:secret`. `setTelegramBotToken` persists; the card moves through `configured_starting → configured_running` as Hermes restarts to pick up the token *(ChannelsPage.tsx:572-880, packages/web/src/dashboard/telegramCardCore.ts)*. When running, every paired chat is listed with a per-chat Revoke; `Send test message` confirms delivery.
+ </Accordion>
 
-  <Accordion title="Slack">
-    Two-token Socket-Mode flow. Step 1: copy the auto-generated app manifest from `getSlackManifest` and paste it into `api.slack.com/apps → Create New App → From an app manifest`. Step 2: paste the Bot User OAuth Token (`xoxb-…`) and an App-Level Token (`xapp-…` with `connections:write`). Optional Phase-2 fields: home channel, allowed users, allowed channels *(ChannelsPage.tsx:884-1280)*.
-  </Accordion>
+ <Accordion title="Slack">
+ Two-token Socket-Mode flow. Step 1: copy the auto-generated app manifest from `getSlackManifest` and paste it into `api.slack.com/apps → Create New App → From an app manifest`. Step 2: paste the Bot User OAuth Token (`xoxb-…`) and an App-Level Token (`xapp-…` with `connections:write`). Optional Phase-2 fields: home channel, allowed users, allowed channels *(ChannelsPage.tsx:884-1280)*.
+ </Accordion>
 
-  <Accordion title="OMI">
-    The transcription path needs a Groq API key (stored server-side in Vaultwarden; `alfred-learn` reads it at transcription time). Card states: `unconfigured` (no Groq key) → `needs_groq_key` (key invalid) → `configured` (working) → `error` *(packages/web/src/dashboard/omiCardCore.ts)*. Pair the wearable itself via [Connections](/surfaces/connections) — `alfred-omi` is the synthetic slug that mints the device's audio endpoint.
-  </Accordion>
+ <Accordion title="OMI">
+ The transcription path needs a Groq API key (stored server-side in Vaultwarden; `alfred-learn` reads it at transcription time). Card states: `unconfigured` (no Groq key) → `needs_groq_key` (key invalid) → `configured` (working) → `error` *(packages/web/src/dashboard/omiCardCore.ts)*. Pair the wearable itself via [Connections](/surfaces/connections) — `alfred-omi` is the synthetic slug that mints the device's audio endpoint.
+ </Accordion>
 
-  <Accordion title="Vexa (meeting bot)">
-    Single toggle. Calls `setVexaAutoJoin({enabled})`; the bot starts/stops auto-joining the principal's standing calendar events. Requires `docker compose --profile vexa up -d` to add the nine transcript containers *(ChannelsPage.tsx:230-240)*.
-  </Accordion>
+ <Accordion title="Vexa (meeting bot)">
+ Single toggle. Calls `setVexaAutoJoin({enabled})`; the bot starts/stops auto-joining the principal's standing calendar events. Requires `docker compose --profile vexa up -d` to add the nine transcript containers *(ChannelsPage.tsx:230-240)*.
+ </Accordion>
 
-  <Accordion title="Terminal (SSH + Hermes)">
-    Pure-read card. `getSshInfo` returns `{hostname, port, user, pubkey, hermes_exec}` — the public key for the principal to drop into `authorized_keys`, plus the exact `docker exec … hermes` command to talk to Alfred from a shell. Both have copy/download affordances *(ChannelsPage.tsx:407-509)*. The empty state points at `/settings#credentials`.
-  </Accordion>
+ <Accordion title="Terminal (SSH + Hermes)">
+ Pure-read card. `getSshInfo` returns `{hostname, port, user, pubkey, hermes_exec}` — the public key for the principal to drop into `authorized_keys`, plus the exact `docker exec … hermes` command to talk to Alfred from a shell. Both have copy/download affordances *(ChannelsPage.tsx:407-509)*. The empty state points at `/settings#credentials`.
+ </Accordion>
 </AccordionGroup>
 
 ## How the cards talk to ctrl-api

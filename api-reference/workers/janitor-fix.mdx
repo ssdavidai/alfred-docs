@@ -1,0 +1,60 @@
+---
+title: "Janitor Fix"
+description: "Scan the vault and let the Janitor agent repair what it can."
+api: "POST /api/v1/workers/janitor/fix"
+---
+
+Runs `alfred janitor fix`: a full structural scan followed by a Janitor agent pass that repairs the issues it knows how to fix. Examples include backfilling missing frontmatter fields, removing dead wiki links, and merging obvious duplicates.
+
+Files Janitor cannot confidently fix are left untouched and reported back so you or another tool can decide what to do.
+
+## Authentication
+
+Bearer token in the `Authorization` header.
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://alfred.black/api/v1/workers/janitor/fix \
+ -H "Authorization: Bearer alf_your_key_here" \
+ -H "Content-Type: application/json"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 Structured
+{
+ "files_scanned": 423,
+ "issues_found": 7,
+ "files_fixed": 5,
+ "files_deleted": 0,
+ "files_skipped": 2,
+ "skipped": [
+ {"file": "matters/acme-redesign.md", "reason": "ambiguous link target — needs human review"}
+ ]
+}
+```
+
+```json 200 Raw fallback
+{
+ "raw": "Files scanned: 423\nIssues found: 7\nFiles fixed: 5\nFiles deleted: 0\nSkipped: 2"
+}
+```
+
+</ResponseExample>
+
+<ResponseField name="raw" type="string">
+ Trimmed stdout when the CLI did not return JSON. Present only in the fallback case.
+</ResponseField>
+
+## When to use
+
+- After a manual `janitor/scan` shows fixable issues and you want them resolved.
+- As part of a maintenance window after a vault migration.
+- After a Curator pipeline change that may have left stale links.
+
+<Warning>
+ This endpoint mutates vault files. Janitor records each change in its fix log (visible via [`janitor/history`](/api-reference/workers/janitor-history)) but the writes are irreversible without git. If you want a dry run first, use [`janitor/scan`](/api-reference/workers/janitor-scan) and review the issue list.
+</Warning>

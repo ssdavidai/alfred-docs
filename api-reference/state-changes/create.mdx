@@ -1,0 +1,31 @@
+---
+title: "Create State Changes"
+description: "Record `{target_path, target_kind, field, before, after, reason, actor, mode?}`."
+api: "POST /api/v1/state-changes"
+---
+
+## Purpose
+
+Record `{target_path, target_kind, field, before, after, reason, actor, mode?}`. See the live route handler at `packages/ctrl/src/api/routes/stateChanges.ts:353` for the authoritative request/response contract.
+
+<Note>
+This endpoint is part of the Alfred Black API. The OpenAPI spec for this endpoint is being authored — Mintlify will render parameters, request examples, and response examples here once the spec lands. Until then, see the source citation above for the authoritative shape.
+</Note>
+
+## Try it
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://alfred.black/api/v1/state-changes \
+ -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+```javascript JavaScript
+const r = await fetch('https://alfred.black/api/v1/state-changes', {
+ method: 'POST',
+ headers: { 'Authorization': `Bearer ${process.env.AAS_API_KEY}` },
+});
+```
+
+</CodeGroup>

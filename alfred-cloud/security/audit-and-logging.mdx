@@ -20,11 +20,11 @@ Every authenticated call to the tenant's `ctrl-api` is recorded. The record incl
 - Response status code
 - A short outcome summary
 
-The log is queryable at `GET /api/v1/admin/activity` and rendered in the dashboard's Activity tab. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/admin.ts:660`)*
+The log is queryable at `GET /api/v1/admin/activity` and rendered in the dashboard's Activity tab. *(`packages/ctrl/src/api/routes/admin.ts:660`)*
 
 ```bash
 curl https://alfred.black/api/v1/admin/activity \
-  -H "Authorization: Bearer ${AAS_API_KEY}"
+ -H "Authorization: Bearer ${AAS_API_KEY}"
 ```
 
 The response is filterable by:
@@ -38,7 +38,7 @@ The response is filterable by:
 
 ### Every Hermes session
 
-The `system-hermes-sessions` stream captures every main-agent session — every chat thread, every voice call, every email reply, every SMS, every channel interaction — with its summary, channel, and tool calls. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/streams.ts:119`)*
+The `system-hermes-sessions` stream captures every main-agent session — every chat thread, every voice call, every email reply, every SMS, every channel interaction — with its summary, channel, and tool calls. *(`packages/ctrl/src/api/routes/streams.ts:119`)*
 
 Each session record contains:
 
@@ -56,7 +56,7 @@ Reading the stream:
 
 ```bash
 curl https://alfred.black/api/v1/streams/system/hermes-sessions/events \
-  -H "Authorization: Bearer ${AAS_API_KEY}"
+ -H "Authorization: Bearer ${AAS_API_KEY}"
 ```
 
 ### Every state-machine transition
@@ -89,22 +89,22 @@ A few common forensic queries:
 <CodeGroup>
 ```bash What did the agent do between 9pm and midnight last Thursday?
 curl "https://alfred.black/api/v1/admin/activity?since=2026-05-22T21:00:00Z&until=2026-05-23T00:00:00Z&actor=agent" \
-  -H "Authorization: Bearer ${AAS_API_KEY}"
+ -H "Authorization: Bearer ${AAS_API_KEY}"
 ```
 
 ```bash Every Vaultwarden read in the last 24h
 curl "https://alfred.black/api/v1/admin/activity?since=$(date -u -v-1d +%FT%TZ)&path_prefix=/api/v1/vaultwarden" \
-  -H "Authorization: Bearer ${AAS_API_KEY}"
+ -H "Authorization: Bearer ${AAS_API_KEY}"
 ```
 
 ```bash All 401s in the last week
 curl "https://alfred.black/api/v1/admin/activity?since=$(date -u -v-7d +%FT%TZ)&status=401" \
-  -H "Authorization: Bearer ${AAS_API_KEY}"
+ -H "Authorization: Bearer ${AAS_API_KEY}"
 ```
 
 ```bash Every decision the principal took on /desk yesterday
 curl "https://alfred.black/api/v1/audit?kind=desk-action&since=$(date -u -v-1d +%FT%TZ)" \
-  -H "Authorization: Bearer ${AAS_API_KEY}"
+ -H "Authorization: Bearer ${AAS_API_KEY}"
 ```
 </CodeGroup>
 
@@ -122,23 +122,23 @@ The 7-day TTL on raw stream events is deliberate — once the signal pipeline ha
 
 ## Reporting a security issue
 
-Found a security concern? Email **security@alfred.black** with details. *(`/tmp/alfred-doc-old/guides/security.mdx:145`)*
+Found a security concern? Email **security@alfred.black** with details.
 
 ### Responsible disclosure policy
 
 <Steps>
-  <Step title="Email security@alfred.black">
-    Include enough detail to reproduce. Encrypted email is welcome — the operator's PGP key is available on request.
-  </Step>
-  <Step title="Acknowledgement within 72 hours">
-    The operator will acknowledge receipt and assign a severity. Critical issues are triaged same-day.
-  </Step>
-  <Step title="Patch in coordination">
-    For critical issues, the operator will coordinate a patch window. The fix lands as a CI commit, gets baked into `:latest`, and the tenant fleet auto-updates via the 15-minute `alfred-update.timer`.
-  </Step>
-  <Step title="Disclosure">
-    After the fix is fleet-deployed, the operator will publish a CVE-style writeup. Researchers are credited if they want to be.
-  </Step>
+ <Step title="Email security@alfred.black">
+ Include enough detail to reproduce. Encrypted email is welcome — the operator's PGP key is available on request.
+ </Step>
+ <Step title="Acknowledgement within 72 hours">
+ The operator will acknowledge receipt and assign a severity. Critical issues are triaged same-day.
+ </Step>
+ <Step title="Patch in coordination">
+ For critical issues, the operator will coordinate a patch window. The fix lands as a CI commit, gets baked into `:latest`, and the tenant fleet auto-updates via the 15-minute `alfred-update.timer`.
+ </Step>
+ <Step title="Disclosure">
+ After the fix is fleet-deployed, the operator will publish a CVE-style writeup. Researchers are credited if they want to be.
+ </Step>
 </Steps>
 
 **Please do not post sensitive findings publicly until the patch has rolled.** Coordinated disclosure protects every subscriber.
@@ -148,13 +148,13 @@ Found a security concern? Email **security@alfred.black** with details. *(`/tmp/
 </Warning>
 
 <CardGroup cols={2}>
-  <Card title="Agent sandboxing" icon="lock" href="/alfred-cloud/security/agent-sandboxing">
-    What the audit trail catches that the layered scoping doesn't prevent.
-  </Card>
-  <Card title="Authentication" icon="key" href="/alfred-cloud/security/authentication">
-    Which token authenticated each logged request.
-  </Card>
-  <Card title="Per-tenant isolation" icon="users" href="/alfred-cloud/security/per-tenant-isolation">
-    Where every Composio / AgentMail / Vaultwarden call shows up in the log.
-  </Card>
+ <Card title="Agent sandboxing" icon="lock" href="/alfred-cloud/security/agent-sandboxing">
+ What the audit trail catches that the layered scoping doesn't prevent.
+ </Card>
+ <Card title="Authentication" icon="key" href="/alfred-cloud/security/authentication">
+ Which token authenticated each logged request.
+ </Card>
+ <Card title="Per-tenant isolation" icon="users" href="/alfred-cloud/security/per-tenant-isolation">
+ Where every Composio / AgentMail / Vaultwarden call shows up in the log.
+ </Card>
 </CardGroup>

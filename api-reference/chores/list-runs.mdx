@@ -1,0 +1,31 @@
+---
+title: "Past runs (from `/alfred-data/chore-run-history`"
+description: "Past runs (from `/alfred-data/chore-run-history.jsonl`)."
+api: "GET /api/v1/chores/:slug/runs"
+---
+
+## Purpose
+
+Past runs (from `/alfred-data/chore-run-history.jsonl`). See the live route handler at `packages/ctrl/src/api/routes/chores.ts:1250` for the authoritative request/response contract.
+
+<Note>
+This endpoint is part of the Alfred Black API. The OpenAPI spec for this endpoint is being authored — Mintlify will render parameters, request examples, and response examples here once the spec lands. Until then, see the source citation above for the authoritative shape.
+</Note>
+
+## Try it
+
+<CodeGroup>
+
+```bash cURL
+curl -X GET https://alfred.black/api/v1/chores/:slug/runs \
+ -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+```javascript JavaScript
+const r = await fetch('https://alfred.black/api/v1/chores/:slug/runs', {
+ method: 'GET',
+ headers: { 'Authorization': `Bearer ${process.env.AAS_API_KEY}` },
+});
+```
+
+</CodeGroup>

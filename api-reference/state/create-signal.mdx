@@ -1,0 +1,31 @@
+---
+title: "Mint a signal"
+description: "Mint a signal. Body: `{kind, source, headline, body?, salience?, matter_ref?, entity_ref?, stream_event_id?, status?, payload?}`."
+api: "POST /api/v1/state/signals"
+---
+
+## Purpose
+
+Mint a signal. Body: `{kind, source, headline, body?, salience?, matter_ref?, entity_ref?, stream_event_id?, status?, payload?}`. See the live route handler at `packages/ctrl/src/api/routes/state.ts:171` for the authoritative request/response contract.
+
+<Note>
+This endpoint is part of the Alfred Black API. The OpenAPI spec for this endpoint is being authored — Mintlify will render parameters, request examples, and response examples here once the spec lands. Until then, see the source citation above for the authoritative shape.
+</Note>
+
+## Try it
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://alfred.black/api/v1/state/signals \
+ -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+```javascript JavaScript
+const r = await fetch('https://alfred.black/api/v1/state/signals', {
+ method: 'POST',
+ headers: { 'Authorization': `Bearer ${process.env.AAS_API_KEY}` },
+});
+```
+
+</CodeGroup>

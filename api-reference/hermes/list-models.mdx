@@ -1,0 +1,31 @@
+---
+title: "Models currently configured per profile"
+description: "Models currently configured per profile."
+api: "GET /api/v1/hermes/models"
+---
+
+## Purpose
+
+Models currently configured per profile. See the live route handler at `packages/ctrl/src/api/routes/hermes.ts:477` for the authoritative request/response contract.
+
+<Note>
+This endpoint is part of the Alfred Black API. The OpenAPI spec for this endpoint is being authored — Mintlify will render parameters, request examples, and response examples here once the spec lands. Until then, see the source citation above for the authoritative shape.
+</Note>
+
+## Try it
+
+<CodeGroup>
+
+```bash cURL
+curl -X GET https://alfred.black/api/v1/hermes/models \
+ -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+```javascript JavaScript
+const r = await fetch('https://alfred.black/api/v1/hermes/models', {
+ method: 'GET',
+ headers: { 'Authorization': `Bearer ${process.env.AAS_API_KEY}` },
+});
+```
+
+</CodeGroup>

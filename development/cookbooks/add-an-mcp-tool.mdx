@@ -14,130 +14,130 @@ This cookbook walks the recipe for adding a new tool, using the
 *(packages/mcp-server/src/tools/alfred.ts:46-129)*.
 
 <Steps>
-  <Step title="Pick the app">
-    Each app is a separate stdio bundle scoped to a tenant-issued OAuth
-    grant — a token bound to `sure` cannot enumerate or call `plane`
-    tools *(packages/mcp-server/src/tools/registry.ts:1-3)*. Pick the
-    app that matches the capability:
+ <Step title="Pick the app">
+ Each app is a separate stdio bundle scoped to a tenant-issued OAuth
+ grant — a token bound to `sure` cannot enumerate or call `plane`
+ tools *(packages/mcp-server/src/tools/registry.ts:1-3)*. Pick the
+ app that matches the capability:
 
-    | App | Surface |
-    |-----|---------|
-    | `alfred` | Vault read/write, agent delegation, workflow orchestration via ctrl-api |
-    | `sure` | Sure personal-finance API (accounts, transactions, budgets) |
-    | `plane` | Plane project management (issues, cycles, projects) |
-    | `vaultwarden` | Secrets manager (list / search / get / CRUD) |
-    | `execute` | Composio surface — any connected third-party app |
-    | `hermes` | Hermes runtime itself (scheduling, run delegation) |
+ | App | Surface |
+ |-----|---------|
+ | `alfred` | Vault read/write, agent delegation, workflow orchestration via ctrl-api |
+ | `sure` | Sure personal-finance API (accounts, transactions, budgets) |
+ | `plane` | Plane project management (issues, cycles, projects) |
+ | `vaultwarden` | Secrets manager (list / search / get / CRUD) |
+ | `execute` | Composio surface — any connected third-party app |
+ | `hermes` | Hermes runtime itself (scheduling, run delegation) |
 
-    Open `packages/mcp-server/src/tools/<app>.ts`. The file ends with
-    an exported `ALL_<APP>_TOOLS` array *(e.g.
-    packages/mcp-server/src/tools/alfred.ts:554)* that's the
-    registration surface.
-  </Step>
+ Open `packages/mcp-server/src/tools/<app>.ts`. The file ends with
+ an exported `ALL_<APP>_TOOLS` array *(e.g.
+ packages/mcp-server/src/tools/alfred.ts:554)* that's the
+ registration surface.
+ </Step>
 
-  <Step title="Author the tool definition">
-    A tool is an object that conforms to `ToolDef`
-    *(packages/mcp-server/src/tools/types.ts)*. Three required fields:
+ <Step title="Author the tool definition">
+ A tool is an object that conforms to `ToolDef`
+ *(packages/mcp-server/src/tools/types.ts)*. Three required fields:
 
-    - **`name`** — snake_case, unique within the app.
-    - **`description`** — addressed to the **model** on the other end
-      of the connector. Say what to call it for, what to chain it
-      with, and what NOT to do. The voice carries here:
+ - **`name`** — snake_case, unique within the app.
+ - **`description`** — addressed to the **model** on the other end
+ of the connector. Say what to call it for, what to chain it
+ with, and what NOT to do. The voice carries here:
 
-      > Free-text and/or glob search across the entire vault. Pass
-      > `grep` for a case-insensitive substring match, `glob` for a
-      > path pattern, or both to AND them. **The route REQUIRES at
-      > least one of `grep` or `glob`** — calling without either
-      > throws 400. *(packages/mcp-server/src/tools/alfred.ts:68)*
-    - **`inputSchema`** — a Zod schema. Add `.describe(...)` on every
-      field so the agent sees the contract; use `.refine(...)` for
-      cross-field invariants *(packages/mcp-server/src/tools/alfred.ts:79-82)*.
-    - **`buildRequest`** — a function that turns validated args into
-      `{method, path, query, body}`. The server proxies this to
-      ctrl-api using the helper described in the next step.
+ > Free-text and/or glob search across the entire vault. Pass
+ > `grep` for a case-insensitive substring match, `glob` for a
+ > path pattern, or both to AND them. **The route REQUIRES at
+ > least one of `grep` or `glob`** — calling without either
+ > throws 400. *(packages/mcp-server/src/tools/alfred.ts:68)*
+ - **`inputSchema`** — a Zod schema. Add `.describe(...)` on every
+ field so the agent sees the contract; use `.refine(...)` for
+ cross-field invariants *(packages/mcp-server/src/tools/alfred.ts:79-82)*.
+ - **`buildRequest`** — a function that turns validated args into
+ `{method, path, query, body}`. The server proxies this to
+ ctrl-api using the helper described in the next step.
 
-    Note: **do not call `.strict()`** on input schemas. Extra fields
-    are deliberately forwarded so ctrl-api additions work without an
-    MCP redeploy *(packages/mcp-server/src/tools/alfred.ts:11-12)*.
-  </Step>
+ Note: **do not call `.strict()`** on input schemas. Extra fields
+ are deliberately forwarded so ctrl-api additions work without an
+ MCP redeploy *(packages/mcp-server/src/tools/alfred.ts:11-12)*.
+ </Step>
 
-  <Step title="Use proxyToCtrl">
-    Every alfred/sure/plane/vaultwarden tool ultimately proxies to
-    ctrl-api at `:3100`. The helper that does the network call is
-    `proxyToCtrl` in
-    `packages/mcp-server/src/tools/helpers.ts`
-    *(packages/mcp-server/src/tools/helpers.ts:68-96)*.
+ <Step title="Use proxyToCtrl">
+ Every alfred/sure/plane/vaultwarden tool ultimately proxies to
+ ctrl-api at `:3100`. The helper that does the network call is
+ `proxyToCtrl` in
+ `packages/mcp-server/src/tools/helpers.ts`
+ *(packages/mcp-server/src/tools/helpers.ts:68-96)*.
 
-    `proxyToCtrl` attaches `Authorization: Bearer <ctx.aasApiKey>`
-    automatically (the bearer comes from the OAuth grant's `props`
-    payload, not a global env secret) and optionally
-    `CF-Access-Client-Id` + `CF-Access-Client-Secret` if the grant
-    carries them. Non-2xx responses are not thrown — they come back
-    with the status so the tool can decide whether to surface them
-    as MCP errors or pass them through (a 404 may be expected when
-    "find by name" misses) *(packages/mcp-server/src/tools/helpers.ts:60-66)*.
+ `proxyToCtrl` attaches `Authorization: Bearer <ctx.aasApiKey>`
+ automatically (the bearer comes from the OAuth grant's `props`
+ payload, not a global env secret) and optionally
+ `CF-Access-Client-Id` + `CF-Access-Client-Secret` if the grant
+ carries them. Non-2xx responses are not thrown — they come back
+ with the status so the tool can decide whether to surface them
+ as MCP errors or pass them through (a 404 may be expected when
+ "find by name" misses) *(packages/mcp-server/src/tools/helpers.ts:60-66)*.
 
-    Pair it with `toolResult` *(packages/mcp-server/src/tools/helpers.ts:106-130)*
-    to convert the proxy result into the MCP `content` shape that
-    Claude Desktop expects — JSON-stringified body on success,
-    `isError: true` on non-2xx.
+ Pair it with `toolResult` *(packages/mcp-server/src/tools/helpers.ts:106-130)*
+ to convert the proxy result into the MCP `content` shape that
+ Claude Desktop expects — JSON-stringified body on success,
+ `isError: true` on non-2xx.
 
-    For the **`execute` app** (Composio passthrough) and the **`hermes`
-    app**, the buildRequest target is a different upstream rather than
-    ctrl-api; follow the existing patterns in those files
-    *(packages/mcp-server/src/tools/execute.ts,
-    packages/mcp-server/src/tools/hermes.ts)*.
-  </Step>
+ For the **`execute` app** (Composio passthrough) and the **`hermes`
+ app**, the buildRequest target is a different upstream rather than
+ ctrl-api; follow the existing patterns in those files
+ *(packages/mcp-server/src/tools/execute.ts,
+ packages/mcp-server/src/tools/hermes.ts)*.
+ </Step>
 
-  <Step title="Register in the tool list">
-    Append your tool to the `ALL_<APP>_TOOLS` array at the bottom of
-    the app's file. Order doesn't affect behaviour but does affect
-    how agents discover the catalogue, so group related tools (e.g.
-    all vault tools together).
+ <Step title="Register in the tool list">
+ Append your tool to the `ALL_<APP>_TOOLS` array at the bottom of
+ the app's file. Order doesn't affect behaviour but does affect
+ how agents discover the catalogue, so group related tools (e.g.
+ all vault tools together).
 
-    The registry indirection
-    *(packages/mcp-server/src/tools/registry.ts:37-44)* picks the
-    array up automatically — no extra wiring.
-  </Step>
+ The registry indirection
+ *(packages/mcp-server/src/tools/registry.ts:37-44)* picks the
+ array up automatically — no extra wiring.
+ </Step>
 
-  <Step title="Rebuild the bundle and ship">
-    The MCP bundle ships in **two places**:
+ <Step title="Rebuild the bundle and ship">
+ The MCP bundle ships in **two places**:
 
-    1. The standalone `alfred-mcp-server` HTTP image
-       *(packages/mcp-server/package.json:8)* — built by
-       `build-mcp-server.yml`. This is what Claude Custom Connectors
-       see at `mcp.<DOMAIN>`.
-    2. The Hermes runtime image, which **bakes a stdio copy** at
-       `/opt/mcp-stdio/` at image build time
-       *(packages/hermes/Dockerfile, mcp-builder stage)*. This is
-       what each Hermes profile spawns as child processes.
+ 1. The standalone `alfred-mcp-server` HTTP image
+ *(packages/mcp-server/package.json:8)* — built by
+ `build-mcp-server.yml`. This is what Claude Custom Connectors
+ see at `mcp.<DOMAIN>`.
+ 2. The Hermes runtime image, which **bakes a stdio copy** at
+ `/opt/mcp-stdio/` at image build time
+ *(packages/hermes/Dockerfile, mcp-builder stage)*. This is
+ what each Hermes profile spawns as child processes.
 
-    A change to `packages/mcp-server/src/**` therefore triggers
-    **both** `build-mcp-server.yml` *and* `build-hermes.yml` /
-    `build-init.yml` (the init container also bakes the bundle for
-    profile-config rendering). All three publish new `:latest`
-    images.
+ A change to `packages/mcp-server/src/**` therefore triggers
+ **both** `build-mcp-server.yml` *and* `build-hermes.yml` /
+ `build-init.yml` (the init container also bakes the bundle for
+ profile-config rendering). All three publish new `:latest`
+ images.
 
-    Locally: `cd packages/mcp-server && npm run build` compiles to
-    `dist/`. CI's `ci-check.yml` does not type-check this package
-    directly; the build steps in the per-image workflows do.
+ Locally: `cd packages/mcp-server && npm run build` compiles to
+ `dist/`. CI's `ci-check.yml` does not type-check this package
+ directly; the build steps in the per-image workflows do.
 
-    <Warning>
-    A new tool is live on the VM only after `docker compose pull &&
-    docker compose up -d`. Hermes spawns its MCP children at
-    container startup, so the new tool surface won't appear until
-    the `hermes` container recreates against the new image.
-    </Warning>
-  </Step>
+ <Warning>
+ A new tool is live on the VM only after `docker compose pull &&
+ docker compose up -d`. Hermes spawns its MCP children at
+ container startup, so the new tool surface won't appear until
+ the `hermes` container recreates against the new image.
+ </Warning>
+ </Step>
 </Steps>
 
 ## What to read next
 
 <CardGroup cols={2}>
-  <Card title="Add a ctrl-api route" href="/development/cookbooks/add-a-ctrl-route">
-    Most new MCP tools need a ctrl-api endpoint to proxy to. Start there.
-  </Card>
-  <Card title="Add a chore" href="/development/cookbooks/add-a-chore">
-    Recurring jobs the agents run on a Temporal schedule.
-  </Card>
+ <Card title="Add a ctrl-api route" href="/development/cookbooks/add-a-ctrl-route">
+ Most new MCP tools need a ctrl-api endpoint to proxy to. Start there.
+ </Card>
+ <Card title="Add a chore" href="/development/cookbooks/add-a-chore">
+ Recurring jobs the agents run on a Temporal schedule.
+ </Card>
 </CardGroup>

@@ -31,45 +31,45 @@ description: "Plane, Sure, Vaultwarden, the MCP server — and the optional Vexa
 
 ```mermaid
 flowchart TB
-  subgraph ingress[Ingress]
-    Caddy[caddy<br/>:80/:443]
-  end
+ subgraph ingress[Ingress]
+ Caddy[caddy<br/>:80/:443]
+ end
 
-  subgraph core[Core]
-    Web[web + web-client + web-db]
-    Ctrl[ctrl-api :3100]
-    Alfred[alfred daemon]
-    Learn[alfred-learn]
-    Temp[temporal :7233]
-    Hermes[hermes<br/>3 profiles]
-    Ollama[ollama :11434]
-    Init[init · one-shot]
-  end
+ subgraph core[Core]
+ Web[web + web-client + web-db]
+ Ctrl[ctrl-api :3100]
+ Alfred[alfred daemon]
+ Learn[alfred-learn]
+ Temp[temporal :7233]
+ Hermes[hermes<br/>3 profiles]
+ Ollama[ollama :11434]
+ Init[init · one-shot]
+ end
 
-  subgraph edge[Edge]
-    Voice[voice-bridge :9000]
-    MCP[mcp-server :8787]
-  end
+ subgraph edge[Edge]
+ Voice[voice-bridge :9000]
+ MCP[mcp-server :8787]
+ end
 
-  subgraph sidecars[Sidecars]
-    Plane[plane<br/>11 sub-containers]
-    Sure[sure<br/>4 sub-containers]
-    VW[vaultwarden + vault-cli]
-  end
+ subgraph sidecars[Sidecars]
+ Plane[plane<br/>11 sub-containers]
+ Sure[sure<br/>4 sub-containers]
+ VW[vaultwarden + vault-cli]
+ end
 
-  Caddy --> Web
-  Caddy --> Ctrl
-  Caddy --> Plane
-  Caddy --> Sure
-  Caddy --> VW
-  Caddy --> MCP
-  Caddy --> Hermes
-  Caddy --> Voice
-  Ctrl --> Alfred
-  Ctrl --> Hermes
-  Learn --> Temp
-  Learn --> Hermes
-  Learn --> Ctrl
+ Caddy --> Web
+ Caddy --> Ctrl
+ Caddy --> Plane
+ Caddy --> Sure
+ Caddy --> VW
+ Caddy --> MCP
+ Caddy --> Hermes
+ Caddy --> Voice
+ Ctrl --> Alfred
+ Ctrl --> Hermes
+ Learn --> Temp
+ Learn --> Hermes
+ Learn --> Ctrl
 ```
 
 ## Plane (project management)

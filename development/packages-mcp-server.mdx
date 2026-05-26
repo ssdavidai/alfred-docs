@@ -15,68 +15,68 @@ with the sixth (`hermes`) available via the HTTP shape.
 
 ```
 packages/mcp-server/
-├── Dockerfile                 the standalone HTTP server image
+├── Dockerfile the standalone HTTP server image
 ├── package.json
 ├── tsconfig.json
 ├── src/
-│   ├── index.ts               HTTP server entrypoint — Express + OAuth + StreamableHTTP transport
-│   ├── env.ts                 env var loader
-│   ├── bin/
-│   │   └── stdio-app.ts       stdio entrypoint — single app per process
-│   ├── oauth/
-│   │   └── provider.ts        OAuth grant + token store (SQLite-backed)
-│   └── tools/
-│       ├── registry.ts        the six apps → tool catalogues
-│       ├── helpers.ts         buildUrl, proxyToCtrl, toolResult
-│       ├── types.ts           CtrlContext, ProxyOptions, runTool dispatch
-│       ├── alfred.ts          38 tools
-│       ├── sure.ts            116 tools
-│       ├── plane.ts           10 tools
-│       ├── vaultwarden.ts     14 tools
-│       ├── execute.ts         6 tools (Composio)
-│       └── hermes.ts          7 tools (runtime + cron)
-├── skills/                    *-mcp-skill.md auto-resolved as MCP resources by stdio-app
-└── instructions/              optional per-app instructions exposed as resources
+│ ├── index.ts HTTP server entrypoint — Express + OAuth + StreamableHTTP transport
+│ ├── env.ts env var loader
+│ ├── bin/
+│ │ └── stdio-app.ts stdio entrypoint — single app per process
+│ ├── oauth/
+│ │ └── provider.ts OAuth grant + token store (SQLite-backed)
+│ └── tools/
+│ ├── registry.ts the six apps → tool catalogues
+│ ├── helpers.ts buildUrl, proxyToCtrl, toolResult
+│ ├── types.ts CtrlContext, ProxyOptions, runTool dispatch
+│ ├── alfred.ts 38 tools
+│ ├── sure.ts 116 tools
+│ ├── plane.ts 10 tools
+│ ├── vaultwarden.ts 14 tools
+│ ├── execute.ts 6 tools (Composio)
+│ └── hermes.ts 7 tools (runtime + cron)
+├── skills/ *-mcp-skill.md auto-resolved as MCP resources by stdio-app
+└── instructions/ optional per-app instructions exposed as resources
 ```
 
 ## Two deploy shapes, one source
 
 <Tabs>
-  <Tab title="HTTP server">
-    `src/index.ts:main()` boots an Express server on port 8787
-    *(packages/mcp-server/src/index.ts:27-357)*. Six routes
-    (`/alfred/mcp`, `/sure/mcp`, `/plane/mcp`, `/vaultwarden/mcp`,
-    `/execute/mcp`, `/hermes/mcp`) accept POST with the MCP
-    StreamableHTTPServerTransport, plus a per-app OAuth resource metadata
-    endpoint and the standard `mcpAuthRouter` (`/register`, `/authorize`,
-    `/token`, `/revoke`).
+ <Tab title="HTTP server">
+ `src/index.ts:main()` boots an Express server on port 8787
+ *(packages/mcp-server/src/index.ts:27-357)*. Six routes
+ (`/alfred/mcp`, `/sure/mcp`, `/plane/mcp`, `/vaultwarden/mcp`,
+ `/execute/mcp`, `/hermes/mcp`) accept POST with the MCP
+ StreamableHTTPServerTransport, plus a per-app OAuth resource metadata
+ endpoint and the standard `mcpAuthRouter` (`/register`, `/authorize`,
+ `/token`, `/revoke`).
 
-    Sessions are keyed by `mcp-session-id` header — new initialize requests
-    spawn a transport, subsequent requests route to it, and close events
-    delete the entry *(packages/mcp-server/src/index.ts:252-295)*.
+ Sessions are keyed by `mcp-session-id` header — new initialize requests
+ spawn a transport, subsequent requests route to it, and close events
+ delete the entry *(packages/mcp-server/src/index.ts:252-295)*.
 
-    Built as `ssdavidai00/alfred-mcp-server:latest` (Node 22 on Alpine,
-    ~200 MB). Per-tenant container; SQLite-backed OAuth grant store
-    bind-mounted from `/mnt/encrypted/mcp-server`.
-  </Tab>
-  <Tab title="Stdio bundle">
-    `src/bin/stdio-app.ts` is invoked as
-    `node dist/bin/stdio-app.js <appId>` — one app per process
-    *(packages/mcp-server/src/bin/stdio-app.ts:35-44)*. It registers exactly
-    one tool catalogue (`ALL_ALFRED_TOOLS`, `ALL_SURE_TOOLS`, …), reads
-    `CtrlContext` from env vars (`CTRL_API_URL`, `AAS_API_KEY`,
-    optional `CF_ACCESS_*`), and serves stdio MCP traffic.
+ Built as `ssdavidai00/alfred-mcp-server:latest` (Node 22 on Alpine,
+ ~200 MB). Per-tenant container; SQLite-backed OAuth grant store
+ bind-mounted from `/mnt/encrypted/mcp-server`.
+ </Tab>
+ <Tab title="Stdio bundle">
+ `src/bin/stdio-app.ts` is invoked as
+ `node dist/bin/stdio-app.js <appId>` — one app per process
+ *(packages/mcp-server/src/bin/stdio-app.ts:35-44)*. It registers exactly
+ one tool catalogue (`ALL_ALFRED_TOOLS`, `ALL_SURE_TOOLS`, …), reads
+ `CtrlContext` from env vars (`CTRL_API_URL`, `AAS_API_KEY`,
+ optional `CF_ACCESS_*`), and serves stdio MCP traffic.
 
-    MCP resources (skill markdown under `skills/<appId>-mcp-skill.md`) are
-    auto-resolved from the bundle's `skills/` directory
-    *(packages/mcp-server/src/bin/stdio-app.ts:80-113)*.
+ MCP resources (skill markdown under `skills/<appId>-mcp-skill.md`) are
+ auto-resolved from the bundle's `skills/` directory
+ *(packages/mcp-server/src/bin/stdio-app.ts:80-113)*.
 
-    The bundle is compiled in the Hermes Dockerfile's `mcp-builder` stage
-    *(packages/hermes/Dockerfile:28-35)* and copied into the Hermes image
-    at `/opt/mcp-stdio/`. The init container then rsyncs it into each
-    Hermes profile's `mcp-stdio/` dir. Hermes spawns one child process per
-    wired stdio app.
-  </Tab>
+ The bundle is compiled in the Hermes Dockerfile's `mcp-builder` stage
+ *(packages/hermes/Dockerfile:28-35)* and copied into the Hermes image
+ at `/opt/mcp-stdio/`. The init container then rsyncs it into each
+ Hermes profile's `mcp-stdio/` dir. Hermes spawns one child process per
+ wired stdio app.
+ </Tab>
 </Tabs>
 
 Both shapes execute through the same dispatch (`runTool` in `types.ts`):
@@ -97,10 +97,10 @@ are **transport-agnostic** — they look the same to either entrypoint.
 Approximate total: **155–165 tools** across the six apps.
 
 <Note>
-  Each agent-runtime profile registers **six MCP servers**: the five stdio
-  apps wired above plus an HTTP server (`alfred-ctrl`) that proxies to
-  ctrl-api directly. The `alfred-ctrl` server is *not* part of this package
-  — it is a small `ctrl-server.mjs` shim that lives in `packages/hermes/mcp/`.
+ Each agent-runtime profile registers **six MCP servers**: the five stdio
+ apps wired above plus an HTTP server (`alfred-ctrl`) that proxies to
+ ctrl-api directly. The `alfred-ctrl` server is *not* part of this package
+ — it is a small `ctrl-server.mjs` shim that lives in `packages/hermes/mcp/`.
 </Note>
 
 The full tool catalogue with parameters lives in the
@@ -112,20 +112,20 @@ Every tool in every app routes through one helper *(packages/mcp-server/src/tool
 
 ```ts
 async function proxyToCtrl(
-  ctx: CtrlContext,
-  opts: ProxyOptions
+ ctx: CtrlContext,
+ opts: ProxyOptions
 ): Promise<ProxyResult> {
-  const url = buildUrl(ctx.ctrlUrl, opts.path, opts.query);
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${ctx.aasApiKey}`,
-    "content-type": "application/json",
-  };
-  if (ctx.cfAccessClientId) {
-    headers["cf-access-client-id"] = ctx.cfAccessClientId;
-    headers["cf-access-client-secret"] = ctx.cfAccessClientSecret!;
-  }
-  const res = await fetch(url, { method: opts.method, headers, body });
-  return { status: res.status, body: await res.json() };
+ const url = buildUrl(ctx.ctrlUrl, opts.path, opts.query);
+ const headers: Record<string, string> = {
+ Authorization: `Bearer ${ctx.aasApiKey}`,
+ "content-type": "application/json",
+ };
+ if (ctx.cfAccessClientId) {
+ headers["cf-access-client-id"] = ctx.cfAccessClientId;
+ headers["cf-access-client-secret"] = ctx.cfAccessClientSecret!;
+ }
+ const res = await fetch(url, { method: opts.method, headers, body });
+ return { status: res.status, body: await res.json() };
 }
 ```
 
@@ -145,12 +145,12 @@ Per-tenant `MCP_APPROVAL_SECRET` (generated by `scripts/bootstrap.sh`)
 gates two authentication paths *(packages/mcp-server/src/index.ts:122-242)*:
 
 1. **Human path** (claude.ai connector) — POST to `/<app>/mcp` returns 401
-   with `WWW-Authenticate`, browser redirects to `/authorize` (HTML form),
-   principal types the secret, server validates with `timingSafeEqual`,
-   issues an auth code, redirects back. Token TTL: 1 hour.
+ with `WWW-Authenticate`, browser redirects to `/authorize` (HTML form),
+ principal types the secret, server validates with `timingSafeEqual`,
+ issues an auth code, redirects back. Token TTL: 1 hour.
 2. **Programmatic path** (internal agents, `curl`) — `Authorization: Bearer
-   ${MCP_APPROVAL_SECRET}` short-circuits OAuth verification and synthesises
-   `req.auth` directly. Same timing-safe compare. Same blast radius.
+ ${MCP_APPROVAL_SECRET}` short-circuits OAuth verification and synthesises
+ `req.auth` directly. Same timing-safe compare. Same blast radius.
 
 The Alfred app's `approve_device` tool is the *only* surface that approves
 pending Hermes pairing codes, and it validates the same secret server-side
@@ -159,38 +159,38 @@ on ctrl-api — it is not a separate approval flow.
 ## Build, run, test
 
 <Tabs>
-  <Tab title="Build">
-    ```sh
-    cd packages/mcp-server
-    npm ci
-    npm run build       # → dist/
-    ```
+ <Tab title="Build">
+ ```sh
+ cd packages/mcp-server
+ npm ci
+ npm run build # → dist/
+ ```
 
-    Outputs both `dist/index.js` (HTTP server entry) and
-    `dist/bin/stdio-app.js` (stdio entry) from the same source.
-  </Tab>
-  <Tab title="Run">
-    HTTP server:
-    ```sh
-    AAS_API_KEY=… CTRL_API_URL=http://ctrl-api:3100 \
-    MCP_APPROVAL_SECRET=… \
-    node dist/index.js
-    ```
+ Outputs both `dist/index.js` (HTTP server entry) and
+ `dist/bin/stdio-app.js` (stdio entry) from the same source.
+ </Tab>
+ <Tab title="Run">
+ HTTP server:
+ ```sh
+ AAS_API_KEY=… CTRL_API_URL=http://ctrl-api:3100 \
+ MCP_APPROVAL_SECRET=… \
+ node dist/index.js
+ ```
 
-    Stdio app (spawned by Hermes — manual invocation for debugging):
-    ```sh
-    AAS_API_KEY=… CTRL_API_URL=http://ctrl-api:3100 \
-    node dist/bin/stdio-app.js alfred
-    ```
-  </Tab>
-  <Tab title="Test">
-    ```sh
-    npm test
-    ```
+ Stdio app (spawned by Hermes — manual invocation for debugging):
+ ```sh
+ AAS_API_KEY=… CTRL_API_URL=http://ctrl-api:3100 \
+ node dist/bin/stdio-app.js alfred
+ ```
+ </Tab>
+ <Tab title="Test">
+ ```sh
+ npm test
+ ```
 
-    The lane gate runs `tsc --noEmit` against the package as VERIFY
-    *(scripts/hooks/check_lane.py)*.
-  </Tab>
+ The lane gate runs `tsc --noEmit` against the package as VERIFY
+ *(scripts/hooks/check_lane.py)*.
+ </Tab>
 </Tabs>
 
 ## Where to look next

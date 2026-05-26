@@ -9,6 +9,19 @@
     "dark": "#0A0A0A"
   },
   "favicon": "/favicon.svg",
+  "openapi": "openapi.yaml",
+  "api": {
+    "baseUrl": "https://alfred.black",
+    "mdx": {
+      "auth": {
+        "method": "bearer",
+        "name": "Authorization"
+      }
+    },
+    "playground": {
+      "display": "interactive"
+    }
+  },
   "navigation": {
     "tabs": [
       {
@@ -25,42 +38,6 @@
             ]
           },
           {
-            "group": "Quick start",
-            "pages": [
-              "quickstart/prerequisites",
-              "quickstart/deploy",
-              "quickstart/onboarding-walkthrough",
-              "quickstart/verifying"
-            ]
-          },
-          {
-            "group": "Alfred Cloud",
-            "pages": [
-              "alfred-cloud/overview",
-              "alfred-cloud/private-beta",
-              "alfred-cloud/architecture",
-              "alfred-cloud/provisioning",
-              {
-                "group": "Security profile",
-                "pages": [
-                  "alfred-cloud/security/overview",
-                  "alfred-cloud/security/infrastructure-isolation",
-                  "alfred-cloud/security/encryption-at-rest",
-                  "alfred-cloud/security/network-model",
-                  "alfred-cloud/security/authentication",
-                  "alfred-cloud/security/per-tenant-isolation",
-                  "alfred-cloud/security/data-residency",
-                  "alfred-cloud/security/backups-and-recovery",
-                  "alfred-cloud/security/agent-sandboxing",
-                  "alfred-cloud/security/audit-and-logging"
-                ]
-              },
-              "alfred-cloud/migration",
-              "alfred-cloud/billing",
-              "alfred-cloud/federation"
-            ]
-          },
-          {
             "group": "Architecture",
             "pages": [
               "architecture/overview",
@@ -72,7 +49,7 @@
             ]
           },
           {
-            "group": "Surfaces (the 14 pages)",
+            "group": "Product features",
             "pages": [
               "surfaces/overview",
               "surfaces/onboarding-ritual",
@@ -93,16 +70,6 @@
             ]
           },
           {
-            "group": "Configuration",
-            "pages": [
-              "configuration/env-reference",
-              "configuration/mode-flags",
-              "configuration/settings-json",
-              "configuration/domain-and-tls",
-              "configuration/backups"
-            ]
-          },
-          {
             "group": "Integrations",
             "pages": [
               "integrations/overview",
@@ -114,6 +81,760 @@
               "integrations/vexa",
               "integrations/mcp-clients",
               "integrations/claude-skill"
+            ]
+          },
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/frontmatter-shapes",
+              "reference/state-db-schema",
+              "reference/temporal-workflows",
+              "reference/env-vars",
+              "appendices/glossary",
+              "appendices/license",
+              "appendices/credits"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api-reference/introduction",
+              "api-reference/authentication"
+            ]
+          },
+          {
+            "group": "Vault",
+            "pages": [
+              "api-reference/vault/create-record",
+              "api-reference/vault/delete-record",
+              "api-reference/vault/edit-record",
+              "api-reference/vault/get-context",
+              "api-reference/vault/get-graph",
+              "api-reference/vault/get-index",
+              "api-reference/vault/get-nebula-data",
+              "api-reference/vault/get-schema",
+              "api-reference/vault/list-by-type",
+              "api-reference/vault/list-inbox",
+              "api-reference/vault/move-record",
+              "api-reference/vault/promote-triage",
+              "api-reference/vault/read-record",
+              "api-reference/vault/search",
+              "api-reference/vault/upload-inbox",
+              "api-reference/vault/upload-inbox-bulk"
+            ]
+          },
+          {
+            "group": "Vault index",
+            "pages": [
+              "api-reference/vault-index/get-row",
+              "api-reference/vault-index/list",
+              "api-reference/vault-index/reconcile",
+              "api-reference/vault-index/type-counts"
+            ]
+          },
+          {
+            "group": "Matters",
+            "pages": [
+              "api-reference/matters/get",
+              "api-reference/matters/list"
+            ]
+          },
+          {
+            "group": "Decisions",
+            "pages": [
+              "api-reference/decisions/create",
+              "api-reference/decisions/get",
+              "api-reference/decisions/list",
+              "api-reference/decisions/list-in-flight",
+              "api-reference/decisions/list-pattern-proposals",
+              "api-reference/decisions/reverse",
+              "api-reference/decisions/update"
+            ]
+          },
+          {
+            "group": "Needs attention",
+            "pages": [
+              "api-reference/attention/desk-action",
+              "api-reference/attention/dispatch",
+              "api-reference/attention/done",
+              "api-reference/attention/list",
+              "api-reference/attention/skip"
+            ]
+          },
+          {
+            "group": "State (signals & observations)",
+            "pages": [
+              "api-reference/state/append-audit",
+              "api-reference/state/cold-status",
+              "api-reference/state/compact-cold",
+              "api-reference/state/create-link",
+              "api-reference/state/create-observation",
+              "api-reference/state/create-routing-decision",
+              "api-reference/state/create-signal",
+              "api-reference/state/delete-embeddings",
+              "api-reference/state/delete-link",
+              "api-reference/state/get-audit",
+              "api-reference/state/get-observation",
+              "api-reference/state/get-routing-decision",
+              "api-reference/state/get-signal",
+              "api-reference/state/list-audit",
+              "api-reference/state/list-links",
+              "api-reference/state/list-observations",
+              "api-reference/state/list-routing-decisions",
+              "api-reference/state/list-signals",
+              "api-reference/state/search-embeddings",
+              "api-reference/state/search-embeddings-text",
+              "api-reference/state/update-observation",
+              "api-reference/state/update-routing-decision",
+              "api-reference/state/update-signal",
+              "api-reference/state/upsert-embedding"
+            ]
+          },
+          {
+            "group": "State changes",
+            "pages": [
+              "api-reference/state-changes/create",
+              "api-reference/state-changes/list",
+              "api-reference/state-changes/list-sources"
+            ]
+          },
+          {
+            "group": "Settings",
+            "pages": [
+              "api-reference/settings/get",
+              "api-reference/settings/list",
+              "api-reference/settings/set"
+            ]
+          },
+          {
+            "group": "Chores",
+            "pages": [
+              "api-reference/chores/create",
+              "api-reference/chores/cron-preview",
+              "api-reference/chores/delete",
+              "api-reference/chores/get",
+              "api-reference/chores/list",
+              "api-reference/chores/list-actions",
+              "api-reference/chores/list-runs",
+              "api-reference/chores/pause",
+              "api-reference/chores/resume",
+              "api-reference/chores/source-audit",
+              "api-reference/chores/trigger",
+              "api-reference/chores/update"
+            ]
+          },
+          {
+            "group": "Briefings",
+            "pages": [
+              "api-reference/briefings/get",
+              "api-reference/briefings/list"
+            ]
+          },
+          {
+            "group": "Intuition",
+            "pages": [
+              "api-reference/intuition/bootstrap",
+              "api-reference/intuition/curator-route",
+              "api-reference/intuition/disable",
+              "api-reference/intuition/dismiss-quarantine",
+              "api-reference/intuition/enable",
+              "api-reference/intuition/get-instinct",
+              "api-reference/intuition/get-observation",
+              "api-reference/intuition/list-instincts",
+              "api-reference/intuition/list-observations",
+              "api-reference/intuition/list-quarantine",
+              "api-reference/intuition/list-reflections",
+              "api-reference/intuition/list-sessions",
+              "api-reference/intuition/queue",
+              "api-reference/intuition/retry-quarantine",
+              "api-reference/intuition/route",
+              "api-reference/intuition/status"
+            ]
+          },
+          {
+            "group": "Workflows",
+            "pages": [
+              "api-reference/workflows/cancel",
+              "api-reference/workflows/describe",
+              "api-reference/workflows/history",
+              "api-reference/workflows/list",
+              "api-reference/workflows/onboarding-corrections",
+              "api-reference/workflows/onboarding-progress",
+              "api-reference/workflows/onboarding-quality-report",
+              "api-reference/workflows/onboarding-start",
+              "api-reference/workflows/onboarding-suggested-streams",
+              "api-reference/workflows/signal",
+              "api-reference/workflows/start",
+              "api-reference/workflows/terminate"
+            ]
+          },
+          {
+            "group": "Schedules",
+            "pages": [
+              "api-reference/schedules/create",
+              "api-reference/schedules/delete",
+              "api-reference/schedules/describe",
+              "api-reference/schedules/list",
+              "api-reference/schedules/pause",
+              "api-reference/schedules/rewrite-cron",
+              "api-reference/schedules/trigger",
+              "api-reference/schedules/unpause"
+            ]
+          },
+          {
+            "group": "Workers",
+            "pages": [
+              "api-reference/workers/distiller-history",
+              "api-reference/workers/distiller-run",
+              "api-reference/workers/distiller-scan",
+              "api-reference/workers/distiller-status",
+              "api-reference/workers/down",
+              "api-reference/workers/ingest",
+              "api-reference/workers/janitor-fix",
+              "api-reference/workers/janitor-history",
+              "api-reference/workers/janitor-ignore",
+              "api-reference/workers/janitor-scan",
+              "api-reference/workers/janitor-status",
+              "api-reference/workers/process",
+              "api-reference/workers/restart",
+              "api-reference/workers/status",
+              "api-reference/workers/up"
+            ]
+          },
+          {
+            "group": "Streams",
+            "pages": [
+              "api-reference/streams/create",
+              "api-reference/streams/delete",
+              "api-reference/streams/get",
+              "api-reference/streams/inbox-scan",
+              "api-reference/streams/ingest",
+              "api-reference/streams/list",
+              "api-reference/streams/list-events",
+              "api-reference/streams/list-stream-events",
+              "api-reference/streams/mark-processed",
+              "api-reference/streams/omi-audio",
+              "api-reference/streams/openclaw-sessions-report",
+              "api-reference/streams/pause",
+              "api-reference/streams/prune",
+              "api-reference/streams/quarantine",
+              "api-reference/streams/resume",
+              "api-reference/streams/schema",
+              "api-reference/streams/update"
+            ]
+          },
+          {
+            "group": "Ingest",
+            "pages": [
+              "api-reference/ingest/create-event",
+              "api-reference/ingest/get-event",
+              "api-reference/ingest/list-events",
+              "api-reference/ingest/list-pending-events",
+              "api-reference/ingest/mark-processed",
+              "api-reference/ingest/sweep-log",
+              "api-reference/ingest/trigger-sweep"
+            ]
+          },
+          {
+            "group": "Agents",
+            "pages": [
+              "api-reference/agents/get-agent",
+              "api-reference/agents/list",
+              "api-reference/agents/list-profiles",
+              "api-reference/agents/main-task",
+              "api-reference/agents/set-model"
+            ]
+          },
+          {
+            "group": "Hermes",
+            "pages": [
+              "api-reference/hermes/create-cron",
+              "api-reference/hermes/create-run",
+              "api-reference/hermes/delete-cron",
+              "api-reference/hermes/list-cron",
+              "api-reference/hermes/list-models",
+              "api-reference/hermes/stop-run"
+            ]
+          },
+          {
+            "group": "Journal",
+            "pages": [
+              "api-reference/journal/bind-principal",
+              "api-reference/journal/create",
+              "api-reference/journal/list-recent"
+            ]
+          },
+          {
+            "group": "Delivery",
+            "pages": [
+              "api-reference/delivery/delegate-outcomes",
+              "api-reference/delivery/deliver"
+            ]
+          },
+          {
+            "group": "Notifications",
+            "pages": [
+              "api-reference/notifications/send"
+            ]
+          },
+          {
+            "group": "Email",
+            "pages": [
+              "api-reference/email/channel-attachment-fetch",
+              "api-reference/email/channel-inbound",
+              "api-reference/email/forward",
+              "api-reference/email/get-attachment",
+              "api-reference/email/get-message",
+              "api-reference/email/get-thread",
+              "api-reference/email/provision",
+              "api-reference/email/reply",
+              "api-reference/email/send",
+              "api-reference/email/status"
+            ]
+          },
+          {
+            "group": "Slack",
+            "pages": [
+              "api-reference/slack/delete-tokens",
+              "api-reference/slack/manifest",
+              "api-reference/slack/set-tokens",
+              "api-reference/slack/status",
+              "api-reference/slack/test"
+            ]
+          },
+          {
+            "group": "Telegram",
+            "pages": [
+              "api-reference/telegram/delete-token",
+              "api-reference/telegram/forget-chat",
+              "api-reference/telegram/set-token",
+              "api-reference/telegram/status",
+              "api-reference/telegram/test"
+            ]
+          },
+          {
+            "group": "SMS",
+            "pages": [
+              "api-reference/sms/delete-credentials",
+              "api-reference/sms/set-allowlist",
+              "api-reference/sms/set-credentials",
+              "api-reference/sms/status",
+              "api-reference/sms/test"
+            ]
+          },
+          {
+            "group": "Voice",
+            "pages": [
+              "api-reference/voice/set-allowlist",
+              "api-reference/voice/status"
+            ]
+          },
+          {
+            "group": "Phone",
+            "pages": [
+              "api-reference/phone/add-authorized-number",
+              "api-reference/phone/config",
+              "api-reference/phone/list-authorized-numbers",
+              "api-reference/phone/place-call",
+              "api-reference/phone/provision",
+              "api-reference/phone/remove-authorized-number",
+              "api-reference/phone/replace-authorized-numbers",
+              "api-reference/phone/send-sms",
+              "api-reference/phone/sms-inbound",
+              "api-reference/phone/transcript",
+              "api-reference/phone/voice-context"
+            ]
+          },
+          {
+            "group": "OMI",
+            "pages": [
+              "api-reference/omi/channel-status",
+              "api-reference/omi/channel-test",
+              "api-reference/omi/delete-groq-key",
+              "api-reference/omi/set-groq-key"
+            ]
+          },
+          {
+            "group": "Webhooks",
+            "pages": [
+              "api-reference/webhooks/delete",
+              "api-reference/webhooks/list",
+              "api-reference/webhooks/receive",
+              "api-reference/webhooks/register"
+            ]
+          },
+          {
+            "group": "Authorized senders",
+            "pages": [
+              "api-reference/auth-senders/add",
+              "api-reference/auth-senders/list",
+              "api-reference/auth-senders/remove"
+            ]
+          },
+          {
+            "group": "Connected apps",
+            "pages": [
+              "api-reference/integrations/auto-config",
+              "api-reference/integrations/capabilities",
+              "api-reference/integrations/catalog",
+              "api-reference/integrations/check-readiness",
+              "api-reference/integrations/connect",
+              "api-reference/integrations/connect-api-key",
+              "api-reference/integrations/disable-stream",
+              "api-reference/integrations/disable-tool",
+              "api-reference/integrations/disconnect",
+              "api-reference/integrations/disconnect-all",
+              "api-reference/integrations/enable-stream",
+              "api-reference/integrations/enable-tool",
+              "api-reference/integrations/execute",
+              "api-reference/integrations/google-identity",
+              "api-reference/integrations/list",
+              "api-reference/integrations/list-actions",
+              "api-reference/integrations/migrate-stream",
+              "api-reference/integrations/omi-pair",
+              "api-reference/integrations/reconnect",
+              "api-reference/integrations/reconnect-cleanup",
+              "api-reference/integrations/regenerate-skills",
+              "api-reference/integrations/required-fields",
+              "api-reference/integrations/scope"
+            ]
+          },
+          {
+            "group": "Sure (finance)",
+            "pages": [
+              "api-reference/sure/_bootstrap",
+              "api-reference/sure/_cluster",
+              "api-reference/sure/_cluster-apply",
+              "api-reference/sure/accounts-id-shares",
+              "api-reference/sure/assistant",
+              "api-reference/sure/budgets-find_or_bootstrap",
+              "api-reference/sure/budgets-id-copy_from",
+              "api-reference/sure/categories-bootstrap",
+              "api-reference/sure/chats-id-messages",
+              "api-reference/sure/chats-id-messages-retry",
+              "api-reference/sure/create-accounts",
+              "api-reference/sure/create-categories",
+              "api-reference/sure/create-chats",
+              "api-reference/sure/create-exports",
+              "api-reference/sure/create-imports",
+              "api-reference/sure/create-invitations",
+              "api-reference/sure/create-merchants",
+              "api-reference/sure/create-rules",
+              "api-reference/sure/create-tags",
+              "api-reference/sure/create-trades",
+              "api-reference/sure/create-transactions",
+              "api-reference/sure/create-transfers",
+              "api-reference/sure/create-valuations",
+              "api-reference/sure/delete-accounts-id",
+              "api-reference/sure/delete-categories-id",
+              "api-reference/sure/delete-chats-id",
+              "api-reference/sure/delete-holdings-id",
+              "api-reference/sure/delete-invitations-id",
+              "api-reference/sure/delete-merchants-id",
+              "api-reference/sure/delete-rules-id",
+              "api-reference/sure/delete-shares-id",
+              "api-reference/sure/delete-tags-id",
+              "api-reference/sure/delete-trades-id",
+              "api-reference/sure/delete-transactions-id",
+              "api-reference/sure/delete-transfers-id",
+              "api-reference/sure/delete-users-me",
+              "api-reference/sure/delete-users-reset",
+              "api-reference/sure/delete-valuations-id",
+              "api-reference/sure/get-categories-id",
+              "api-reference/sure/get-chats-id",
+              "api-reference/sure/get-holdings-id",
+              "api-reference/sure/get-imports-id",
+              "api-reference/sure/get-merchants-id",
+              "api-reference/sure/get-rules-id",
+              "api-reference/sure/get-tags-id",
+              "api-reference/sure/get-trades-id",
+              "api-reference/sure/get-transactions-id",
+              "api-reference/sure/get-valuations-id",
+              "api-reference/sure/holdings-id-remap_security",
+              "api-reference/sure/holdings-id-reset_security_to_provider",
+              "api-reference/sure/holdings-id-set_manual_cost_basis",
+              "api-reference/sure/holdings-id-unlock_cost_basis",
+              "api-reference/sure/list-accounts",
+              "api-reference/sure/list-balance-sheet",
+              "api-reference/sure/list-balance_sheet",
+              "api-reference/sure/list-categories",
+              "api-reference/sure/list-chats",
+              "api-reference/sure/list-holdings",
+              "api-reference/sure/list-imports",
+              "api-reference/sure/list-merchants",
+              "api-reference/sure/list-rules",
+              "api-reference/sure/list-tags",
+              "api-reference/sure/list-trades",
+              "api-reference/sure/list-transactions",
+              "api-reference/sure/list-usage",
+              "api-reference/sure/merchants-enhance",
+              "api-reference/sure/merchants-merge",
+              "api-reference/sure/recurring-cleanup_stale",
+              "api-reference/sure/recurring-id-activate",
+              "api-reference/sure/recurring-id-deactivate",
+              "api-reference/sure/recurring-identify",
+              "api-reference/sure/rules-apply_all",
+              "api-reference/sure/rules-id-apply",
+              "api-reference/sure/rules-preview",
+              "api-reference/sure/sync",
+              "api-reference/sure/tags-id-merge_into-id",
+              "api-reference/sure/transactions-bulk_delete",
+              "api-reference/sure/transactions-bulk_update",
+              "api-reference/sure/transactions-id-dismiss_duplicate",
+              "api-reference/sure/transactions-id-merge_duplicate",
+              "api-reference/sure/transactions-id-split",
+              "api-reference/sure/transactions-id-unsplit",
+              "api-reference/sure/transfers-id-confirm",
+              "api-reference/sure/transfers-id-reject",
+              "api-reference/sure/transfers-match",
+              "api-reference/sure/update-accounts-id",
+              "api-reference/sure/update-budget_categories-id",
+              "api-reference/sure/update-categories-id",
+              "api-reference/sure/update-chats-id",
+              "api-reference/sure/update-merchants-id",
+              "api-reference/sure/update-rules-id",
+              "api-reference/sure/update-shares-id",
+              "api-reference/sure/update-tags-id",
+              "api-reference/sure/update-trades-id",
+              "api-reference/sure/update-transactions-id",
+              "api-reference/sure/update-user-preferences",
+              "api-reference/sure/update-valuations-id"
+            ]
+          },
+          {
+            "group": "Plane (project mgmt)",
+            "pages": [
+              "api-reference/plane/create-issue",
+              "api-reference/plane/get-issue",
+              "api-reference/plane/list-cycles",
+              "api-reference/plane/list-issue-comments",
+              "api-reference/plane/list-issues",
+              "api-reference/plane/list-labels",
+              "api-reference/plane/list-projects",
+              "api-reference/plane/list-states",
+              "api-reference/plane/post-comment",
+              "api-reference/plane/search-issues",
+              "api-reference/plane/steward-action",
+              "api-reference/plane/steward-action-revert",
+              "api-reference/plane/update-issue",
+              "api-reference/plane/webhook"
+            ]
+          },
+          {
+            "group": "Vaultwarden (secrets)",
+            "pages": [
+              "api-reference/vaultwarden/create-folder",
+              "api-reference/vaultwarden/create-item",
+              "api-reference/vaultwarden/delete-item",
+              "api-reference/vaultwarden/edit-item",
+              "api-reference/vaultwarden/generate-password",
+              "api-reference/vaultwarden/get-item",
+              "api-reference/vaultwarden/list-collections",
+              "api-reference/vaultwarden/list-folders",
+              "api-reference/vaultwarden/list-items",
+              "api-reference/vaultwarden/list-organizations",
+              "api-reference/vaultwarden/search-items",
+              "api-reference/vaultwarden/status",
+              "api-reference/vaultwarden/sync"
+            ]
+          },
+          {
+            "group": "Tools",
+            "pages": [
+              "api-reference/tools/invoke",
+              "api-reference/tools/list"
+            ]
+          },
+          {
+            "group": "Approvals",
+            "pages": [
+              "api-reference/approvals/approve",
+              "api-reference/approvals/list-pending",
+              "api-reference/approvals/reject"
+            ]
+          },
+          {
+            "group": "Steward",
+            "pages": [
+              "api-reference/steward/confirm",
+              "api-reference/steward/dismiss",
+              "api-reference/steward/list-recent-actions",
+              "api-reference/steward/undo"
+            ]
+          },
+          {
+            "group": "Todos",
+            "pages": [
+              "api-reference/todos/create",
+              "api-reference/todos/get",
+              "api-reference/todos/list",
+              "api-reference/todos/update"
+            ]
+          },
+          {
+            "group": "Pairing",
+            "pages": [
+              "api-reference/devices/approve",
+              "api-reference/devices/clear",
+              "api-reference/devices/clear-pending",
+              "api-reference/devices/list",
+              "api-reference/devices/post-approve",
+              "api-reference/devices/post-revoke",
+              "api-reference/devices/revoke"
+            ]
+          },
+          {
+            "group": "Claude setup",
+            "pages": [
+              "api-reference/claude-setup/rotate-approval-secret",
+              "api-reference/claude-setup/status"
+            ]
+          },
+          {
+            "group": "System",
+            "pages": [
+              "api-reference/system/add-ssh-key",
+              "api-reference/system/list-ssh-keys",
+              "api-reference/system/revoke-ssh-key",
+              "api-reference/system/ssh-info"
+            ]
+          },
+          {
+            "group": "Apps",
+            "pages": [
+              "api-reference/apps/list"
+            ]
+          },
+          {
+            "group": "Models",
+            "pages": [
+              "api-reference/models/list"
+            ]
+          },
+          {
+            "group": "Credentials",
+            "pages": [
+              "api-reference/credentials/groq-api-key",
+              "api-reference/credentials/list",
+              "api-reference/credentials/update"
+            ]
+          },
+          {
+            "group": "Context",
+            "pages": [
+              "api-reference/context/cross-channel"
+            ]
+          },
+          {
+            "group": "Logs",
+            "pages": [
+              "api-reference/logs/stream"
+            ]
+          },
+          {
+            "group": "Cross-tenant",
+            "pages": [
+              "api-reference/cross-tenant/ask",
+              "api-reference/cross-tenant/list-peers"
+            ]
+          },
+          {
+            "group": "Terminal",
+            "pages": [
+              "api-reference/terminal/connect"
+            ]
+          },
+          {
+            "group": "Workspace",
+            "pages": [
+              "api-reference/workspace/read-file",
+              "api-reference/workspace/write-file"
+            ]
+          },
+          {
+            "group": "Admin",
+            "pages": [
+              "api-reference/admin/activity",
+              "api-reference/admin/audit",
+              "api-reference/admin/chore-generation-audit",
+              "api-reference/admin/chore-promotions",
+              "api-reference/admin/chores-emergency-pause-all",
+              "api-reference/admin/chores-install-standard",
+              "api-reference/admin/chores-refresh-tier",
+              "api-reference/admin/container-logs",
+              "api-reference/admin/dashboard",
+              "api-reference/admin/debug-headers",
+              "api-reference/admin/fix-memory",
+              "api-reference/admin/get-env",
+              "api-reference/admin/health",
+              "api-reference/admin/list-containers",
+              "api-reference/admin/list-snapshots",
+              "api-reference/admin/refresh-vault",
+              "api-reference/admin/restart-container",
+              "api-reference/admin/restart-learn",
+              "api-reference/admin/start-container",
+              "api-reference/admin/stop-container",
+              "api-reference/admin/system-info",
+              "api-reference/admin/tailscale-cert",
+              "api-reference/admin/tailscale-serve",
+              "api-reference/admin/tailscale-status",
+              "api-reference/admin/temporal-cluster",
+              "api-reference/admin/temporal-task-queue",
+              "api-reference/admin/trigger-backup",
+              "api-reference/admin/update-env",
+              "api-reference/admin/vexa-auto-join-create",
+              "api-reference/admin/vexa-auto-join-get"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "MCP Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "mcp-reference/overview"
+            ]
+          },
+          {
+            "group": "Apps",
+            "pages": [
+              "mcp-reference/alfred",
+              "mcp-reference/sure",
+              "mcp-reference/plane",
+              "mcp-reference/vaultwarden",
+              "mcp-reference/execute",
+              "mcp-reference/hermes"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Self-hosting",
+        "groups": [
+          {
+            "group": "Quick start",
+            "pages": [
+              "quickstart/prerequisites",
+              "quickstart/deploy",
+              "quickstart/onboarding-walkthrough",
+              "quickstart/verifying"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/env-reference",
+              "configuration/mode-flags",
+              "configuration/settings-json",
+              "configuration/domain-and-tls",
+              "configuration/backups"
             ]
           },
           {
@@ -146,25 +867,6 @@
             ]
           },
           {
-            "group": "Reference",
-            "pages": [
-              "reference/ctrl-api-routes",
-              "reference/mcp-tool-catalog",
-              "reference/state-db-schema",
-              "reference/frontmatter-shapes",
-              "reference/temporal-workflows",
-              "reference/env-vars"
-            ]
-          },
-          {
-            "group": "Troubleshooting",
-            "pages": [
-              "troubleshooting/gotchas",
-              "troubleshooting/incident-history",
-              "troubleshooting/debugging-guide"
-            ]
-          },
-          {
             "group": "Contributing",
             "pages": [
               "contributing/bug-fixing-protocol",
@@ -174,12 +876,59 @@
             ]
           },
           {
-            "group": "Appendices",
+            "group": "Troubleshooting",
             "pages": [
-              "appendices/glossary",
-              "appendices/changelog",
-              "appendices/license",
-              "appendices/credits"
+              "troubleshooting/gotchas",
+              "troubleshooting/incident-history",
+              "troubleshooting/debugging-guide"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Alfred Cloud",
+        "groups": [
+          {
+            "group": "About",
+            "pages": [
+              "alfred-cloud/overview",
+              "alfred-cloud/private-beta",
+              "alfred-cloud/architecture",
+              "alfred-cloud/provisioning"
+            ]
+          },
+          {
+            "group": "Security profile",
+            "pages": [
+              "alfred-cloud/security/overview",
+              "alfred-cloud/security/infrastructure-isolation",
+              "alfred-cloud/security/encryption-at-rest",
+              "alfred-cloud/security/network-model",
+              "alfred-cloud/security/authentication",
+              "alfred-cloud/security/per-tenant-isolation",
+              "alfred-cloud/security/data-residency",
+              "alfred-cloud/security/backups-and-recovery",
+              "alfred-cloud/security/agent-sandboxing",
+              "alfred-cloud/security/audit-and-logging"
+            ]
+          },
+          {
+            "group": "Operating",
+            "pages": [
+              "alfred-cloud/migration",
+              "alfred-cloud/billing",
+              "alfred-cloud/federation"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Changelog",
+        "groups": [
+          {
+            "group": "Releases",
+            "pages": [
+              "appendices/changelog"
             ]
           }
         ]

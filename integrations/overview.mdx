@@ -10,40 +10,40 @@ The three layers are independent. A fresh install boots with all four sidecars e
 ## What runs in your stack
 
 <CardGroup cols={2}>
-  <Card title="Plane" icon="kanban" href="/integrations/plane">
-    Project management at `plane.{$DOMAIN}`. Eleven containers (Django, Celery, RabbitMQ, MinIO, Next.js, …) reached as one sidecar. The `plane` MCP app exposes 11 tools.
-  </Card>
-  <Card title="Sure" icon="dollar-sign" href="/integrations/sure">
-    Personal finance at `sure.{$DOMAIN}`. Rails + Sidekiq + Postgres. The `sure` MCP app exposes 116 tools across transactions, accounts, budgets, holdings, and AI clustering.
-  </Card>
-  <Card title="Vaultwarden" icon="key" href="/integrations/vaultwarden">
-    Self-hosted credentials at `vault.{$DOMAIN}`. The `vaultwarden` MCP app exposes 14 tools — and is the only place in the catalogue that returns secret values.
-  </Card>
-  <Card title="Vexa (optional)" icon="microphone" href="/integrations/vexa">
-    Meeting transcription, enabled with `--profile vexa`. Nine extra containers, +7 GB RAM. Turn on once you actually need recordings.
-  </Card>
+ <Card title="Plane" icon="kanban" href="/integrations/plane">
+ Project management at `plane.{$DOMAIN}`. Eleven containers (Django, Celery, RabbitMQ, MinIO, Next.js, …) reached as one sidecar. The `plane` MCP app exposes 11 tools.
+ </Card>
+ <Card title="Sure" icon="dollar-sign" href="/integrations/sure">
+ Personal finance at `sure.{$DOMAIN}`. Rails + Sidekiq + Postgres. The `sure` MCP app exposes 116 tools across transactions, accounts, budgets, holdings, and AI clustering.
+ </Card>
+ <Card title="Vaultwarden" icon="key" href="/integrations/vaultwarden">
+ Self-hosted credentials at `vault.{$DOMAIN}`. The `vaultwarden` MCP app exposes 14 tools — and is the only place in the catalogue that returns secret values.
+ </Card>
+ <Card title="Vexa (optional)" icon="microphone" href="/integrations/vexa">
+ Meeting transcription, enabled with `--profile vexa`. Nine extra containers, +7 GB RAM. Turn on once you actually need recordings.
+ </Card>
 </CardGroup>
 
 ## What lives outside the stack
 
 <CardGroup cols={2}>
-  <Card title="Composio" icon="plug" href="/integrations/composio">
-    One `composio_execute(action, args)` primitive over ~1000 third-party apps — Gmail, GitHub, Notion, Slack, Linear, Zoom, and the rest. The `/connections` surface drives the OAuth flow.
-  </Card>
-  <Card title="Gmail · Calendar · Drive" icon="google" href="/integrations/gmail-calendar-drive">
-    Google's three load-bearing apps, connected via Composio. OAuth scopes, the authenticate-tool family, and what each scope unlocks.
-  </Card>
+ <Card title="Composio" icon="plug" href="/integrations/composio">
+ One `composio_execute(action, args)` primitive over ~1000 third-party apps — Gmail, GitHub, Notion, Slack, Linear, Zoom, and the rest. The `/connections` surface drives the OAuth flow.
+ </Card>
+ <Card title="Gmail · Calendar · Drive" icon="google" href="/integrations/gmail-calendar-drive">
+ Google's three load-bearing apps, connected via Composio. OAuth scopes, the authenticate-tool family, and what each scope unlocks.
+ </Card>
 </CardGroup>
 
 ## How Claude reaches Alfred
 
 <CardGroup cols={2}>
-  <Card title="MCP clients" icon="link" href="/integrations/mcp-clients">
-    Connect Claude Desktop and Claude Code to Alfred. The HTTP MCP server at `mcp.{$DOMAIN}:8787` and the `MCP_APPROVAL_SECRET` handshake.
-  </Card>
-  <Card title="Claude skill" icon="brain" href="/integrations/claude-skill">
-    The Alfred skill bundle for claude.ai's Custom Skills surface — what it surfaces, where the source lives, how to install.
-  </Card>
+ <Card title="MCP clients" icon="link" href="/integrations/mcp-clients">
+ Connect Claude Desktop and Claude Code to Alfred. The HTTP MCP server at `mcp.{$DOMAIN}:8787` and the `MCP_APPROVAL_SECRET` handshake.
+ </Card>
+ <Card title="Claude skill" icon="brain" href="/integrations/claude-skill">
+ The Alfred skill bundle for claude.ai's Custom Skills surface — what it surfaces, where the source lives, how to install.
+ </Card>
 </CardGroup>
 
 ## Three layers, one mental model

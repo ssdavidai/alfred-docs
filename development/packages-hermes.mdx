@@ -14,21 +14,21 @@ HTTP with a shared Bearer token.
 
 ```
 packages/hermes/
-├── Dockerfile                 the multi-stage build
-├── VERSION                    pinned Hermes pip version
-├── MODELS.md                  per-profile model defaults
+├── Dockerfile the multi-stage build
+├── VERSION pinned Hermes pip version
+├── MODELS.md per-profile model defaults
 ├── docker/
-│   └── supervisor.sh          the 3-process supervisor (tini → here)
+│ └── supervisor.sh the 3-process supervisor (tini → here)
 ├── init/
-│   └── entrypoint.sh          the init container — runs once before hermes
-├── hermes-config.yaml.njk     per-profile config.yaml template
-├── hermes-profile.env.njk     per-profile .env template
-├── config.yaml.tpl            vault-daemon (alfred) config — rendered by init
+│ └── entrypoint.sh the init container — runs once before hermes
+├── hermes-config.yaml.njk per-profile config.yaml template
+├── hermes-profile.env.njk per-profile .env template
+├── config.yaml.tpl vault-daemon (alfred) config — rendered by init
 ├── plugins/
-│   └── one-alfred/            in-repo plugin for journal hooks
-├── workspace-template/        skills + AGENTS.md + TOOLS.md staged into profiles
-├── mcp/                       ctrl-server.mjs (the HTTP MCP proxy)
-├── setup.sh, openclaw-wrapper/  bootstrap helpers
+│ └── one-alfred/ in-repo plugin for journal hooks
+├── workspace-template/ skills + AGENTS.md + TOOLS.md staged into profiles
+├── mcp/ ctrl-server.mjs (the HTTP MCP proxy)
+├── setup.sh, openclaw-wrapper/ bootstrap helpers
 └── docs/, dockerfiles/, vexa-example.yaml, tests/
 ```
 
@@ -92,15 +92,15 @@ All three route through OpenRouter (`provider: openrouter`,
 Other per-profile differences from `hermes-config.yaml.njk`:
 
 - **Approvals** — `main` runs `mode: smart` (an auxiliary LLM risk-assesses
-  privileged commands); `workers`/`heavy` are `mode: off` (no human in the
-  loop). *(packages/hermes/hermes-config.yaml.njk:186-200)*
+ privileged commands); `workers`/`heavy` are `mode: off` (no human in the
+ loop). *(packages/hermes/hermes-config.yaml.njk:186-200)*
 - **Session reset** — `main` resets at hour 4 UTC daily *and* on 24 h idle;
-  `workers`/`heavy` reset on 30 min idle.
+ `workers`/`heavy` reset on 30 min idle.
 - **Plugins** — `main` only: `hermes-lcm` (context engine, lossless reload)
-  and `one-alfred` (journal hooks). `workers`/`heavy` run plugin-free.
+ and `one-alfred` (journal hooks). `workers`/`heavy` run plugin-free.
 - **Toolsets** — `main` has full messaging (telegram, slack, discord,
-  whatsapp, signal); `workers`/`heavy` have only the local CLI surface
-  (terminal, file, web, vision, skills, todo).
+ whatsapp, signal); `workers`/`heavy` have only the local CLI surface
+ (terminal, file, web, vision, skills, todo).
 
 ## The supervisor — `docker/supervisor.sh`
 
@@ -108,23 +108,23 @@ A bash script that owns the lifecycle of all three gateway processes
 *(packages/hermes/docker/supervisor.sh:1-342)*. Responsibilities:
 
 1. **Sticky-default profile** — `hermes profile use main` so bare CLI calls
-   land on the user-facing profile *(packages/hermes/docker/supervisor.sh:126)*.
+ land on the user-facing profile *(packages/hermes/docker/supervisor.sh:126)*.
 2. **Auth token propagation** — if `profiles/main/auth.json` exists and is
-   non-empty, mirror it to `profiles/workers/auth.json` and
-   `profiles/heavy/auth.json` *(packages/hermes/docker/supervisor.sh:128-153)*. A
-   size heuristic guards against partial copies; the operation is idempotent.
+ non-empty, mirror it to `profiles/workers/auth.json` and
+ `profiles/heavy/auth.json` *(packages/hermes/docker/supervisor.sh:128-153)*. A
+ size heuristic guards against partial copies; the operation is idempotent.
 3. **SOUL.md consolidation** — Hermes reads its persona from
-   `$HERMES_HOME/SOUL.md`. The supervisor copies the main profile's
-   `SOUL.md` upward when the destination is missing, smaller, or contains
-   the stock Nous identity marker. Hand-edited SOULs are preserved
-   *(packages/hermes/docker/supervisor.sh:155-281)*.
+ `$HERMES_HOME/SOUL.md`. The supervisor copies the main profile's
+ `SOUL.md` upward when the destination is missing, smaller, or contains
+ the stock Nous identity marker. Hand-edited SOULs are preserved
+ *(packages/hermes/docker/supervisor.sh:155-281)*.
 4. **Plugin deployment** — copies `/opt/hermes-lcm` and `/opt/one-alfred`
-   into `profiles/main/plugins/` (idempotent guard on mtime).
+ into `profiles/main/plugins/` (idempotent guard on mtime).
 5. **Boot the three processes** — `hermes -p <profile> gateway run --replace`
-   for each, with a crash-loop guard (max 20 restarts, configurable delay).
+ for each, with a crash-loop guard (max 20 restarts, configurable delay).
 6. **LCM verification probe** — a backgrounded subprocess hits
-   `/v1/tools` on main and checks for `lcm_*` tools; logs a WARNING if the
-   plugin didn't load *(packages/hermes/docker/supervisor.sh:222-264)*.
+ `/v1/tools` on main and checks for `lcm_*` tools; logs a WARNING if the
+ plugin didn't load *(packages/hermes/docker/supervisor.sh:222-264)*.
 
 ## The init container — `init/entrypoint.sh`
 
@@ -133,59 +133,59 @@ Runs once before `hermes` boots, as a compose
 or existence-checked) *(packages/hermes/init/entrypoint.sh:1-723)*.
 
 <Steps>
-  <Step title="Scaffold the vault directory">
-    Rsyncs the bundled scaffold to `/vault/` if `CLAUDE.md` is missing.
-    Creates the entity directories (`person/`, `project/`, `org/`, `matter/`,
-    `inbox/`, `decision/`, `intuition/instincts/`, …) and the `$HERMES_HOME/memories/`
-    dir with world-write permissions so alfred-learn (uid 1000) can seed
-    while Hermes (uid 10000) reads.
-  </Step>
-  <Step title="Render the per-profile config + env">
-    Calls `render_hermes.py` for each profile. Renders
-    `hermes-config.yaml.njk` → `config.yaml` once (operator-owned thereafter)
-    and `hermes-profile.env.njk` → `.env` on every init — preserving
-    runtime-managed keys like `TELEGRAM_*`, `SLACK_*`, `TWILIO_*`, `SMS_*`
-    *(packages/hermes/init/entrypoint.sh:438-465)*.
-  </Step>
-  <Step title="Deploy the MCP bundle">
-    Copies `ctrl-server.mjs` (the HTTP MCP proxy) into each profile's
-    `mcp/` directory, and rsyncs the 6-app stdio bundle from `/setup/mcp-stdio/`
-    into each profile's `mcp-stdio/` *(packages/hermes/init/entrypoint.sh:208-243)*.
-  </Step>
-  <Step title="Deploy skills">
-    Three skill categories — vault-worker (curator/janitor/distiller),
-    platform-native, and the canonical `TOOLS.md` reference — go into
-    each profile's `workspace/` with MD5 content-hash gating
-    *(packages/hermes/init/entrypoint.sh:102-206)*.
-  </Step>
-  <Step title="Generate the gateway token">
-    Writes `/alfred-data/.gateway-token` (32 random bytes via
-    `secrets.token_urlsafe(32)`) if not already present. The same value
-    becomes `API_SERVER_KEY` in every profile's `.env`, so callers
-    authenticate with one Bearer token regardless of which port they hit
-    *(packages/hermes/init/entrypoint.sh:327-352)*.
-  </Step>
-  <Step title="Seed matter/inbox.md and intuition/index.md">
-    Creates the orphan-task fallback target and the master index of learned
-    routing patterns, idempotent.
-  </Step>
-  <Step title="Fix permissions">
-    `chown -R 10000:10000 $HERMES_DATA_DIR` (hermes user),
-    `chmod -R 777 /alfred-data` (cross-container scratch),
-    token file 644 (alfred-learn uid 1000 reads it)
-    *(packages/hermes/init/entrypoint.sh:498-517)*.
-  </Step>
+ <Step title="Scaffold the vault directory">
+ Rsyncs the bundled scaffold to `/vault/` if `CLAUDE.md` is missing.
+ Creates the entity directories (`person/`, `project/`, `org/`, `matter/`,
+ `inbox/`, `decision/`, `intuition/instincts/`, …) and the `$HERMES_HOME/memories/`
+ dir with world-write permissions so alfred-learn (uid 1000) can seed
+ while Hermes (uid 10000) reads.
+ </Step>
+ <Step title="Render the per-profile config + env">
+ Calls `render_hermes.py` for each profile. Renders
+ `hermes-config.yaml.njk` → `config.yaml` once (operator-owned thereafter)
+ and `hermes-profile.env.njk` → `.env` on every init — preserving
+ runtime-managed keys like `TELEGRAM_*`, `SLACK_*`, `TWILIO_*`, `SMS_*`
+ *(packages/hermes/init/entrypoint.sh:438-465)*.
+ </Step>
+ <Step title="Deploy the MCP bundle">
+ Copies `ctrl-server.mjs` (the HTTP MCP proxy) into each profile's
+ `mcp/` directory, and rsyncs the 6-app stdio bundle from `/setup/mcp-stdio/`
+ into each profile's `mcp-stdio/` *(packages/hermes/init/entrypoint.sh:208-243)*.
+ </Step>
+ <Step title="Deploy skills">
+ Three skill categories — vault-worker (curator/janitor/distiller),
+ platform-native, and the canonical `TOOLS.md` reference — go into
+ each profile's `workspace/` with MD5 content-hash gating
+ *(packages/hermes/init/entrypoint.sh:102-206)*.
+ </Step>
+ <Step title="Generate the gateway token">
+ Writes `/alfred-data/.gateway-token` (32 random bytes via
+ `secrets.token_urlsafe(32)`) if not already present. The same value
+ becomes `API_SERVER_KEY` in every profile's `.env`, so callers
+ authenticate with one Bearer token regardless of which port they hit
+ *(packages/hermes/init/entrypoint.sh:327-352)*.
+ </Step>
+ <Step title="Seed matter/inbox.md and intuition/index.md">
+ Creates the orphan-task fallback target and the master index of learned
+ routing patterns, idempotent.
+ </Step>
+ <Step title="Fix permissions">
+ `chown -R 10000:10000 $HERMES_DATA_DIR` (hermes user),
+ `chmod -R 777 /alfred-data` (cross-container scratch),
+ token file 644 (alfred-learn uid 1000 reads it)
+ *(packages/hermes/init/entrypoint.sh:498-517)*.
+ </Step>
 </Steps>
 
 ## The API contract
 
 ```
-POST http://hermes:18789/v1/responses    # main, user-facing chat
-POST http://hermes:18790/v1/runs         # workers, ephemeral background runs
-POST http://hermes:18791/v1/responses    # heavy, onboarding + reflection
-GET  http://hermes:1879<n>/health        # liveness (main, workers only)
-GET  http://hermes:1879<n>/v1/models     # advertised model name per profile
-GET  http://hermes:1879<n>/v1/tools      # tool registry (used by the LCM probe)
+POST http://hermes:18789/v1/responses # main, user-facing chat
+POST http://hermes:18790/v1/runs # workers, ephemeral background runs
+POST http://hermes:18791/v1/responses # heavy, onboarding + reflection
+GET http://hermes:1879<n>/health # liveness (main, workers only)
+GET http://hermes:1879<n>/v1/models # advertised model name per profile
+GET http://hermes:1879<n>/v1/tools # tool registry (used by the LCM probe)
 ```
 
 Every call carries `Authorization: Bearer ${API_SERVER_KEY}` — the same
@@ -196,32 +196,32 @@ identity.
 ## Build, run
 
 <Tabs>
-  <Tab title="Build">
-    ```sh
-    docker build -t alfred-black-hermes:dev packages/hermes
-    ```
+ <Tab title="Build">
+ ```sh
+ docker build -t alfred-black-hermes:dev packages/hermes
+ ```
 
-    CI builds `ssdavidai00/alfred-black-hermes:latest` on push to `main`
-    when any of `packages/hermes/**` (Dockerfile, supervisor.sh, configs)
-    changes *(.github/workflows/build-hermes.yml)*.
-  </Tab>
-  <Tab title="Run">
-    Pulled and orchestrated by the top-level `docker-compose.yaml`. The
-    `init` service must finish first (`service_completed_successfully`
-    dependency); then `hermes` boots and supervisor.sh launches the three
-    gateway processes.
+ CI builds `ssdavidai00/alfred-black-hermes:latest` on push to `main`
+ when any of `packages/hermes/**` (Dockerfile, supervisor.sh, configs)
+ changes *(.github/workflows/build-hermes.yml)*.
+ </Tab>
+ <Tab title="Run">
+ Pulled and orchestrated by the top-level `docker-compose.yaml`. The
+ `init` service must finish first (`service_completed_successfully`
+ dependency); then `hermes` boots and supervisor.sh launches the three
+ gateway processes.
 
-    ```sh
-    docker compose up -d init hermes
-    docker compose exec hermes hermes profile list
-    docker compose exec hermes hermes config view
-    ```
+ ```sh
+ docker compose up -d init hermes
+ docker compose exec hermes hermes profile list
+ docker compose exec hermes hermes config view
+ ```
 
-    The web dashboard accessible via `hermes dashboard` is **not** used —
-    the upstream wheel ships no `web_dist/`. Use the
-    `hermes config` / `hermes profile` / `hermes auth` CLI inside the
-    container instead.
-  </Tab>
+ The web dashboard accessible via `hermes dashboard` is **not** used —
+ the upstream wheel ships no `web_dist/`. Use the
+ `hermes config` / `hermes profile` / `hermes auth` CLI inside the
+ container instead.
+ </Tab>
 </Tabs>
 
 ## Where to look next

@@ -1,0 +1,31 @@
+---
+title: "Merge with detected duplicate"
+description: "Merge with detected duplicate."
+api: "POST /api/v1/sure/transactions/:id/merge_duplicate"
+---
+
+## Purpose
+
+Merge with detected duplicate. See the live route handler at `packages/ctrl/src/api/routes/sure.ts:794` for the authoritative request/response contract.
+
+<Note>
+This endpoint is part of the Alfred Black API. The OpenAPI spec for this endpoint is being authored — Mintlify will render parameters, request examples, and response examples here once the spec lands. Until then, see the source citation above for the authoritative shape.
+</Note>
+
+## Try it
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://alfred.black/api/v1/sure/transactions/:id/merge_duplicate \
+ -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+```javascript JavaScript
+const r = await fetch('https://alfred.black/api/v1/sure/transactions/:id/merge_duplicate', {
+ method: 'POST',
+ headers: { 'Authorization': `Bearer ${process.env.AAS_API_KEY}` },
+});
+```
+
+</CodeGroup>

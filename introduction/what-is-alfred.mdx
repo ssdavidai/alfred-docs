@@ -16,24 +16,24 @@ Alfred treats the person it serves as a **principal**, not a "user". The princip
 A fresh deploy stands up roughly thirty containers. The ones a principal actually interacts with:
 
 <CardGroup cols={2}>
-  <Card title="Dashboard" icon="house">
-    The 14 principal-facing pages — `/desk`, `/brief`, `/vault`, `/matters`, `/instincts`, `/decisions`, `/chores`, `/connections`, `/channels`, `/tools`, `/claude`, `/settings`, `/household`, `/staff` *(packages/web/main.wasp:191–250)*.
-  </Card>
-  <Card title="Hermes runtime" icon="cpu">
-    One AI runtime, three supervised profiles — `main` (chat, port 18789), `workers` (background agents, 18790), `heavy` (Opus-class reasoning, 18791) *(packages/hermes/docker/supervisor.sh)*.
-  </Card>
-  <Card title="ctrl-api" icon="server">
-    The tenant API on `:3100`. Sole writer of the working stores; ~40 route files behind the dashboard *(packages/ctrl/src/api/routes/)*.
-  </Card>
-  <Card title="alfred-learn" icon="brain">
-    Temporal-backed intelligence layer. Signal extract, signal router, decision router, briefing, reflection, judgment — roughly thirty workflows on schedules from 2 min to nightly *(packages/learn/CONTRACT.md)*.
-  </Card>
-  <Card title="Sidecars" icon="cubes">
-    Plane (project management), Sure (personal finance), Vaultwarden (secrets), and an optional Vexa profile for meeting transcripts *(docker-compose.yaml)*.
-  </Card>
-  <Card title="MCP server" icon="plug">
-    A bundle of six stdio MCP apps (alfred, sure, plane, vaultwarden, execute, hermes) plus an HTTP `alfred-ctrl` proxy. Each Hermes profile registers six MCP servers — five stdio plus the HTTP proxy *(packages/mcp-server/src/)*.
-  </Card>
+ <Card title="Dashboard" icon="house">
+ The 14 principal-facing pages — `/desk`, `/brief`, `/vault`, `/matters`, `/instincts`, `/decisions`, `/chores`, `/connections`, `/channels`, `/tools`, `/claude`, `/settings`, `/household`, `/staff` *(packages/web/main.wasp:191–250)*.
+ </Card>
+ <Card title="Hermes runtime" icon="cpu">
+ One AI runtime, three supervised profiles — `main` (chat, port 18789), `workers` (background agents, 18790), `heavy` (Opus-class reasoning, 18791) *(packages/hermes/docker/supervisor.sh)*.
+ </Card>
+ <Card title="ctrl-api" icon="server">
+ The tenant API on `:3100`. Sole writer of the working stores; ~40 route files behind the dashboard *(packages/ctrl/src/api/routes/)*.
+ </Card>
+ <Card title="alfred-learn" icon="brain">
+ Temporal-backed intelligence layer. Signal extract, signal router, decision router, briefing, reflection, judgment — roughly thirty workflows on schedules from 2 min to nightly *(packages/learn/CONTRACT.md)*.
+ </Card>
+ <Card title="Sidecars" icon="cubes">
+ Plane (project management), Sure (personal finance), Vaultwarden (secrets), and an optional Vexa profile for meeting transcripts *(docker-compose.yaml)*.
+ </Card>
+ <Card title="MCP server" icon="plug">
+ A bundle of six stdio MCP apps (alfred, sure, plane, vaultwarden, execute, hermes) plus an HTTP `alfred-ctrl` proxy. Each Hermes profile registers six MCP servers — five stdio plus the HTTP proxy *(packages/mcp-server/src/)*.
+ </Card>
 </CardGroup>
 
 ## The four-store architecture

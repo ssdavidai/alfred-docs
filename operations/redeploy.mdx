@@ -107,18 +107,18 @@ This is significantly faster than rolling the whole stack when only one image mo
 A handful of post-deploy checks worth running:
 
 <Steps>
-  <Step title="Container health">
-    `docker compose ps` — every service should be `running (healthy)` or `running` (for services without a healthcheck).
-  </Step>
-  <Step title="Recent logs">
-    `docker compose logs --tail=50 ctrl-api alfred-learn hermes` — look for errors during boot. The init container should have completed (`docker compose ps init` shows `exited (0)`).
-  </Step>
-  <Step title="Dashboard reachable">
-    `curl -I https://${DOMAIN}` — should return `200`. `curl -I https://api.${DOMAIN}/api/v1/learning/status` — should return `200` with `Authorization: Bearer ${AAS_API_KEY}`.
-  </Step>
-  <Step title="Workflows re-registered">
-    The Temporal UI at `http://${VM_IP}:8233` should show all 30+ workflow schedules in `running` state.
-  </Step>
+ <Step title="Container health">
+ `docker compose ps` — every service should be `running (healthy)` or `running` (for services without a healthcheck).
+ </Step>
+ <Step title="Recent logs">
+ `docker compose logs --tail=50 ctrl-api alfred-learn hermes` — look for errors during boot. The init container should have completed (`docker compose ps init` shows `exited (0)`).
+ </Step>
+ <Step title="Dashboard reachable">
+ `curl -I https://${DOMAIN}` — should return `200`. `curl -I https://api.${DOMAIN}/api/v1/learning/status` — should return `200` with `Authorization: Bearer ${AAS_API_KEY}`.
+ </Step>
+ <Step title="Workflows re-registered">
+ The Temporal UI at `http://${VM_IP}:8233` should show all 30+ workflow schedules in `running` state.
+ </Step>
 </Steps>
 
 ---

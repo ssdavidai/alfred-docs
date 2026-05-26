@@ -69,19 +69,19 @@ new provider behaviour without waiting for the provider's code,
 Every contract has a stable identifier `Cn` and three fields:
 
 - **Freezes** — the exact route shape, frontmatter field, or env-var
-  name that all parties agree on
+ name that all parties agree on
 - **Producer** — which lane will implement it
 - **Consumers** — which lanes (or external callers) read it
 
 There are currently nineteen *(docs/FIX-CONTRACTS.md, C1–C19)*. Examples:
 
 - **C1** — `GET /api/v1/state/instinct-counts` shape + `mark-processed`
-  semantics
+ semantics
 - **C5** — the migration-runner mechanism + the `0001` baseline migration
 - **C11** — the promotion-contract stance: `assertCanonicalVaultPath`
-  runs on *all* vault writes; non-canonical types route to `state.db`
+ runs on *all* vault writes; non-canonical types route to `state.db`
 - **C18** — `POST /api/v1/decisions` is the single source of truth;
-  delegate-flip happens *after* dispatch
+ delegate-flip happens *after* dispatch
 - **C19** — `GET /api/v1/vault/graph` returns `{nodes, edges, backlinks}`
 
 ### Adding a new C-clause
@@ -89,15 +89,15 @@ There are currently nineteen *(docs/FIX-CONTRACTS.md, C1–C19)*. Examples:
 A new contract gets numbered as the next available `Cn`. Three rules:
 
 1. **Phase 0 only.** `docs/FIX-CONTRACTS.md` is in the forbidden zone,
-   so the orchestrator writes the clause from the main checkout.
+ so the orchestrator writes the clause from the main checkout.
 2. **Freeze before code.** A new clause MUST land in a commit
-   *before* the producer or any consumer starts on the implementation.
-   This is the whole point: a downstream lane needs to know exactly
-   what shape the provider will emit so it can build against the
-   contract, not the provider's HEAD.
+ *before* the producer or any consumer starts on the implementation.
+ This is the whole point: a downstream lane needs to know exactly
+ what shape the provider will emit so it can build against the
+ contract, not the provider's HEAD.
 3. **Test against the contract.** The producer ships a unit test that
-   asserts the contract shape; consumers stub the producer to that
-   shape in their own tests.
+ asserts the contract shape; consumers stub the producer to that
+ shape in their own tests.
 
 If a contract turns out to be wrong, the lane that hits the wall
 **stops and reports** — it does not improvise across the boundary. The
@@ -111,9 +111,9 @@ exposes a new `/api/v1/vault/graph` endpoint and Lane III's web app
 calls it:
 
 1. Lane I lands first with the new route + a test that asserts the
-   contract.
+ contract.
 2. Lane III lands second, stubbing the route in its tests and
-   pointing the real client at the live endpoint.
+ pointing the real client at the live endpoint.
 
 Sequencing the other way leaves the consumer dead-on-arrival for
 however long the producer's PR is in review.
@@ -143,22 +143,22 @@ confirm it touched only its lane's files before trusting it.
 A few practical rules that keep parallel work from corrupting itself:
 
 - **Agents must never run `npm install`, `npm ci`, or `npm prune`.**
-  The worktrees share a symlinked `node_modules`; install churn
-  corrupts it for every lane. VERIFY uses existing deps.
+ The worktrees share a symlinked `node_modules`; install churn
+ corrupts it for every lane. VERIFY uses existing deps.
 - **Stage only your own files** (`git add <paths>`, never `git add -A`).
-  A sweeping add picks up lockfile churn or another lane's untracked
-  work.
+ A sweeping add picks up lockfile churn or another lane's untracked
+ work.
 - **Clean up stale `.lane`** before an orchestrator commit. A
-  leftover lane marker in `main` blocks a legitimate cross-cutting
-  commit.
+ leftover lane marker in `main` blocks a legitimate cross-cutting
+ commit.
 
 ## What to read next
 
 <CardGroup cols={2}>
-  <Card title="The commit gate" href="/development/commit-gate">
-    How `check_lane.py` rejects bad commits before they reach the orchestrator.
-  </Card>
-  <Card title="CI workflows" href="/development/ci-workflows">
-    The path-filtered image build pipeline that ships `:latest` after a lane PR merges.
-  </Card>
+ <Card title="The commit gate" href="/development/commit-gate">
+ How `check_lane.py` rejects bad commits before they reach the orchestrator.
+ </Card>
+ <Card title="CI workflows" href="/development/ci-workflows">
+ The path-filtered image build pipeline that ships `:latest` after a lane PR merges.
+ </Card>
 </CardGroup>

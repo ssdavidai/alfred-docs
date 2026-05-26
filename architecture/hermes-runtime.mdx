@@ -21,20 +21,20 @@ The heavy profile is **not exposed to the host** — only the compose network ca
 
 ```mermaid
 flowchart LR
-  subgraph hermes[hermes container]
-    Sup[supervisor.sh<br/>+ tini PID 1]
-    Main[main :18789<br/>Grok-4.3<br/>memory · 3 children]
-    Workers[workers :18790<br/>GPT-4.1-nano<br/>1 child · hard-stop]
-    Heavy[heavy :18791<br/>Opus-4.6<br/>1 child · compose-only]
-    Sup --> Main
-    Sup --> Workers
-    Sup --> Heavy
-  end
+ subgraph hermes[hermes container]
+ Sup[supervisor.sh<br/>+ tini PID 1]
+ Main[main :18789<br/>Grok-4.3<br/>memory · 3 children]
+ Workers[workers :18790<br/>GPT-4.1-nano<br/>1 child · hard-stop]
+ Heavy[heavy :18791<br/>Opus-4.6<br/>1 child · compose-only]
+ Sup --> Main
+ Sup --> Workers
+ Sup --> Heavy
+ end
 
-  Web[web · ctrl-api · principal] -->|/v1/responses| Main
-  Learn[alfred-learn] -->|/v1/runs| Workers
-  Learn -->|/v1/responses| Heavy
-  Ctrl[ctrl-api delegation] -->|/v1/runs| Workers
+ Web[web · ctrl-api · principal] -->|/v1/responses| Main
+ Learn[alfred-learn] -->|/v1/runs| Workers
+ Learn -->|/v1/responses| Heavy
+ Ctrl[ctrl-api delegation] -->|/v1/runs| Workers
 ```
 
 ## The OpenAI Responses API

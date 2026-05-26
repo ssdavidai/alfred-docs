@@ -9,14 +9,14 @@ Alfred Cloud runs the **same software** as self-hosted Alfred Black. The differe
 
 ## Your Alfred runs on a dedicated machine
 
-When a Cloud tenant signs up, the operator provisions a fresh Hetzner Cloud VPS, attaches an encrypted volume, joins it to a private Tailscale mesh, and stands up the principal's full Docker stack on it. Nothing is shared with another tenant — not the database, not the vault, not the Hermes gateway, not the workflow engine. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:13)*
+When a Cloud tenant signs up, the operator provisions a fresh Hetzner Cloud VPS, attaches an encrypted volume, joins it to a private Tailscale mesh, and stands up the principal's full Docker stack on it. Nothing is shared with another tenant — not the database, not the vault, not the Hermes gateway, not the workflow engine.
 
 | Component | Detail |
 |---|---|
-| Server | Hetzner Cloud `cx53` (16 GB RAM, 4 vCPU, 160 GB local SSD) — sized for the full stack including Hermes' `heavy` profile *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:17)* |
-| Storage | LUKS2 full-disk encryption, AES-256-XTS, key generated per-instance *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:18)* |
-| Network | Private Tailscale mesh on WireGuard; SSH on port 22, Tailscale on UDP 41641, ICMP — nothing else *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:19)* |
-| Browser path | Cloudflare → SaaS host → Tailscale → tenant `ctrl-api` on `127.0.0.1:3100` *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:20)* |
+| Server | Hetzner Cloud `cx53` (16 GB RAM, 4 vCPU, 160 GB local SSD) — sized for the full stack including Hermes' `heavy` profile |
+| Storage | LUKS2 full-disk encryption, AES-256-XTS, key generated per-instance |
+| Network | Private Tailscale mesh on WireGuard; SSH on port 22, Tailscale on UDP 41641, ICMP — nothing else |
+| Browser path | Cloudflare → SaaS host → Tailscale → tenant `ctrl-api` on `127.0.0.1:3100` |
 
 There is **no public route** into the tenant's services. The Hetzner firewall denies everything except SSH, ICMP, and Tailscale's WireGuard port. Every container binds to localhost.
 
@@ -25,33 +25,33 @@ There is **no public route** into the tenant's services. The Hetzner firewall de
 The fleet CLI walks the same numbered steps for every new instance:
 
 <Steps>
-  <Step title="Generate an Ed25519 keypair">
-    Stored locally at `data/ssh_keys/<instance_id>/`. Never re-used between tenants.
-  </Step>
-  <Step title="Upload the public key + ensure shared firewall">
-    Hetzner firewall labelled `managed-by: alfred-ctrl` allows only inbound SSH and ICMP.
-  </Step>
-  <Step title="Create the encrypted volume + render cloud-init">
-    Cloud-init includes LUKS keyfile generation, `fail2ban` + UFW setup, Docker install, Tailscale install, and the systemd timer that pulls fresh container images every 15 minutes.
-  </Step>
-  <Step title="Create the server + wait for cloud-init">
-    Hetzner backups are enabled. The volume is attached. Cloud-init formats the disk with LUKS2 and creates `/mnt/encrypted/{vault,hermes,alfred,temporal,vaultwarden,mcp-server,vexa}`. The latter three are created unconditionally — the cost of an empty directory is zero, and creating them lazily would mean a tenant flag flip (e.g. `vexa_enabled`) would also need a re-run of cloud-init.
-  </Step>
-  <Step title="Upload secrets via SSH (not via cloud-init)">
-    `.env` (LLM keys, `AAS_API_KEY`, Composio creds, AgentMail/AgentPhone tokens) is SFTP'd post-boot. Cloud-init `user_data` is readable through Hetzner's metadata API, so secrets never go there.
-  </Step>
-  <Step title="Render + upload docker-compose, start containers">
-    The compose file is rendered from a template; the `init` container scaffolds the vault and writes config; the rest of the stack comes up.
-  </Step>
-  <Step title="Bootstrap Hermes + Tailscale + Cloudflare Tunnel">
-    Tailscale auth key is generated on the fly. The instance joins the private mesh. Cloudflare DNS + Tunnel records are created for the tenant subdomain.
-  </Step>
-  <Step title="Back up the LUKS key + run health check">
-    The keyfile is downloaded into `data/ssh_keys/<id>/luks.key` so the instance can be recovered if Hetzner loses the disk. A first health probe must come back green before the instance is marked `done`.
-  </Step>
+ <Step title="Generate an Ed25519 keypair">
+ Stored locally at `data/ssh_keys/<instance_id>/`. Never re-used between tenants.
+ </Step>
+ <Step title="Upload the public key + ensure shared firewall">
+ Hetzner firewall labelled `managed-by: alfred-ctrl` allows only inbound SSH and ICMP.
+ </Step>
+ <Step title="Create the encrypted volume + render cloud-init">
+ Cloud-init includes LUKS keyfile generation, `fail2ban` + UFW setup, Docker install, Tailscale install, and the systemd timer that pulls fresh container images every 15 minutes.
+ </Step>
+ <Step title="Create the server + wait for cloud-init">
+ Hetzner backups are enabled. The volume is attached. Cloud-init formats the disk with LUKS2 and creates `/mnt/encrypted/{vault,hermes,alfred,temporal,vaultwarden,mcp-server,vexa}`. The latter three are created unconditionally — the cost of an empty directory is zero, and creating them lazily would mean a tenant flag flip (e.g. `vexa_enabled`) would also need a re-run of cloud-init.
+ </Step>
+ <Step title="Upload secrets via SSH (not via cloud-init)">
+ `.env` (LLM keys, `AAS_API_KEY`, Composio creds, AgentMail/AgentPhone tokens) is SFTP'd post-boot. Cloud-init `user_data` is readable through Hetzner's metadata API, so secrets never go there.
+ </Step>
+ <Step title="Render + upload docker-compose, start containers">
+ The compose file is rendered from a template; the `init` container scaffolds the vault and writes config; the rest of the stack comes up.
+ </Step>
+ <Step title="Bootstrap Hermes + Tailscale + Cloudflare Tunnel">
+ Tailscale auth key is generated on the fly. The instance joins the private mesh. Cloudflare DNS + Tunnel records are created for the tenant subdomain.
+ </Step>
+ <Step title="Back up the LUKS key + run health check">
+ The keyfile is downloaded into `data/ssh_keys/<id>/luks.key` so the instance can be recovered if Hetzner loses the disk. A first health probe must come back green before the instance is marked `done`.
+ </Step>
 </Steps>
 
-End-to-end: **roughly three minutes when using the golden snapshot, eighteen to twenty when building from scratch.** *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:55)*
+End-to-end: **roughly three minutes when using the golden snapshot, eighteen to twenty when building from scratch.**
 
 ## The encrypted volume
 
@@ -61,9 +61,9 @@ Everything that matters is on `/mnt/encrypted` — the LUKS2 volume — and noth
 |---|---|
 | `/mnt/encrypted/vault` | The principal's Markdown vault. Bind-mounted into every container that reads it. |
 | `/mnt/encrypted/hermes` | Hermes runtime data — `$HERMES_HOME` — including all three profile dirs (`main`, `workers`, `heavy`), session SQLite stores, SOUL.md, and the plugin install dir. |
-| `/mnt/encrypted/alfred` | Shared scratch — `.gateway-token`, `settings.json` (the three mode flags), Composio user id, stream JSONLs, onboarding state. *(/Users/ssd/dev/alfred/CLAUDE.md:section 13)* |
-| `/mnt/encrypted/state` | `alfred-state.db` + WAL — the operational SQLite (audit, signals, observations, decisions ledger). *(/Users/ssd/dev/alfred/CLAUDE.md:section 5)* |
-| `/mnt/encrypted/ingest` | `ingest.db` + WAL — raw inbound stream events with 7-day TTL. *(/Users/ssd/dev/alfred/CLAUDE.md:section 5)* |
+| `/mnt/encrypted/alfred` | Shared scratch — `.gateway-token`, `settings.json` (the three mode flags), Composio user id, stream JSONLs, onboarding state. *(CLAUDE.md:section 13)* |
+| `/mnt/encrypted/state` | `alfred-state.db` + WAL — the operational SQLite (audit, signals, observations, decisions ledger). *(CLAUDE.md:section 5)* |
+| `/mnt/encrypted/ingest` | `ingest.db` + WAL — raw inbound stream events with 7-day TTL. *(CLAUDE.md:section 5)* |
 | `/mnt/encrypted/temporal` | Temporal SQLite database (workflow state). |
 | `/mnt/encrypted/vaultwarden` | Per-tenant Vaultwarden SQLite + attachments. Every secret currently in `.env` plus future credentials. |
 | `/mnt/encrypted/mcp-server` | Per-tenant MCP HTTP server data (Claude Custom Connector OAuth state). |
@@ -75,7 +75,7 @@ The LUKS keyfile lives at `/opt/alfred/luks.key` on the host — readable only b
 
 ## The Docker stack
 
-A fully-loaded Cloud tenant runs the **Alfred core** containers plus optional sidecar stacks (Plane, Sure, Vexa). All built from a Nunjucks-templated compose file; image tags are `:latest` because the `alfred-update.timer` systemd unit pulls fresh images every fifteen minutes — the same images CI publishes from `main`. *(/Users/ssd/dev/alfred/CLAUDE.md:section 12)*
+A fully-loaded Cloud tenant runs the **Alfred core** containers plus optional sidecar stacks (Plane, Sure, Vexa). All built from a Nunjucks-templated compose file; image tags are `:latest` because the `alfred-update.timer` systemd unit pulls fresh images every fifteen minutes — the same images CI publishes from `main`. *(CLAUDE.md:section 12)*
 
 ### Alfred core (always on)
 
@@ -83,19 +83,19 @@ A fully-loaded Cloud tenant runs the **Alfred core** containers plus optional si
 |---|---|---|---|
 | `init` | `ssdavidai00/alfred-init` | — | One-shot. Scaffolds vault, copies skills, renders the three Hermes profile configs, generates the gateway token, registers the MCP `self` server. Exits when done. |
 | `temporal` | `temporalio/temporal` | `7233`, `8233` | Durable workflow engine. SQLite-backed, dev mode. |
-| `hermes` | `ssdavidai00/alfred-black-hermes` | `18789`, `18790`, `18791` | The Hermes runtime — **one container, three supervised profiles**. `main` on `:18789` handles user-facing chat (memory enabled), `workers` on `:18790` runs background agents (clerk, curator, janitor, distiller, ephemeral runs), `heavy` on `:18791` handles Opus / GPT-5.5-class reasoning for onboarding + Reflection. *(/Users/ssd/dev/alfred/packages/hermes/docker/supervisor.sh:7-9)* |
+| `hermes` | `ssdavidai00/alfred-black-hermes` | `18789`, `18790`, `18791` | The Hermes runtime — **one container, three supervised profiles**. `main` on `:18789` handles user-facing chat (memory enabled), `workers` on `:18790` runs background agents (clerk, curator, janitor, distiller, ephemeral runs), `heavy` on `:18791` handles Opus / GPT-5.5-class reasoning for onboarding + Reflection. *(packages/hermes/docker/supervisor.sh:7-9)* |
 | `alfred` | `ssdavidai00/alfred-worker` | — | Vault specialists daemon — Curator, Janitor, Distiller, Surveyor. |
-| `alfred-learn` | `ssdavidai00/alfred-learn` | — | Python + Temporal worker. Hosts every scheduled workflow (event processor, signal extract, signal router, decision router, reflection, task closure watcher, archival sweep, nightly narrative, day-one seed, and dynamically loaded chores). *(/Users/ssd/dev/alfred/CLAUDE.md:section 7)* |
-| `ctrl-api` | `ssdavidai00/alfred-ctrl-api` | `3100` | Tenant API. **Sole writer** to `alfred-state.db` and `ingest.db`. Every read and write to the vault, every stream operation, every channel send goes through here. *(/Users/ssd/dev/alfred/CLAUDE.md:section 5.2)* |
+| `alfred-learn` | `ssdavidai00/alfred-learn` | — | Python + Temporal worker. Hosts every scheduled workflow (event processor, signal extract, signal router, decision router, reflection, task closure watcher, archival sweep, nightly narrative, day-one seed, and dynamically loaded chores). *(CLAUDE.md:section 7)* |
+| `ctrl-api` | `ssdavidai00/alfred-ctrl-api` | `3100` | Tenant API. **Sole writer** to `alfred-state.db` and `ingest.db`. Every read and write to the vault, every stream operation, every channel send goes through here. *(CLAUDE.md:section 5.2)* |
 | `mcp-server` | `ssdavidai00/alfred-mcp-server` | `8787` | Per-tenant MCP HTTP server. Cloudflared routes Claude Custom Connector OAuth + `/mcp` paths here. |
-| `web` + `web-client` | `ssdavidai00/alfred-web` + `alfred-web-client` | `3000` | Wasp server (auth + queries/actions) + the static SPA. **Both must redeploy together for UI changes.** *(/Users/ssd/dev/alfred/CLAUDE.md:section 15.4)* |
+| `web` + `web-client` | `ssdavidai00/alfred-web` + `alfred-web-client` | `3000` | Wasp server (auth + queries/actions) + the static SPA. **Both must redeploy together for UI changes.** *(CLAUDE.md:section 15.4)* |
 
 The Vaultwarden trio (`vaultwarden`, `vault-init`, `vault-cli`) ships in the same compose file behind a `vaultwarden_enabled` flag, on by default for new Cloud tenants — Bitwarden-compatible vault server + a one-shot fetch-and-write of `.env` from the vault + a long-running `bw serve` side-container that MCP tool calls proxy through.
 
 `init` must complete before `hermes` starts. Hermes must be healthy before `alfred` boots. `alfred-learn` waits on `temporal`, `hermes`, and `ctrl-api` all being healthy. The dependency graph is enforced in compose, not by hope.
 
 <Tip>
-The single `hermes` container running **three supervised profiles** is the canonical runtime layout on Cloud. The supervisor inside the container keeps all three Hermes processes alive and forwards SIGTERM for graceful compose stops. *(/Users/ssd/dev/alfred/packages/hermes/docker/supervisor.sh:1-26)*
+The single `hermes` container running **three supervised profiles** is the canonical runtime layout on Cloud. The supervisor inside the container keeps all three Hermes processes alive and forwards SIGTERM for graceful compose stops. *(packages/hermes/docker/supervisor.sh:1-26)*
 </Tip>
 
 ### Optional sidecar stacks
@@ -115,14 +115,14 @@ A bare-bones Cloud tenant is roughly twelve long-running containers plus the `in
 There are exactly three ways into the box:
 
 1. **Tailscale** — the SaaS host, the operator's laptop, and any paired devices reach `ctrl-api:3100` over the mesh. Encryption is WireGuard, end-to-end. The Hetzner firewall allows the WireGuard handshake on UDP 41641 and nothing else.
-2. **Cloudflare Tunnel** — outbound-only. When the principal opens the dashboard at `alfred.black`, the SaaS host proxies the API call over Tailscale; no inbound HTTP hits the tenant directly. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:120)*
+2. **Cloudflare Tunnel** — outbound-only. When the principal opens the dashboard at `alfred.black`, the SaaS host proxies the API call over Tailscale; no inbound HTTP hits the tenant directly.
 3. **SSH** — port 22, key-based only, hardened in cloud-init (`PermitRootLogin no`, `PasswordAuthentication no`, `MaxAuthTries 3`, fail2ban on top).
 
 The voice channel takes a different shape: Twilio's Media Stream WebSocket lands on `voice.alfred.black` (DNS-only at Cloudflare) and the Voice Bridge runs on the SaaS host, not on the tenant.
 
 ## Backups + recovery
 
-A daily `restic` job runs at 03:00 host-local via the `alfred-backup.timer` systemd unit. It stops `alfred`, `hermes`, and `temporal` for a consistent snapshot, runs `restic backup /mnt/encrypted --exclude=/mnt/encrypted/temporal`, and restarts them. Retention: 7 daily, 4 weekly, 6 monthly. Destination: Hetzner Object Storage, encrypted with a Restic password stored only in `/opt/alfred/restic.env` on the host and `data/ssh_keys/<id>/restic.env` on the operator's machine. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:127)*
+A daily `restic` job runs at 03:00 host-local via the `alfred-backup.timer` systemd unit. It stops `alfred`, `hermes`, and `temporal` for a consistent snapshot, runs `restic backup /mnt/encrypted --exclude=/mnt/encrypted/temporal`, and restarts them. Retention: 7 daily, 4 weekly, 6 monthly. Destination: Hetzner Object Storage, encrypted with a Restic password stored only in `/opt/alfred/restic.env` on the host and `data/ssh_keys/<id>/restic.env` on the operator's machine.
 
 The LUKS keyfile is backed up at provision time and never touched again. Even if Hetzner loses the disk, the operator can re-mount the encrypted volume from its raw bytes plus the backed-up keyfile.
 
@@ -139,16 +139,16 @@ Every long-lived container runs with:
 `fail2ban` watches sshd. UFW denies inbound except 22/tcp and 41641/udp. Unattended-upgrades is enabled for security packages. SSH keys are Ed25519 and per-instance.
 
 <CardGroup cols={2}>
-  <Card title="Provisioning flow" icon="play" href="/alfred-cloud/provisioning">
-    What happens between "you sign up" and "your Alfred is online."
-  </Card>
-  <Card title="Federation" icon="users-line" href="/alfred-cloud/federation">
-    Alfred Prime — one tenant querying others over the tailnet.
-  </Card>
-  <Card title="Hermes runtime" icon="brain" href="/architecture/hermes-runtime">
-    Deeper dive into the three-profile model.
-  </Card>
-  <Card title="Four-store model" icon="database" href="/architecture/four-store-model">
-    Why the vault, alfred-state.db, ingest.db, and cold archive are separate stores.
-  </Card>
+ <Card title="Provisioning flow" icon="play" href="/alfred-cloud/provisioning">
+ What happens between "you sign up" and "your Alfred is online."
+ </Card>
+ <Card title="Federation" icon="users-line" href="/alfred-cloud/federation">
+ Alfred Prime — one tenant querying others over the tailnet.
+ </Card>
+ <Card title="Hermes runtime" icon="brain" href="/architecture/hermes-runtime">
+ Deeper dive into the three-profile model.
+ </Card>
+ <Card title="Four-store model" icon="database" href="/architecture/four-store-model">
+ Why the vault, alfred-state.db, ingest.db, and cold archive are separate stores.
+ </Card>
 </CardGroup>

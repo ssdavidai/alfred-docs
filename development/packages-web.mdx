@@ -12,22 +12,22 @@ to ctrl-api with a Bearer token.
 
 ```
 packages/web/
-├── main.wasp                 the single config root — routes, queries, actions, jobs, entities
+├── main.wasp the single config root — routes, queries, actions, jobs, entities
 ├── package.json
-├── schema.prisma             User, ApiKey, OAuthCredential, ComposioConnection, Stream, StreamEvent
+├── schema.prisma User, ApiKey, OAuthCredential, ComposioConnection, Stream, StreamEvent
 ├── tsconfig.json
 ├── vite.config.ts
 ├── tailwind.config.js
-├── Dockerfile.client         the static-SPA nginx image
-├── nginx-spa.conf            client-side routing + cache headers
-├── web-client-entrypoint.sh  runtime substitution of WASP_SERVER_URL
-├── migrations/               Prisma migration history
-├── public/                   static assets
+├── Dockerfile.client the static-SPA nginx image
+├── nginx-spa.conf client-side routing + cache headers
+├── web-client-entrypoint.sh runtime substitution of WASP_SERVER_URL
+├── migrations/ Prisma migration history
+├── public/ static assets
 └── src/
-    ├── auth/                 signup/login hooks (Mailgun, Google OAuth via Arctic)
-    ├── client/               React components, theme, the 14 page components
-    ├── server/               serverSetup, tenantProxy, chat proxy, terminal proxy
-    └── ...
+ ├── auth/ signup/login hooks (Mailgun, Google OAuth via Arctic)
+ ├── client/ React components, theme, the 14 page components
+ ├── server/ serverSetup, tenantProxy, chat proxy, terminal proxy
+ └── ...
 ```
 
 ## `main.wasp` is the config root
@@ -71,9 +71,9 @@ Wasp's generated Express server *(packages/web/src/server/setup.ts:9-35)*.
 | `/household` | `HouseholdPage.tsx` | RULES.md editor + chores |
 
 <Note>
-  The legacy URL `/study` redirects to `/settings`; `/dashboard`, `/back-office`,
-  and `/triage` similarly redirect. The CLAUDE.md still uses `/study` in some
-  sections — the live URL is `/settings`.
+ The legacy URL `/study` redirects to `/settings`; `/dashboard`, `/back-office`,
+ and `/triage` similarly redirect. The CLAUDE.md still uses `/study` in some
+ sections — the live URL is `/settings`.
 </Note>
 
 The onboarding ritual is **sequential**, not a single page:
@@ -113,13 +113,13 @@ redeployed plus a hard browser refresh.
 
 ```mermaid
 flowchart LR
-  Browser -->|HTTPS| Caddy
-  Caddy -->|static SPA| WebClient[web-client<br/>nginx :80<br/>128 MB]
-  Caddy -->|operations + auth| Web[web<br/>Wasp/Node :3000<br/>2 GB]
-  Web -->|Prisma| WebDB[(web-db<br/>PostgreSQL 16)]
-  Web -->|Bearer AAS_API_KEY| Ctrl[ctrl-api:3100]
-  Web -->|chat SSE| Hermes[hermes:18789]
-  Web -->|SSH WS| TerminalHost[VM host SSH]
+ Browser -->|HTTPS| Caddy
+ Caddy -->|static SPA| WebClient[web-client<br/>nginx :80<br/>128 MB]
+ Caddy -->|operations + auth| Web[web<br/>Wasp/Node :3000<br/>2 GB]
+ Web -->|Prisma| WebDB[(web-db<br/>PostgreSQL 16)]
+ Web -->|Bearer AAS_API_KEY| Ctrl[ctrl-api:3100]
+ Web -->|chat SSE| Hermes[hermes:18789]
+ Web -->|SSH WS| TerminalHost[VM host SSH]
 ```
 
 **`web`** — Node.js Wasp server, port 3000, 2 GB limit. Image
@@ -142,35 +142,35 @@ image layers only the static bundle.
 ## Build, run, test
 
 <Tabs>
-  <Tab title="Build">
-    ```sh
-    cd packages/web
-    npm install
-    wasp build       # → .wasp/build/ (server) + web-app/build/ (SPA)
-    ```
+ <Tab title="Build">
+ ```sh
+ cd packages/web
+ npm install
+ wasp build # → .wasp/build/ (server) + web-app/build/ (SPA)
+ ```
 
-    The Wasp CLI generates a Node Express server into `.wasp/` from
-    `main.wasp` + `src/server/`, and runs Vite over `src/client/` to emit
-    the SPA bundle. Neither artefact is checked into git.
-  </Tab>
-  <Tab title="Run">
-    ```sh
-    docker compose up -d web web-client web-db
-    ```
+ The Wasp CLI generates a Node Express server into `.wasp/` from
+ `main.wasp` + `src/server/`, and runs Vite over `src/client/` to emit
+ the SPA bundle. Neither artefact is checked into git.
+ </Tab>
+ <Tab title="Run">
+ ```sh
+ docker compose up -d web web-client web-db
+ ```
 
-    For local dev: `wasp start` runs the server on port 3000 and Vite's
-    dev server on 3001. Point the dev server at a local ctrl-api with
-    `CTRL_API_URL=http://localhost:3100`.
-  </Tab>
-  <Tab title="Test">
-    Wasp does not ship a test runner of its own; tests live under
-    `src/server/__tests__/` and run via Jest. The lane gate runs
-    `tsc --noEmit` as VERIFY *(scripts/hooks/check_lane.py)*.
-  </Tab>
+ For local dev: `wasp start` runs the server on port 3000 and Vite's
+ dev server on 3001. Point the dev server at a local ctrl-api with
+ `CTRL_API_URL=http://localhost:3100`.
+ </Tab>
+ <Tab title="Test">
+ Wasp does not ship a test runner of its own; tests live under
+ `src/server/__tests__/` and run via Jest. The lane gate runs
+ `tsc --noEmit` as VERIFY *(scripts/hooks/check_lane.py)*.
+ </Tab>
 </Tabs>
 
 ## Where to look next
 
 - The principal-facing surface reference: [Principal surfaces](/surfaces)
-- Frozen contracts web participates in: `docs/FIX-CONTRACTS.md` (C4, C8, C13, C14, C15, C16, C17, C18, C19)
+- Frozen contracts web participates in: `docs/FIX-CONTRACTS.md`
 - The `main.wasp` schema: [Wasp docs](https://wasp.sh/docs)

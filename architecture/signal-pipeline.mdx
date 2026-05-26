@@ -11,38 +11,38 @@ If observations aren't landing in `state.db`, the system isn't learning — and 
 
 ```mermaid
 flowchart TD
-  Inbound[Webhook / Composio poll]
-  Stream[(ingest.db<br/>stream_event)]
-  Ext[SignalExtractWorkflow<br/>every 5 min]
-  Signal[(state.db<br/>signal)]
-  ObsS[(observation<br/>kind=signal)]
-  Router[SignalRouterWorkflow<br/>every 2 min]
-  High[HIGH<br/>autonomous dispatch]
-  Human[HUMAN<br/>needs_attention card]
-  Supp[SUPPRESSED<br/>dedup gate]
-  Desk[Principal clicks /desk]
-  Dec[(decision<br/>state=open)]
-  DR[DecisionRouterWorkflow<br/>every 60s]
-  ObsD[(observation<br/>kind=decision)]
-  Refl[ReflectionWorkflow<br/>daily 02:00 UTC]
-  Inst[(instinct catalogue<br/>tier promotion)]
+ Inbound[Webhook / Composio poll]
+ Stream[(ingest.db<br/>stream_event)]
+ Ext[SignalExtractWorkflow<br/>every 5 min]
+ Signal[(state.db<br/>signal)]
+ ObsS[(observation<br/>kind=signal)]
+ Router[SignalRouterWorkflow<br/>every 2 min]
+ High[HIGH<br/>autonomous dispatch]
+ Human[HUMAN<br/>needs_attention card]
+ Supp[SUPPRESSED<br/>dedup gate]
+ Desk[Principal clicks /desk]
+ Dec[(decision<br/>state=open)]
+ DR[DecisionRouterWorkflow<br/>every 60s]
+ ObsD[(observation<br/>kind=decision)]
+ Refl[ReflectionWorkflow<br/>daily 02:00 UTC]
+ Inst[(instinct catalogue<br/>tier promotion)]
 
-  Inbound -->|POST /v1/ingest/events| Stream
-  Stream --> Ext
-  Ext --> Signal
-  Ext --> ObsS
-  Signal --> Router
-  Router --> High
-  Router --> Human
-  Router --> Supp
-  Human --> Desk
-  High --> Desk
-  Desk -->|POST /v1/decisions| Dec
-  Dec --> DR
-  DR --> ObsD
-  ObsD --> Refl
-  Refl --> Inst
-  Inst -.->|raises bar for<br/>next score| Router
+ Inbound -->|POST /v1/ingest/events| Stream
+ Stream --> Ext
+ Ext --> Signal
+ Ext --> ObsS
+ Signal --> Router
+ Router --> High
+ Router --> Human
+ Router --> Supp
+ Human --> Desk
+ High --> Desk
+ Desk -->|POST /v1/decisions| Dec
+ Dec --> DR
+ DR --> ObsD
+ ObsD --> Refl
+ Refl --> Inst
+ Inst -.->|raises bar for<br/>next score| Router
 ```
 
 ## Stage 1 — ingest

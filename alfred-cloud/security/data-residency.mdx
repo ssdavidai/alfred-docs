@@ -15,7 +15,7 @@ All Alfred Cloud tenants run on Hetzner Cloud in the EU. The SaaS control-plane 
 | **Germany** | Falkenstein, Nuremberg | Primary regions — selected at provision time when capacity is available |
 | **Finland** | Helsinki | Fallback when both German regions are at capacity |
 
-The choice is made at provision time and is sticky for the lifetime of the instance. There is no automatic cross-region migration. *(`/tmp/alfred-doc-old/guides/security.mdx:127`)*
+The choice is made at provision time and is sticky for the lifetime of the instance. There is no automatic cross-region migration.
 
 The SaaS control-plane host (`alfred.black`) is also in Germany. The provisioning, billing, and key-issuance layer therefore lives in the same jurisdiction as the tenant.
 
@@ -68,31 +68,31 @@ The principal has the standard GDPR rights, surfaced through the operator:
 When the principal cancels the subscription:
 
 <Steps>
-  <Step title="Day 0 — cancellation">
-    The instance enters a **grace period**. It continues to run, billing stops at the next cycle boundary, but service is preserved.
-  </Step>
-  <Step title="Days 1–30 — grace">
-    The principal can:
-    - Reactivate (restores billing, no data loss)
-    - Export the vault and any data they want (via the API, SSH, or operator-assisted `rsync`)
-    - Take a final restic snapshot to their own storage
-  </Step>
-  <Step title="Day 30 — destruction">
-    Outside the grace window, the operator runs the **destroy** flow:
-    - Stop and remove every container on the tenant
-    - `cryptsetup luksRemoveKey` on the LUKS volume (rendering it cryptographically opaque)
-    - Detach and **delete** the Hetzner volume
-    - **Delete** the Hetzner VM
-    - Delete the per-tenant restic password from operator storage
-    - Delete the per-tenant backups from Hetzner Object Storage
-    - Revoke the per-tenant Composio user_id at the next Composio sync
-    - Revoke the per-tenant AgentMail inbox-scoped key
-  </Step>
+ <Step title="Day 0 — cancellation">
+ The instance enters a **grace period**. It continues to run, billing stops at the next cycle boundary, but service is preserved.
+ </Step>
+ <Step title="Days 1–30 — grace">
+ The principal can:
+ - Reactivate (restores billing, no data loss)
+ - Export the vault and any data they want (via the API, SSH, or operator-assisted `rsync`)
+ - Take a final restic snapshot to their own storage
+ </Step>
+ <Step title="Day 30 — destruction">
+ Outside the grace window, the operator runs the **destroy** flow:
+ - Stop and remove every container on the tenant
+ - `cryptsetup luksRemoveKey` on the LUKS volume (rendering it cryptographically opaque)
+ - Detach and **delete** the Hetzner volume
+ - **Delete** the Hetzner VM
+ - Delete the per-tenant restic password from operator storage
+ - Delete the per-tenant backups from Hetzner Object Storage
+ - Revoke the per-tenant Composio user_id at the next Composio sync
+ - Revoke the per-tenant AgentMail inbox-scoped key
+ </Step>
 </Steps>
 
 After Day 30, there is **no recovery path**. The LUKS keyfile has been zeroized, the volume is gone, and the restic backups are deleted. Even the operator cannot recover the data.
 
-Cancel within the 30-day grace period and your data is preserved; cancel outside it and the data is destroyed in full. *(`/tmp/alfred-doc-old/guides/security.mdx:131`)*
+Cancel within the 30-day grace period and your data is preserved; cancel outside it and the data is destroyed in full.
 
 <Warning>
 The destroy flow is **deliberately irreversible**. If you need a longer grace period for compliance reasons, contact the operator before cancelling to extend it.
@@ -115,13 +115,13 @@ For your DPIA (Data Protection Impact Assessment), Alfred Cloud's processor chai
 A signed Data Processing Agreement (DPA) is available from the operator on request.
 
 <CardGroup cols={2}>
-  <Card title="Infrastructure isolation" icon="server" href="/alfred-cloud/security/infrastructure-isolation">
-    The "no shared compute" guarantee underneath this.
-  </Card>
-  <Card title="Backups and recovery" icon="archive" href="/alfred-cloud/security/backups-and-recovery">
-    Where backups are stored and how they're destroyed.
-  </Card>
-  <Card title="Per-tenant isolation" icon="users" href="/alfred-cloud/security/per-tenant-isolation">
-    What flows through Composio / AgentMail / Vaultwarden.
-  </Card>
+ <Card title="Infrastructure isolation" icon="server" href="/alfred-cloud/security/infrastructure-isolation">
+ The "no shared compute" guarantee underneath this.
+ </Card>
+ <Card title="Backups and recovery" icon="archive" href="/alfred-cloud/security/backups-and-recovery">
+ Where backups are stored and how they're destroyed.
+ </Card>
+ <Card title="Per-tenant isolation" icon="users" href="/alfred-cloud/security/per-tenant-isolation">
+ What flows through Composio / AgentMail / Vaultwarden.
+ </Card>
 </CardGroup>

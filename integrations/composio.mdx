@@ -27,15 +27,15 @@ All six route through ctrl-api's `/api/v1/integrations/*` endpoints *(packages/m
 The canonical flow Alfred uses inside a conversation:
 
 <Steps>
-  <Step title="Discover the toolkit">
-    Call `list_composio_tools` with no arguments. Returns the connected toolkits on this tenant — pick one.
-  </Step>
-  <Step title="Discover the action">
-    Call `list_composio_tools({toolkit: 'gmail'})`. Returns the list of action slugs (`GMAIL_SEND_EMAIL`, `GMAIL_FETCH_EMAILS`, …) with their JSON-schema shape.
-  </Step>
-  <Step title="Execute">
-    Call `composio_execute({action: 'GMAIL_SEND_EMAIL', arguments: { recipient_email: '…', subject: '…', body: '…' }})`. Returns `{action, toolkit, result}`.
-  </Step>
+ <Step title="Discover the toolkit">
+ Call `list_composio_tools` with no arguments. Returns the connected toolkits on this tenant — pick one.
+ </Step>
+ <Step title="Discover the action">
+ Call `list_composio_tools({toolkit: 'gmail'})`. Returns the list of action slugs (`GMAIL_SEND_EMAIL`, `GMAIL_FETCH_EMAILS`, …) with their JSON-schema shape.
+ </Step>
+ <Step title="Execute">
+ Call `composio_execute({action: 'GMAIL_SEND_EMAIL', arguments: { recipient_email: '…', subject: '…', body: '…' }})`. Returns `{action, toolkit, result}`.
+ </Step>
 </Steps>
 
 For common toolkits the dashboard auto-generates a per-toolkit skill file (`alfred-composio-gmail`, `alfred-composio-slack`, …) so the model already knows canonical payloads without needing discovery on every call.

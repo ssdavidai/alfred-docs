@@ -73,20 +73,20 @@ docker compose stop
 
 # Critical
 for v in vault_data caddy_data state_data ingest_data; do
-  docker run --rm \
-    -v "alfred-black_${v}:/src:ro" \
-    -v "${DEST}:/dst" \
-    alpine \
-    tar czf "/dst/${v}.tgz" -C /src .
+ docker run --rm \
+ -v "alfred-black_${v}:/src:ro" \
+ -v "${DEST}:/dst" \
+ alpine \
+ tar czf "/dst/${v}.tgz" -C /src .
 done
 
 # Tier 2 (comment out if you don't need them)
 for v in hermes_data alfred_data cold_data vaultwarden_data; do
-  docker run --rm \
-    -v "alfred-black_${v}:/src:ro" \
-    -v "${DEST}:/dst" \
-    alpine \
-    tar czf "/dst/${v}.tgz" -C /src .
+ docker run --rm \
+ -v "alfred-black_${v}:/src:ro" \
+ -v "${DEST}:/dst" \
+ alpine \
+ tar czf "/dst/${v}.tgz" -C /src .
 done
 
 docker compose start
@@ -107,15 +107,15 @@ A short stop-resume window of about 30 seconds is usually enough for the four cr
 After untarring the volumes back into place:
 
 <Steps>
-  <Step title="Restore order">
-    Restore `caddy_data` first (so HTTPS comes up cleanly), then `vault_data`, `state_data`, `ingest_data`, then any Tier 2 volumes you have.
-  </Step>
-  <Step title="docker compose up -d">
-    The init container will detect existing files in `vault_data` and `alfred_data` and skip its scaffold logic *(`packages/hermes/init/entrypoint.sh`)*.
-  </Step>
-  <Step title="Re-issue tokens if missing">
-    If `alfred_data/.gateway-token` is missing, `init` regenerates it — but the new value won't match anything the Hermes profiles already have. Restore `hermes_data` *and* `alfred_data` together, or expect to re-render Hermes profile envs.
-  </Step>
+ <Step title="Restore order">
+ Restore `caddy_data` first (so HTTPS comes up cleanly), then `vault_data`, `state_data`, `ingest_data`, then any Tier 2 volumes you have.
+ </Step>
+ <Step title="docker compose up -d">
+ The init container will detect existing files in `vault_data` and `alfred_data` and skip its scaffold logic *(`packages/hermes/init/entrypoint.sh`)*.
+ </Step>
+ <Step title="Re-issue tokens if missing">
+ If `alfred_data/.gateway-token` is missing, `init` regenerates it — but the new value won't match anything the Hermes profiles already have. Restore `hermes_data` *and* `alfred_data` together, or expect to re-render Hermes profile envs.
+ </Step>
 </Steps>
 
 See [backup and restore drills](/operations/backup-restore) for the per-volume procedure.

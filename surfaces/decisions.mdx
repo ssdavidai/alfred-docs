@@ -10,14 +10,14 @@ description: "The audit ledger of every choice Alfred has made on the principal'
 The page is split into two top-level tabs *(DecisionsPage.tsx:28-30, 304-342)*:
 
 <Tabs>
-  <Tab title="Decisions">
-    The HANDLED / HELD / ASKED ledger plus the 30-day chart. Source is the merge of three queries — `getRecentJudgments`, `getStewardFeed` (event/steward-action records from the background workflow), and `getRecentDecisions` (the `decision/*` records written by every Desk click) *(DecisionsPage.tsx:128-148)*.
+ <Tab title="Decisions">
+ The HANDLED / HELD / ASKED ledger plus the 30-day chart. Source is the merge of three queries — `getRecentJudgments`, `getStewardFeed` (event/steward-action records from the background workflow), and `getRecentDecisions` (the `decision/*` records written by every Desk click) *(DecisionsPage.tsx:128-148)*.
 
-    Each row is normalised into `{ when, input, conf, outcome, state, intent, matterRef, taskRef, sourceSignal }` so the three sources land in the same table.
-  </Tab>
-  <Tab title="State Changes">
-    The cross-target `state_change` feed. Reads `getStateChanges` and `getStateChangeSources`. This is the source-of-truth audit for every mutation that flowed through the state-mutator — matter status flips, task transitions, narrative refreshes, briefing-driven changes.
-  </Tab>
+ Each row is normalised into `{ when, input, conf, outcome, state, intent, matterRef, taskRef, sourceSignal }` so the three sources land in the same table.
+ </Tab>
+ <Tab title="State Changes">
+ The cross-target `state_change` feed. Reads `getStateChanges` and `getStateChangeSources`. This is the source-of-truth audit for every mutation that flowed through the state-mutator — matter status flips, task transitions, narrative refreshes, briefing-driven changes.
+ </Tab>
 </Tabs>
 
 ## The 30-day stacked-bar chart

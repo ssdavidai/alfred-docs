@@ -6,18 +6,18 @@ description: "Every variable in .env — what's required, what bootstrap.sh gene
 Alfred is configured by a **single `.env` file** at the repo root. The flow is:
 
 <Steps>
-  <Step title="Copy the template">
-    `cp .env.example .env`
-  </Step>
-  <Step title="Fill the five required fields">
-    `DOMAIN`, `ACME_EMAIL`, `OWNER_NAME`, `OPENROUTER_API_KEY`, `COMPOSIO_API_KEY`.
-  </Step>
-  <Step title="Run bootstrap.sh">
-    `./scripts/bootstrap.sh` generates 21 auto-secrets and a `COMPOSIO_USER_ID`. Idempotent — re-running never overwrites an existing non-empty value *(scripts/bootstrap.sh:147-172)*.
-  </Step>
-  <Step title="docker compose up">
-    `docker compose up -d`. No build step — every image is pulled.
-  </Step>
+ <Step title="Copy the template">
+ `cp .env.example .env`
+ </Step>
+ <Step title="Fill the five required fields">
+ `DOMAIN`, `ACME_EMAIL`, `OWNER_NAME`, `OPENROUTER_API_KEY`, `COMPOSIO_API_KEY`.
+ </Step>
+ <Step title="Run bootstrap.sh">
+ `./scripts/bootstrap.sh` generates 21 auto-secrets and a `COMPOSIO_USER_ID`. Idempotent — re-running never overwrites an existing non-empty value *(scripts/bootstrap.sh:147-172)*.
+ </Step>
+ <Step title="docker compose up">
+ `docker compose up -d`. No build step — every image is pulled.
+ </Step>
 </Steps>
 
 The sections below enumerate every variable, what reads it, and what happens if it's unset.

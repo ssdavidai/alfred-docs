@@ -1,0 +1,31 @@
+---
+title: "List Balance Sheet"
+description: "GET /api/v1/sure/balance-sheet"
+api: "GET /api/v1/sure/balance-sheet"
+---
+
+## Purpose
+
+`GET /api/v1/sure/balance-sheet` — see live source for the authoritative contract. See the live route handler at `packages/ctrl/src/api/routes/sure.ts:399` for the authoritative request/response contract.
+
+<Note>
+This endpoint is part of the Alfred Black API. The OpenAPI spec for this endpoint is being authored — Mintlify will render parameters, request examples, and response examples here once the spec lands. Until then, see the source citation above for the authoritative shape.
+</Note>
+
+## Try it
+
+<CodeGroup>
+
+```bash cURL
+curl -X GET https://alfred.black/api/v1/sure/balance-sheet \
+ -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+```javascript JavaScript
+const r = await fetch('https://alfred.black/api/v1/sure/balance-sheet', {
+ method: 'GET',
+ headers: { 'Authorization': `Bearer ${process.env.AAS_API_KEY}` },
+});
+```
+
+</CodeGroup>

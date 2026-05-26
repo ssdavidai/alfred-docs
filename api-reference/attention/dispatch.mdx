@@ -1,0 +1,31 @@
+---
+title: "Re-route the card to a Hermes agent"
+description: "Re-route the card to a Hermes agent. Mints a mirror `decision/` record **unless** `body.decision_origin` is set."
+api: "POST /api/v1/admin/needs-attention/:id/dispatch"
+---
+
+## Purpose
+
+Re-route the card to a Hermes agent. Mints a mirror `decision/` record **unless** `body.decision_origin` is set. See the live route handler at `packages/ctrl/src/api/routes/attention.ts:602` for the authoritative request/response contract.
+
+<Note>
+This endpoint is part of the Alfred Black API. The OpenAPI spec for this endpoint is being authored — Mintlify will render parameters, request examples, and response examples here once the spec lands. Until then, see the source citation above for the authoritative shape.
+</Note>
+
+## Try it
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://alfred.black/api/v1/admin/needs-attention/:id/dispatch \
+ -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+```javascript JavaScript
+const r = await fetch('https://alfred.black/api/v1/admin/needs-attention/:id/dispatch', {
+ method: 'POST',
+ headers: { 'Authorization': `Bearer ${process.env.AAS_API_KEY}` },
+});
+```
+
+</CodeGroup>

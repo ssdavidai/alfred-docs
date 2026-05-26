@@ -1,0 +1,124 @@
+---
+title: "vaultwarden"
+description: "Secrets manager — items, folders, password generation, env rotation. 14 MCP tools, one of which returns secret values."
+---
+
+The `vaultwarden` app exposes the per-tenant Vaultwarden secrets manager to LLM clients. The surface is deliberately narrow — list, search, get, create, update, delete login items plus folders, password generation, and a refresh-into-env primitive — because remote LLMs talk to this app over a one-hour bearer token *(packages/mcp-server/src/tools/vaultwarden.ts:12-19)*.
+
+**Backend.** Four-hop call chain *(packages/mcp-server/src/tools/vaultwarden.ts:1-19)*:
+
+```
+claude.ai → mcp.{$DOMAIN}/vaultwarden/mcp
+ → ctrl-api /api/v1/vaultwarden/*
+ → vault-cli :8087 (bw serve)
+ → vaultwarden :80
+```
+
+The `bw serve` session is unlocked at boot using `VAULTWARDEN_BW_PASSWORD` and never re-locked — the sidecar holds the unlocked session for the lifetime of the container. vault-cli auto-syncs from the Vaultwarden server every 5 minutes.
+
+<Warning>
+`get_vault_item` is the **only tool in the entire MCP catalogue that returns secret values** *(packages/mcp-server/src/tools/vaultwarden.ts:93-94)*. `list_vault_items`, `search_vault_items`, and `vaultwarden_status` deliberately omit `login.password` and `login.totp` from their responses. When chaining list → get, treat the get response as sensitive: surface the value to the principal, never dump the full envelope into a model transcript.
+</Warning>
+
+## The 14 tools
+
+<AccordionGroup>
+
+<Accordion title="Session and sync (2 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `vaultwarden_status` | Probe the local Vaultwarden + bw serve session. Returns `serverUrl`, `lastSync`, `userEmail`. | — |
+| `vaultwarden_sync` | Force vault-cli to re-pull from the Vaultwarden server. Call after the principal edited an item in the Vaultwarden web UI. | — |
+
+A failing `vaultwarden_status` usually means vault-cli's bw session expired and the container is mid-restart.
+
+</Accordion>
+
+<Accordion title="Items — list, search, read, write (6 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_vault_items` | List items with optional filters. Returns name, id, folder/collection/organization metadata, `login.username`. **Does not return passwords.** | `search?`, `folder_id?`, `collection_id?`, `organization_id?` |
+| `search_vault_items` | POST variant of list — accepts search strings with special characters that do not URL-encode cleanly. | `search`, optional scoping filters |
+| `get_vault_item` | Fetch one item by id, **including `login.password` and `login.totp`**. The only credential-returning tool in the catalogue. | `id` |
+| `create_vault_item` | New login item. Required: `name` + `value`. Optional: `username`, `notes`, `uris[]`, `folder_id`. | `name`, `value`, `username?`, `notes?`, `folder_id?`, `uris?` |
+| `update_vault_item` | Patch — rotate a value, rename, move folder. Omitted fields are preserved. Server-side merge. | `id` + any updatable field |
+| `delete_vault_item` | Soft-delete (recoverable for 30 days from the Vaultwarden web UI). | `id` |
+
+The `name` field on create becomes the env-var name when `vault_refresh` rewrites `.env`. `notes` is used as the "origin record" annotation during migration *(packages/mcp-server/src/tools/vaultwarden.ts:110, 113)*. Update is server-side merge: pass only the fields to change.
+
+</Accordion>
+
+<Accordion title="Folders (2 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_vault_folders` | List all folders in the principal's vault. Returns id, name. | — |
+| `create_vault_folder` | Create a new folder. Folders organise items in the web UI; they do not grant access (collections do that). | `name` |
+
+`create_vault_folder` is not idempotent — two folders can share a name. Check `list_vault_folders` first when deduplication matters.
+
+</Accordion>
+
+<Accordion title="Collections and organisations (2 tools, read-only)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_vault_collections` | List organisation collections. | — |
+| `list_vault_organizations` | List Bitwarden organisations the principal is a member of. | — |
+
+Both are empty on a single-user tenant. They are populated only if the principal set up a Bitwarden organisation via the web UI — collection and organisation creation goes through the web UI, not this catalogue.
+
+</Accordion>
+
+<Accordion title="Password generator (1 tool)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `generate_password` | Generate a random password using bw serve's built-in generator. Defaults to a 32-char password with letters, digits, and symbols. | `length?`, `uppercase?`, `lowercase?`, `number?`, `special?`, `passphrase?`, `words?`, `separator?` |
+
+Set `passphrase: true` for diceware-style output. The generated value is **returned but not saved** — chain with `create_vault_item({value: <returned>})` to persist.
+
+</Accordion>
+
+<Accordion title="Env rotation — vault_refresh (1 tool)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `vault_refresh` | Rewrite `/opt/alfred/compose/.env` from the current Vaultwarden state and restart impacted services. | `services?` (compose service names) |
+
+Use this after `update_vault_item` to push a rotated secret into the running containers. Default restarts cover the most common consumers; pass `services: ['sure-web', 'sure-worker']` for narrower restarts after rotating Sure-specific secrets. `vault_refresh` refuses to restart ctrl-api itself — that would 502 the response *(packages/mcp-server/src/tools/vaultwarden.ts:225)*.
+
+</Accordion>
+
+</AccordionGroup>
+
+## Typical rotation flow
+
+<Steps>
+ <Step title="Generate a new secret">
+ `generate_password({length: 48, special: true})` returns the new value. Nothing is persisted yet.
+ </Step>
+ <Step title="Update the vault item">
+ `update_vault_item({id, value: <new>})` writes the rotated secret into Vaultwarden. Other consumers still see the old value until env propagation.
+ </Step>
+ <Step title="Refresh .env and restart">
+ `vault_refresh({services: [<the affected ones>]})` rewrites `/opt/alfred/compose/.env` and restarts the listed services so they pick up the new value on next boot.
+ </Step>
+</Steps>
+
+## Deliberately omitted
+
+The bw serve API surfaces more shapes than this catalogue exposes — attachment upload and download, item move, password history, Send. Each additional tool is one more attack surface from a one-hour bearer token, so the catalogue ships the safe-read + safe-write subset that covers realistic chat flows *(packages/mcp-server/src/tools/vaultwarden.ts:12-19)*. Those surfaces can be added later when a real flow requires them.
+
+## Related
+
+<CardGroup cols={2}>
+ <Card title="Vaultwarden integration" href="/integrations/vaultwarden">
+ How the bw serve sidecar wires into the compose stack and how secrets propagate to running services.
+ </Card>
+ <Card title="execute" href="/mcp-reference/execute">
+ Third-party app surface — the same OAuth secrets you store here power Composio connections.
+ </Card>
+</CardGroup>

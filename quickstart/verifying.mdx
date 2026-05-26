@@ -45,9 +45,9 @@ This is the same endpoint the container's healthcheck calls *(docker-compose.yam
 The AI runtime supervises three profiles, each on its own port *(packages/hermes/docker/supervisor.sh)*:
 
 ```bash
-docker compose exec hermes curl -fsS http://localhost:18789/health  # main
-docker compose exec hermes curl -fsS http://localhost:18790/health  # workers
-docker compose exec hermes curl -fsS http://localhost:18791/health  # heavy
+docker compose exec hermes curl -fsS http://localhost:18789/health # main
+docker compose exec hermes curl -fsS http://localhost:18790/health # workers
+docker compose exec hermes curl -fsS http://localhost:18791/health # heavy
 ```
 
 All three should return 200. The compose healthcheck probes the first two *(docker-compose.yaml:303)*; if `heavy` is silent but the first two are green, the Opus-class profile is the one that didn't start — usually because `HERMES_HEAVY_MODEL` is set to a model OpenRouter rejected.
@@ -84,8 +84,8 @@ The most end-to-end signal that the intelligence layer is alive. After onboardin
 
 ```bash
 docker compose exec ctrl-api curl -fsS \
-  -H "Authorization: Bearer $(grep ^AAS_API_KEY= /opt/alfred/.env | cut -d= -f2)" \
-  http://localhost:3100/api/v1/briefings
+ -H "Authorization: Bearer $(grep ^AAS_API_KEY= /opt/alfred/.env | cut -d= -f2)" \
+ http://localhost:3100/api/v1/briefings
 # expect: 200 with an array containing at least one briefing
 ```
 
@@ -105,7 +105,7 @@ This catches the silent failure mode where ingest is full but extraction never r
 
 ```bash
 docker compose exec ctrl-api sqlite3 /state/alfred-state.db \
-  "SELECT status, COUNT(*) FROM signal GROUP BY status;"
+ "SELECT status, COUNT(*) FROM signal GROUP BY status;"
 # expect: some rows, with at least some status != 'unrouted'
 ```
 

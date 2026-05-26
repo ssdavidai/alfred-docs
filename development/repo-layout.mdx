@@ -12,30 +12,30 @@ checkout. There is no second repo, no submodule, no private fork.
 
 ```
 alfred-black/
-├── docker-compose.yaml      single static stack — pull-only, never builds
-├── .env.example             single env template
-├── Makefile                 convenience targets (build, deploy, smoke)
-├── CHANGELOG.md             dated release notes
-├── CLAUDE.md                contributor guide (forbidden zone)
+├── docker-compose.yaml single static stack — pull-only, never builds
+├── .env.example single env template
+├── Makefile convenience targets (build, deploy, smoke)
+├── CHANGELOG.md dated release notes
+├── CLAUDE.md contributor guide (forbidden zone)
 ├── caddy/
-│   └── Caddyfile            reverse proxy + automatic Let's Encrypt TLS
+│ └── Caddyfile reverse proxy + automatic Let's Encrypt TLS
 ├── scripts/
-│   ├── bootstrap.sh         generates secrets, validates .env
-│   └── hooks/               the commit gate (lane checker)
+│ ├── bootstrap.sh generates secrets, validates .env
+│ └── hooks/ the commit gate (lane checker)
 ├── docs/
-│   ├── PLAN.md              full design rationale (Parts A–I)
-│   ├── FAILURE-MODES.md     ranked bug catalogue
-│   ├── FIX-PLAN.md          lane fan-out sequencing
-│   └── FIX-CONTRACTS.md     19 frozen cross-package interfaces
+│ ├── PLAN.md full design rationale (Parts A–I)
+│ ├── FAILURE-MODES.md ranked bug catalogue
+│ ├── FIX-PLAN.md lane fan-out sequencing
+│ └── FIX-CONTRACTS.md 19 frozen cross-package interfaces
 ├── packages/
-│   ├── ctrl/                Node 22 dashboard backend (port 3100)
-│   ├── learn/               Python Temporal worker (signal pipeline)
-│   ├── web/                 Wasp app (the 14 principal pages)
-│   ├── hermes/              agent runtime image + 3-profile supervisor
-│   ├── mcp-server/          one TS codebase, two deploy shapes
-│   ├── alfred-vault/        standalone Python vault daemon
-│   └── voice-bridge/        Twilio voice ↔ Hermes bridge
-└── .github/workflows/       twelve CI pipelines, path-filtered
+│ ├── ctrl/ Node 22 dashboard backend (port 3100)
+│ ├── learn/ Python Temporal worker (signal pipeline)
+│ ├── web/ Wasp app (the 14 principal pages)
+│ ├── hermes/ agent runtime image + 3-profile supervisor
+│ ├── mcp-server/ one TS codebase, two deploy shapes
+│ ├── alfred-vault/ standalone Python vault daemon
+│ └── voice-bridge/ Twilio voice ↔ Hermes bridge
+└── .github/workflows/ twelve CI pipelines, path-filtered
 ```
 
 The seven packages under `packages/` are the **owned territories**. Anything
@@ -45,30 +45,30 @@ is shared infrastructure.
 ## Package boundaries
 
 <CardGroup cols={2}>
-  <Card title="ctrl" icon="server" href="/development/packages-ctrl">
-    The dashboard backend. Single esbuild bundle (`dist/api.mjs`). Sole writer
-    to `alfred-state.db` and `ingest.db`. ~50 route modules under `/api/v1/*`.
-  </Card>
-  <Card title="learn" icon="brain" href="/development/packages-learn">
-    Python 3.12 Temporal worker. ~30 workflows + ~80 activities driving the
-    signal pipeline, the reflection loop, briefings, chores, and onboarding.
-  </Card>
-  <Card title="web" icon="window" href="/development/packages-web">
-    Wasp app. Two containers — Node server (`web`) at port 3000 + nginx SPA
-    (`web-client`) at port 80. Proxies everything to ctrl-api via Bearer token.
-  </Card>
-  <Card title="hermes" icon="robot" href="/development/packages-hermes">
-    The agent runtime image. One Docker image, three supervised profiles
-    (`main`, `workers`, `heavy`) on ports 18789–18791.
-  </Card>
-  <Card title="mcp-server" icon="plug" href="/development/packages-mcp-server">
-    One TypeScript codebase. Compiles to both an HTTP server and the stdio
-    bundle baked into the Hermes image. Six MCP apps, ~155–165 tools total.
-  </Card>
-  <Card title="alfred-vault" icon="book" href="/development/packages-alfred-vault">
-    Standalone Python pip package. Vault CLI invoked by ctrl-api via
-    `dockerExec`. Supports 20+ entity types; ctrl-api enforces 12 in production.
-  </Card>
+ <Card title="ctrl" icon="server" href="/development/packages-ctrl">
+ The dashboard backend. Single esbuild bundle (`dist/api.mjs`). Sole writer
+ to `alfred-state.db` and `ingest.db`. ~50 route modules under `/api/v1/*`.
+ </Card>
+ <Card title="learn" icon="brain" href="/development/packages-learn">
+ Python 3.12 Temporal worker. ~30 workflows + ~80 activities driving the
+ signal pipeline, the reflection loop, briefings, chores, and onboarding.
+ </Card>
+ <Card title="web" icon="window" href="/development/packages-web">
+ Wasp app. Two containers — Node server (`web`) at port 3000 + nginx SPA
+ (`web-client`) at port 80. Proxies everything to ctrl-api via Bearer token.
+ </Card>
+ <Card title="hermes" icon="robot" href="/development/packages-hermes">
+ The agent runtime image. One Docker image, three supervised profiles
+ (`main`, `workers`, `heavy`) on ports 18789–18791.
+ </Card>
+ <Card title="mcp-server" icon="plug" href="/development/packages-mcp-server">
+ One TypeScript codebase. Compiles to both an HTTP server and the stdio
+ bundle baked into the Hermes image. Six MCP apps, ~155–165 tools total.
+ </Card>
+ <Card title="alfred-vault" icon="book" href="/development/packages-alfred-vault">
+ Standalone Python pip package. Vault CLI invoked by ctrl-api via
+ `dockerExec`. Supports 20+ entity types; ctrl-api enforces 12 in production.
+ </Card>
 </CardGroup>
 
 `voice-bridge` is a small Twilio ↔ Hermes shim — see the channels reference for
@@ -103,9 +103,9 @@ contract is frozen, both sides code against it without coordinating
 day-to-day.
 
 <Tip>
-  The full protocol — `.lane` shape, the four rejection rules, the ~200 LOC
-  scope cap — lives in the [lane protocol](/development/lane-protocol) and
-  [commit gate](/development/commit-gate) pages.
+ The full protocol — `.lane` shape, the four rejection rules, the ~200 LOC
+ scope cap — lives in the [lane protocol](/development/lane-protocol) and
+ [commit gate](/development/commit-gate) pages.
 </Tip>
 
 ## Where the deploy artefacts come from

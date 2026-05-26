@@ -14,11 +14,11 @@ When a tenant signs up, the SaaS control plane provisions a fresh Hetzner Cloud 
 
 | Component | Detail |
 |---|---|
-| Server tier | Hetzner Cloud `cx53` (16 vCPU, 32 GB RAM, 320 GB local NVMe) for Premium and Black plans. Starter plans run on `cx33`. *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:17`)* |
+| Server tier | Hetzner Cloud `cx53` (16 vCPU, 32 GB RAM, 320 GB local NVMe) for Premium and Black plans. Starter plans run on `cx33`. |
 | Region | EU only — Hetzner Germany (Falkenstein, Nuremberg) or Finland (Helsinki) depending on capacity at provision time. |
-| Attached volume | Hetzner Cloud volume, sized per plan, formatted with LUKS2 (AES-256-XTS) at first boot. *(`/Users/ssd/dev/alfred/packages/ctrl/src/templates/cloud-init.yaml.njk`)* |
+| Attached volume | Hetzner Cloud volume, sized per plan, formatted with LUKS2 (AES-256-XTS) at first boot. *(`packages/ctrl/src/templates/cloud-init.yaml.njk`)* |
 | Mesh | Private Tailscale tailnet on WireGuard. The tenant's node, the SaaS host, the operator's laptop, and any devices the principal explicitly paired. |
-| Provisioner | `packages/ctrl/src/infra/provisioner.ts` — the same fleet TUI/CLI walks the same numbered steps for every new instance. *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:26`)* |
+| Provisioner | `packages/ctrl/src/infra/provisioner.ts` — the same fleet TUI/CLI walks the same numbered steps for every new instance. |
 
 A bare-bones tenant runs **12 long-running containers** (the 9 Alfred-core services plus the Vaultwarden trio). A fully-loaded tenant — Alfred core + Vaultwarden + Plane + Sure + Vexa — is in the **mid-thirties**. All of them on the subscriber's own VM, all of them bound to `127.0.0.1`.
 
@@ -27,24 +27,24 @@ A bare-bones tenant runs **12 long-running containers** (the 9 Alfred-core servi
 This is the strong-isolation list. Each item below is per-tenant in the same hard sense as "you have your own laptop":
 
 <CardGroup cols={2}>
-  <Card title="Compute" icon="cpu">
-    A dedicated VM, not a container on a shared host. Your workloads never share a Linux kernel with another tenant.
-  </Card>
-  <Card title="Storage" icon="hard-drive">
-    A dedicated Hetzner volume, LUKS2-encrypted with a per-instance passphrase. Your vault, streams, Temporal state, Vaultwarden DB, and Postgres data all live on it.
-  </Card>
-  <Card title="Database" icon="database">
-    SQLite for `alfred-state.db`, `ingest.db`, Temporal, Vaultwarden. Postgres for optional sidecars. None are shared across tenants.
-  </Card>
-  <Card title="Hermes runtime" icon="circuit-board">
-    The three Hermes profiles (`main`, `workers`, `heavy`) run inside the tenant's own `hermes` container with the tenant's own SessionStore on the tenant's own LUKS volume.
-  </Card>
-  <Card title="Vault" icon="folder">
-    The principal's Markdown vault at `/mnt/encrypted/vault` is bind-mounted only into the tenant's own containers.
-  </Card>
-  <Card title="Vaultwarden" icon="lock">
-    Each tenant runs its own Vaultwarden inside its own Docker stack. No shared Vaultwarden, no shared org, no shared collection.
-  </Card>
+ <Card title="Compute" icon="cpu">
+ A dedicated VM, not a container on a shared host. Your workloads never share a Linux kernel with another tenant.
+ </Card>
+ <Card title="Storage" icon="hard-drive">
+ A dedicated Hetzner volume, LUKS2-encrypted with a per-instance passphrase. Your vault, streams, Temporal state, Vaultwarden DB, and Postgres data all live on it.
+ </Card>
+ <Card title="Database" icon="database">
+ SQLite for `alfred-state.db`, `ingest.db`, Temporal, Vaultwarden. Postgres for optional sidecars. None are shared across tenants.
+ </Card>
+ <Card title="Hermes runtime" icon="circuit-board">
+ The three Hermes profiles (`main`, `workers`, `heavy`) run inside the tenant's own `hermes` container with the tenant's own SessionStore on the tenant's own LUKS volume.
+ </Card>
+ <Card title="Vault" icon="folder">
+ The principal's Markdown vault at `/mnt/encrypted/vault` is bind-mounted only into the tenant's own containers.
+ </Card>
+ <Card title="Vaultwarden" icon="lock">
+ Each tenant runs its own Vaultwarden inside its own Docker stack. No shared Vaultwarden, no shared org, no shared collection.
+ </Card>
 </CardGroup>
 
 ## What IS shared (and how it stays isolated)
@@ -57,7 +57,7 @@ The SaaS host at `https://alfred.black` is the public entry point. It handles si
 
 | Property | Isolation guarantee |
 |---|---|
-| Per-tenant API key | One `AAS_API_KEY` per tenant, mapped at the SaaS layer to exactly one `Instance` record. *(`/tmp/alfred-doc-old/api-reference/authentication.mdx:71`)* |
+| Per-tenant API key | One `AAS_API_KEY` per tenant, mapped at the SaaS layer to exactly one `Instance` record. |
 | Routing | The proxy chain only routes a token to the tenant it's bound to — there is no way to use one subscriber's token to reach another's data. |
 | At-rest encryption | The per-tenant `apiKey` is AES-256-GCM encrypted in the SaaS database with a column-encryption key (`COLUMN_ENCRYPTION_KEY`). |
 | Audit | Every proxied request is logged on the tenant's own activity log — see [Audit and logging](/alfred-cloud/security/audit-and-logging). |
@@ -66,7 +66,7 @@ The SaaS host at `https://alfred.black` is the public entry point. It handles si
 
 AgentMail is the inbound delivery layer that hands off incoming email to each tenant. Isolation runs through **inbox-scoped API keys**:
 
-- One master AgentMail API key lives only on the SaaS host (env + macOS Keychain). It is **never** present on a tenant. *(`/tmp/alfred-doc-old/guides/security.mdx:116`)*
+- One master AgentMail API key lives only on the SaaS host (env + macOS Keychain). It is **never** present on a tenant.
 - Each tenant gets its own inbox-scoped key at provision time, derived from the master.
 - The tenant's key can read/send for its inbox only — it cannot enumerate, read, or modify any other tenant's inbox.
 - Webhook delivery from AgentMail to the SaaS uses Svix signature verification with a shared secret.
@@ -78,19 +78,19 @@ The tenant stores its inbox-scoped key at `/mnt/encrypted/alfred/.agentmail-cred
 The Twilio account is shared at the SaaS layer. Per-tenant isolation comes from:
 
 - A **dedicated Twilio sub-number** per tenant — calls and SMS to one number never land on another tenant's inbox.
-- The Voice Bridge runs on the **SaaS host**, not the tenant — Twilio's Media Stream WebSocket lands on `voice.alfred.black` (DNS-only at Cloudflare, because the WAF drops the WebSocket upgrade with error 31920). *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:123`)*
-- The Voice Bridge proxies into the tenant's `ctrl-api` over Tailscale using a scoped `VOICE_BRIDGE_INTERNAL_TOKEN` that is allowlisted to exactly **two routes**: `GET /api/v1/phone/voice-context` and `POST /api/v1/phone/transcript`. Any other route with this token returns 401. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/auth.ts:38–98`)*
+- The Voice Bridge runs on the **SaaS host**, not the tenant — Twilio's Media Stream WebSocket lands on `voice.alfred.black` (DNS-only at Cloudflare, because the WAF drops the WebSocket upgrade with error 31920).
+- The Voice Bridge proxies into the tenant's `ctrl-api` over Tailscale using a scoped `VOICE_BRIDGE_INTERNAL_TOKEN` that is allowlisted to exactly **two routes**: `GET /api/v1/phone/voice-context` and `POST /api/v1/phone/transcript`. Any other route with this token returns 401. *(`packages/ctrl/src/api/auth.ts:38–98`)*
 
-Even if the voice bridge were compromised, the blast radius is bounded to those two endpoints. The master `AAS_API_KEY` never leaves the tenant. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/auth.ts:19`)*
+Even if the voice bridge were compromised, the blast radius is bounded to those two endpoints. The master `AAS_API_KEY` never leaves the tenant. *(`packages/ctrl/src/api/auth.ts:19`)*
 
 ### 4. The shared Composio API key (third-party OAuth)
 
 Composio is the most security-critical shared dependency — it brokers OAuth to Gmail, Calendar, Notion, Slack, GitHub, and ~250 other apps. Isolation runs through **per-tenant `COMPOSIO_USER_ID`**:
 
-- `ctrl-api` refuses to start if `COMPOSIO_USER_ID` is unset or `"default"`. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:109`)*
+- `ctrl-api` refuses to start if `COMPOSIO_USER_ID` is unset or `"default"`. *(`packages/ctrl/src/api/routes/integrations.ts:109`)*
 - Every Composio call passes `user_id` to filter results.
-- Every connection lookup by ID **re-verifies ownership** on the tenant side — `ctrl-api` re-checks `user_id` ownership on every read as a defence-in-depth backstop to Composio's server-side filter. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:1965`)*
-- Connection IDs that don't belong to the tenant return **404** (not 403, to prevent enumeration). *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:284`)*
+- Every connection lookup by ID **re-verifies ownership** on the tenant side — `ctrl-api` re-checks `user_id` ownership on every read as a defence-in-depth backstop to Composio's server-side filter. *(`packages/ctrl/src/api/routes/integrations.ts:1965`)*
+- Connection IDs that don't belong to the tenant return **404** (not 403, to prevent enumeration). *(`packages/ctrl/src/api/routes/integrations.ts:284`)*
 
 See [Per-tenant isolation → Composio](/alfred-cloud/security/per-tenant-isolation#composio) for the full enforcement detail.
 
@@ -109,16 +109,16 @@ If you ever see another tenant's connected app on your Apps page, that is a bug 
 </Warning>
 
 <CardGroup cols={2}>
-  <Card title="Encryption at rest" icon="hard-drive" href="/alfred-cloud/security/encryption-at-rest">
-    LUKS2 setup, the `/mnt/encrypted/*` directory list, key lifecycle.
-  </Card>
-  <Card title="Network model" icon="network" href="/alfred-cloud/security/network-model">
-    The Hetzner firewall, the three ways in, localhost bindings.
-  </Card>
-  <Card title="Per-tenant isolation" icon="users" href="/alfred-cloud/security/per-tenant-isolation">
-    Deep dive on Composio, AgentMail, and Vaultwarden isolation.
-  </Card>
-  <Card title="Data residency" icon="globe" href="/alfred-cloud/security/data-residency">
-    EU-only hosting, GDPR rights, third-party data scope.
-  </Card>
+ <Card title="Encryption at rest" icon="hard-drive" href="/alfred-cloud/security/encryption-at-rest">
+ LUKS2 setup, the `/mnt/encrypted/*` directory list, key lifecycle.
+ </Card>
+ <Card title="Network model" icon="network" href="/alfred-cloud/security/network-model">
+ The Hetzner firewall, the three ways in, localhost bindings.
+ </Card>
+ <Card title="Per-tenant isolation" icon="users" href="/alfred-cloud/security/per-tenant-isolation">
+ Deep dive on Composio, AgentMail, and Vaultwarden isolation.
+ </Card>
+ <Card title="Data residency" icon="globe" href="/alfred-cloud/security/data-residency">
+ EU-only hosting, GDPR rights, third-party data scope.
+ </Card>
 </CardGroup>

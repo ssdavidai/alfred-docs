@@ -17,17 +17,17 @@ surfaces (e.g. a sweep over a live tenant after a release).
 
 - **One agent per issue**, scoped narrowly. Run them as parallel background tasks.
 - **Strictly read-only.** No code edits, no live writes. The agent's brief
-  must say so explicitly: *"no POST/PUT/DELETE, no `docker exec` writes"*. If
-  a probe has an unavoidable side-effect (e.g. triggering a workflow to
-  observe behaviour), the agent **must disclose** it in its report.
+ must say so explicitly: *"no POST/PUT/DELETE, no `docker exec` writes"*. If
+ a probe has an unavoidable side-effect (e.g. triggering a workflow to
+ observe behaviour), the agent **must disclose** it in its report.
 - Each agent writes **one report** to a git-ignored path:
-  `debug/<MMDD>/<issue>-findings.md`. The report must contain:
-  - Exact code path (`file:line`) for the suspected bug.
-  - Live evidence (log excerpts, store query results, screenshots).
-  - **Root cause vs. environmental caveat** — separate real bugs from credit
-    quota / stale deploy / config noise.
-  - A "desired happy path" — what the working system would look like.
-  - A prioritized list of what to fix.
+ `debug/<MMDD>/<issue>-findings.md`. The report must contain:
+ - Exact code path (`file:line`) for the suspected bug.
+ - Live evidence (log excerpts, store query results, screenshots).
+ - **Root cause vs. environmental caveat** — separate real bugs from credit
+ quota / stale deploy / config noise.
+ - A "desired happy path" — what the working system would look like.
+ - A prioritized list of what to fix.
 
 **Synthesis.** When the reports come in, group them by **cross-cutting root
 cause**, not by surface. Most symptoms collapse into a small number of seams
@@ -39,8 +39,8 @@ this way *(see [Incident history](/troubleshooting/incident-history))*.
 
 ```sh
 ssh -o ConnectTimeout=15 -o ServerAliveInterval=10 -o BatchMode=yes \
-    -o StrictHostKeyChecking=accept-new -o IdentityAgent=none \
-    -i ~/.ssh/alfred-black-verify root@<VM-IP>
+ -o StrictHostKeyChecking=accept-new -o IdentityAgent=none \
+ -i ~/.ssh/alfred-black-verify root@<VM-IP>
 ```
 
 ## Mode B — fix fan-out (gate-protected, parallel-safe)
@@ -90,11 +90,11 @@ serial.
 
 1. Leaves the lane's `allowed` globs (lane-jumping).
 2. Touches the **forbidden zone** (`schema.sql`, `db/migrations/**`,
-   `migrate.ts`, `api/server.ts`, `**/CONTRACT.md`, the `FIX-*` and
-   `FAILURE-MODES` docs, `scripts/hooks/**`, `CLAUDE.md`).
+ `migrate.ts`, `api/server.ts`, `**/CONTRACT.md`, the `FIX-*` and
+ `FAILURE-MODES` docs, `scripts/hooks/**`, `CLAUDE.md`).
 3. Exceeds **~200 net LOC** *(packages/ctrl/scripts/hooks/check_lane.py:114)*.
 4. Fails the lane's **VERIFY** command (build / `tsc --noEmit` / pytest /
-   `docker compose config`).
+ `docker compose config`).
 
 Each lane is declared by a `.lane` JSON manifest at the worktree root.
 The main checkout (no `.lane`) is `phase0` — orchestrator, allow-all. A
@@ -111,13 +111,13 @@ needs to be split, not waived.
 Every lane agent receives the same template:
 
 ```
-LANE      : II (learn)
-GOAL      : One sentence of what to fix.
-ALLOWED   : packages/learn/**
+LANE : II (learn)
+GOAL : One sentence of what to fix.
+ALLOWED : packages/learn/**
 FORBIDDEN : docs/FIX-CONTRACTS.md, packages/learn/CONTRACT.md, …
-VERIFY    : cd packages/learn && python3 -m pytest -q
-CONTRACT  : C-OB1 §3 (the relevant clause from FIX-CONTRACTS.md)
-SCOPE     : ~200 LOC. If bigger, STOP and report.
+VERIFY : cd packages/learn && python3 -m pytest -q
+CONTRACT : C-OB1 §3 (the relevant clause from FIX-CONTRACTS.md)
+SCOPE : ~200 LOC. If bigger, STOP and report.
 WHEN DONE : 3-line PR note. Start nothing else.
 
 Standing preamble:

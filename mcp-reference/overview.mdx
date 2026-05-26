@@ -1,0 +1,100 @@
+---
+title: "MCP reference"
+description: "How Alfred exposes its capability surface to LLMs over Model Context Protocol — six apps, ~157 tools, one bundle."
+---
+
+Model Context Protocol (MCP) is the standard that lets a language model call tools published by a server. Alfred publishes its entire operational surface — vault reads, vault writes, finance, projects, secrets, scheduling, third-party app execution — as MCP tools, then exposes the same catalogue over two transports: stdio (for the in-tenant Hermes runtime) and HTTP (for remote LLMs like claude.ai).
+
+## How the catalogue is structured
+
+Six apps live in the registry *(packages/mcp-server/src/tools/registry.ts:16-31)*:
+
+| App | Tools | Backing |
+|---|--:|---|
+| [`alfred`](/mcp-reference/alfred) | 24 | Vault filesystem, Temporal CLI, Hermes pairing, ctrl-api ledger |
+| [`sure`](/mcp-reference/sure) | 95 | Sure REST + sandboxed Rails-runner |
+| [`plane`](/mcp-reference/plane) | 11 | Plane REST API |
+| [`vaultwarden`](/mcp-reference/vaultwarden) | 14 | `bw serve` sidecar → Vaultwarden REST |
+| [`execute`](/mcp-reference/execute) | 6 | Composio v3 platform |
+| [`hermes`](/mcp-reference/hermes) | 7 | Hermes `:18789` / `:18790` HTTP + `hermes cron` CLI |
+| **Total** | **157** | |
+
+All six apps compile from a single TypeScript bundle (`packages/mcp-server`) and share one transport-agnostic dispatch layer: every tool defines `inputSchema` (Zod) plus `buildRequest`, which returns the HTTP method and path *(packages/mcp-server/src/tools/types.ts:43-51)*. The same definitions serve both the stdio child processes spawned by Hermes and the HTTP server reached over Cloudflare Tunnel.
+
+## How Hermes registers MCP servers
+
+Each Hermes profile (`main`, `workers`, `heavy`) registers **six MCP servers** at boot *(packages/hermes/hermes-config.yaml.njk:285-354)*: the HTTP `alfred-ctrl` proxy plus the five stdio apps `alfred`, `sure`, `plane`, `vaultwarden`, `execute`. Hermes spawns each stdio app as a Node child process running `stdio-app.js <app>` and namespaces every tool as `mcp_<server>_<tool>`.
+
+<Note>
+The `hermes` app ships in the same bundle *(packages/mcp-server/src/tools/hermes.ts)* and is reachable through the HTTP MCP server at `mcp.{$DOMAIN}/hermes/mcp`. The profile template currently registers five stdio apps; when extended to include `hermes`, each profile will register seven MCP servers.
+</Note>
+
+## How the HTTP server exposes the same tools
+
+A standalone container — `alfred-mcp-server` — serves the catalogue over HTTPS for remote LLMs. Caddy routes `mcp.{$DOMAIN}/<app>/mcp` to port `:8787` *(packages/mcp-server/src/index.ts:299-334)*. Each app gets its own endpoint:
+
+- `mcp.{$DOMAIN}/alfred/mcp`
+- `mcp.{$DOMAIN}/sure/mcp`
+- `mcp.{$DOMAIN}/plane/mcp`
+- `mcp.{$DOMAIN}/vaultwarden/mcp`
+- `mcp.{$DOMAIN}/execute/mcp`
+- `mcp.{$DOMAIN}/hermes/mcp`
+
+An OAuth grant binds an issued token to **one** `appId` *(packages/mcp-server/src/index.ts:147-150)*. A token minted for `sure` cannot enumerate or call `plane` tools — calls to a mismatched endpoint return `app mismatch: token bound to "sure", but called via /plane/mcp` *(packages/mcp-server/src/index.ts:265-276)*.
+
+## Approval flow — bearer or HTML form
+
+The HTTP server supports two auth paths *(packages/mcp-server/src/index.ts:122-242)*:
+
+<Tabs>
+<Tab title="Human (claude.ai)">
+1. `POST /<app>/mcp` returns 401 with `WWW-Authenticate`.
+2. Browser is redirected through OAuth to `/authorize`.
+3. The principal enters `MCP_APPROVAL_SECRET` on an HTML form.
+4. The form posts to `/approve` with `secret` + `client_id` + `code_challenge` + `app_id` + `redirect_uri`.
+5. The server validates the secret with `timingSafeEqual()`, issues an auth code, and redirects back with the code.
+6. The token is good for one hour *(packages/mcp-server/src/oauth/provider.ts:35)*.
+</Tab>
+<Tab title="Programmatic (bearer)">
+1. Send `Authorization: Bearer ${MCP_APPROVAL_SECRET}`.
+2. Middleware short-circuits the OAuth verifier and synthesises `req.auth` directly *(packages/mcp-server/src/index.ts:210-242)*.
+3. The blast radius is identical to a full OAuth token — the secret can already mint one — but the round-trip is gone.
+</Tab>
+</Tabs>
+
+Stdio apps inherit auth from the parent Hermes profile via the gateway token at `/alfred-data/.gateway-token` and never see the approval secret.
+
+## Per-app OAuth scoping
+
+The OAuth grant carries an `appId` in its `props` payload *(packages/mcp-server/src/oauth/provider.ts)*. At tool-call time the dispatcher checks `props.appId === appId` and rejects mismatches *(packages/mcp-server/src/index.ts:266-276)*. Each app advertises a distinct canonical resource URI via `/.well-known/oauth-protected-resource/<app>/mcp` *(packages/mcp-server/src/index.ts:96-106)*, so MCP clients pick up the correct resource binding automatically.
+
+## Tool call path
+
+Every tool goes through one shared helper, `proxyToCtrl()` *(packages/mcp-server/src/tools/helpers.ts:68-96)*. It attaches `Authorization: Bearer ${AAS_API_KEY}` and forwards the call to ctrl-api on `:3100`. ctrl-api then routes to the real backend — filesystem, Plane REST, Vaultwarden REST, Composio v3, Sure's Rails runner, or Hermes' HTTP API.
+
+## The seventh server — alfred-ctrl
+
+The HTTP proxy registered in each profile's `config.yaml` *(packages/hermes/hermes-config.yaml.njk:287-305)* is a separate MCP server (`ctrl-server.mjs`) that exposes the full ctrl-api surface as a generic HTTP `self` tool. The five stdio apps above expose a curated 157-tool subset; `alfred-ctrl` is the full unfiltered surface, intended for in-house agents where trust is much higher than a one-hour bearer.
+
+## Per-app pages
+
+<CardGroup cols={2}>
+ <Card title="alfred" icon="user-tie" href="/mcp-reference/alfred">
+ Vault read/write, agent delegation, Temporal workflows, briefings, gateway diagnostics, notifications. 24 tools.
+ </Card>
+ <Card title="sure" icon="chart-line" href="/mcp-reference/sure">
+ Personal finance — accounts, transactions, rules, holdings, budgets, imports, clustering. 95 tools.
+ </Card>
+ <Card title="plane" icon="diagram-project" href="/mcp-reference/plane">
+ Plane project management — cross-project search, issue CRUD, metadata resolution. 11 tools.
+ </Card>
+ <Card title="vaultwarden" icon="vault" href="/mcp-reference/vaultwarden">
+ Secrets manager — items, folders, password generation, env rotation. 14 tools.
+ </Card>
+ <Card title="execute" icon="bolt" href="/mcp-reference/execute">
+ Composio surface — one execute primitive over ~1,000 third-party apps. 6 tools.
+ </Card>
+ <Card title="hermes" icon="microchip" href="/mcp-reference/hermes">
+ Runtime orchestration — background runs, cron scheduling, profile-aware. 7 tools.
+ </Card>
+</CardGroup>

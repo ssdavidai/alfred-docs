@@ -132,7 +132,7 @@ docker compose exec ctrl-api cat /vault/SOUL.md
 
 ```sh
 docker compose exec ctrl-api sqlite3 -readonly /state/alfred-state.db \
-  "SELECT key, value FROM setting WHERE key LIKE '%_mode';"
+ "SELECT key, value FROM setting WHERE key LIKE '%_mode';"
 ```
 
 If anything shows `"shadow"` or `"off"`, that's likely your bug. Toggle via

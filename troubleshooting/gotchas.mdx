@@ -18,11 +18,11 @@ ever sees the request *(packages/ctrl/src/api/routes/vault.ts:976)*.
 Wrap every field in one of the canonical operators:
 
 ```json
-{ "set":          { "title": "new" } }
-{ "append":       { "tags": ["urgent"] } }
-{ "body_append":  "new markdown line" }
-{ "body_set":     "fully replaced body" }
-{ "json_set":     { "data.counters.viewed": 12 } }
+{ "set": { "title": "new" } }
+{ "append": { "tags": ["urgent"] } }
+{ "body_append": "new markdown line" }
+{ "body_set": "fully replaced body" }
+{ "json_set": { "data.counters.viewed": 12 } }
 ```
 
 A bare field-keyed body is a no-op without a diagnostic.
@@ -152,8 +152,8 @@ The 1Password SSH agent silently hijacks identity selection on macOS, so
 
 ```sh
 ssh -o ConnectTimeout=15 -o ServerAliveInterval=10 -o BatchMode=yes \
-    -o StrictHostKeyChecking=accept-new -o IdentityAgent=none \
-    -i ~/.ssh/alfred-black-verify root@<VM-IP>
+ -o StrictHostKeyChecking=accept-new -o IdentityAgent=none \
+ -i ~/.ssh/alfred-black-verify root@<VM-IP>
 ```
 
 <Warning>

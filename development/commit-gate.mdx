@@ -42,8 +42,8 @@ under `packages/ctrl/`.
 
 Lane-jumping detected — these staged files are not in your lane:
 
-  OUT OF LANE      packages/ctrl/src/api/routes/foo.ts
-                   → lane II (learn) owns only: packages/learn/**
+ OUT OF LANE packages/ctrl/src/api/routes/foo.ts
+ → lane II (learn) owns only: packages/learn/**
 ```
 
 *(scripts/hooks/check_lane.py:99-106)*
@@ -58,8 +58,8 @@ documented on the [lane protocol page](/development/lane-protocol#the-forbidden-
 the fix docs, the hook scripts themselves, and `CLAUDE.md`.
 
 ```
-  FORBIDDEN ZONE   packages/ctrl/src/api/server.ts
-                   → Phase-0-owned shared surface. Coordinate centrally; do not edit in a lane.
+ FORBIDDEN ZONE packages/ctrl/src/api/server.ts
+ → Phase-0-owned shared surface. Coordinate centrally; do not edit in a lane.
 ```
 
 ### 3. Scope cap exceeded
@@ -104,17 +104,17 @@ The file is JSON and has three optional keys
 
 ```json
 {
-  "lane": "II",
-  "verify": "cd packages/learn && python -m pytest tests/test_signals.py -q",
-  "scope_limit": 350
+ "lane": "II",
+ "verify": "cd packages/learn && python -m pytest tests/test_signals.py -q",
+ "scope_limit": 350
 }
 ```
 
 - **`lane`** *(required)* — one of `I`, `II`, `III`, `IV`, `V`.
 - **`verify`** *(optional)* — override the lane's default VERIFY,
-  typically to narrow it to a single test file for a focused task.
+ typically to narrow it to a single test file for a focused task.
 - **`scope_limit`** *(optional, default 200)* — bump the LOC cap for a
-  legitimately larger task. Justify it in the PR description.
+ legitimately larger task. Justify it in the PR description.
 
 Minimal form, written when the agent starts:
 
@@ -175,10 +175,10 @@ there.
 ## What to read next
 
 <CardGroup cols={2}>
-  <Card title="The lane protocol" href="/development/lane-protocol">
-    The five lanes, the forbidden zone, and the C1–C19 contract series.
-  </Card>
-  <Card title="CI workflows" href="/development/ci-workflows">
-    What happens after the gate accepts your commit — path-filtered image builds.
-  </Card>
+ <Card title="The lane protocol" href="/development/lane-protocol">
+ The five lanes, the forbidden zone, and the C1–C19 contract series.
+ </Card>
+ <Card title="CI workflows" href="/development/ci-workflows">
+ What happens after the gate accepts your commit — path-filtered image builds.
+ </Card>
 </CardGroup>

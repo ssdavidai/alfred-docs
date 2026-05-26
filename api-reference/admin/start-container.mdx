@@ -1,0 +1,44 @@
+---
+title: "Start container"
+description: "Start a stopped container in the tenant Docker stack."
+api: "POST /api/v1/admin/containers/{service}/start"
+---
+
+Starts the named compose service via `docker compose start <service>`. Use this to bring back a service that was stopped via [`POST /api/v1/admin/containers/{service}/stop`](/api-reference/admin/stop-container) or that exited unexpectedly.
+
+## Path parameters
+
+<ParamField path="service" type="string" required>
+ Compose service id. Must match `[a-zA-Z0-9_-]+`. Common values: `ctrl-api`, `hermes`, `alfred-learn`, `temporal`, `caddy`, `web`, `web-client`.
+</ParamField>
+
+## Response
+
+<ResponseField name="message" type="string">Confirmation that the start was issued.</ResponseField>
+
+## Errors
+
+`400 Bad Request` — `service` contains invalid characters.
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://alfred.black/api/v1/admin/containers/alfred/start \
+ -H "Authorization: Bearer alf_your_key_here"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+ "message": "Container \"alfred\" started"
+}
+```
+
+</ResponseExample>
+
+<Note>
+ Starting an already-running container is a no-op and returns success. To verify state afterwards, call [`GET /api/v1/admin/containers`](/api-reference/admin/list-containers).
+</Note>

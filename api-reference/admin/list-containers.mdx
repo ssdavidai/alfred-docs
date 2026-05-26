@@ -1,0 +1,47 @@
+---
+title: "List containers"
+description: "Show every container in the tenant Docker stack with state and health."
+api: "GET /api/v1/admin/containers"
+---
+
+Returns the status of every container in your Alfred stack. Backs onto `docker compose ps --format json` against the tenant compose file. Useful for the dashboard's instance overview, scripted health monitoring, and post-deploy verification.
+
+## Response
+
+An array of compose container records. Field names are PascalCase straight from Docker Compose.
+
+<ResponseField name="Name" type="string">Full container name (e.g. `alfred-black-hermes-1`).</ResponseField>
+<ResponseField name="Service" type="string">Compose service id (`ctrl-api`, `hermes`, `alfred-learn`, `temporal`, `init`, `caddy`, `web`, `web-client`).</ResponseField>
+<ResponseField name="State" type="string">`running`, `exited`, `restarting`, etc.</ResponseField>
+<ResponseField name="Health" type="string">Container health (`healthy`, `unhealthy`, `starting`) when a healthcheck is defined; empty string otherwise.</ResponseField>
+<ResponseField name="ExitCode" type="integer">Exit code if the container has exited; `0` while running.</ResponseField>
+
+<RequestExample>
+
+```bash cURL
+curl -X GET https://alfred.black/api/v1/admin/containers \
+ -H "Authorization: Bearer alf_your_key_here"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+[
+ { "Name": "alfred-black-init-1", "Service": "init", "State": "exited", "Health": "", "ExitCode": 0 },
+ { "Name": "alfred-black-ctrl-api-1", "Service": "ctrl-api", "State": "running", "Health": "healthy", "ExitCode": 0 },
+ { "Name": "alfred-black-temporal-1", "Service": "temporal", "State": "running", "Health": "healthy", "ExitCode": 0 },
+ { "Name": "alfred-black-hermes-1", "Service": "hermes", "State": "running", "Health": "healthy", "ExitCode": 0 },
+ { "Name": "alfred-black-alfred-learn-1","Service": "alfred-learn", "State": "running", "Health": "", "ExitCode": 0 },
+ { "Name": "alfred-black-caddy-1", "Service": "caddy", "State": "running", "Health": "", "ExitCode": 0 },
+ { "Name": "alfred-black-web-1", "Service": "web", "State": "running", "Health": "", "ExitCode": 0 },
+ { "Name": "alfred-black-web-client-1", "Service": "web-client", "State": "running", "Health": "healthy", "ExitCode": 0 }
+]
+```
+
+</ResponseExample>
+
+<Note>
+ The `init` service is a one-shot scaffolder and is expected to show `State: "exited"` with `ExitCode: 0` after a successful run. Anything else there indicates an init failure to investigate.
+</Note>

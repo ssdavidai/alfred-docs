@@ -1,0 +1,72 @@
+---
+title: "Distiller Scan"
+description: "Identify extraction candidates without running the agent."
+api: "POST /api/v1/workers/distiller/scan"
+---
+
+Triggers `alfred distiller scan`: walks the vault, identifies records that look like extraction candidates (sources of latent assumptions, decisions, constraints, contradictions, or syntheses), and reports them. No LLM agent is invoked, no records are written.
+
+For the full extraction pass, use [`distiller/run`](/api-reference/workers/distiller-run).
+
+## Authentication
+
+Bearer token in the `Authorization` header.
+
+## Request body
+
+<ParamField body="project" type="string" optional>
+ Filter candidates to a single project slug. Omit to scan the entire vault.
+</ParamField>
+
+<RequestExample>
+
+```bash Whole vault
+curl -X POST https://alfred.black/api/v1/workers/distiller/scan \
+ -H "Authorization: Bearer alf_your_key_here" \
+ -H "Content-Type: application/json" \
+ -d '{}'
+```
+
+```bash Single project
+curl -X POST https://alfred.black/api/v1/workers/distiller/scan \
+ -H "Authorization: Bearer alf_your_key_here" \
+ -H "Content-Type: application/json" \
+ -d '{"project": "acme-redesign"}'
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 Structured
+{
+ "records_scanned": 423,
+ "candidates_found": 8,
+ "candidates": [
+ {"path": "matters/acme-redesign.md", "reason": "decision-language detected"},
+ {"path": "tasks/migrate-db.md", "reason": "constraint-language detected"}
+ ]
+}
+```
+
+```json 200 Raw fallback
+{
+ "raw": "Scanned 423 records, found 8 candidates"
+}
+```
+
+</ResponseExample>
+
+<ResponseField name="raw" type="string">
+ Trimmed stdout when the CLI did not return JSON. Present only in the fallback case.
+</ResponseField>
+
+## When to use
+
+- Estimating Distiller workload before a `run`.
+- Verifying that recent vault writes produced new candidate material.
+- Project-scoped audits ahead of a focused extraction pass.
+
+<Note>
+ Scans are LLM-free and cheap. Use them freely.
+</Note>

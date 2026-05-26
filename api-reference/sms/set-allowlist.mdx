@@ -1,0 +1,31 @@
+---
+title: "Set the allowed `From:` numbers"
+description: "Set the allowed `From:` numbers."
+api: "PUT /api/v1/channels/sms/allowlist"
+---
+
+## Purpose
+
+Set the allowed `From:` numbers. See the live route handler at `packages/ctrl/src/api/routes/sms.ts:591` for the authoritative request/response contract.
+
+<Note>
+This endpoint is part of the Alfred Black API. The OpenAPI spec for this endpoint is being authored — Mintlify will render parameters, request examples, and response examples here once the spec lands. Until then, see the source citation above for the authoritative shape.
+</Note>
+
+## Try it
+
+<CodeGroup>
+
+```bash cURL
+curl -X PUT https://alfred.black/api/v1/channels/sms/allowlist \
+ -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+```javascript JavaScript
+const r = await fetch('https://alfred.black/api/v1/channels/sms/allowlist', {
+ method: 'PUT',
+ headers: { 'Authorization': `Bearer ${process.env.AAS_API_KEY}` },
+});
+```
+
+</CodeGroup>

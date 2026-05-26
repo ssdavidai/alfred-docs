@@ -19,9 +19,9 @@ The call chain when Alfred reads a secret is:
 
 ```
 claude.ai → /vaultwarden/mcp (mcp-server)
-          → ctrl-api /api/v1/vaultwarden/*
-            → vault-cli :8087 (bw serve)
-              → vaultwarden :80
+ → ctrl-api /api/v1/vaultwarden/*
+ → vault-cli :8087 (bw serve)
+ → vaultwarden :80
 ```
 
 ## The fourteen tools
@@ -64,15 +64,15 @@ The catalogue is deliberately narrow *(packages/mcp-server/src/tools/vaultwarden
 The flow Alfred uses to surface a credential:
 
 <Steps>
-  <Step title="List or search">
-    `list_vault_items({search: 'wise'})` returns names + ids + folders, no passwords.
-  </Step>
-  <Step title="Pick one">
-    The principal confirms which item. Alfred has an id.
-  </Step>
-  <Step title="Reveal">
-    `get_vault_item({id})` returns `login.password`. The model shows the value to the principal — not the JSON envelope.
-  </Step>
+ <Step title="List or search">
+ `list_vault_items({search: 'wise'})` returns names + ids + folders, no passwords.
+ </Step>
+ <Step title="Pick one">
+ The principal confirms which item. Alfred has an id.
+ </Step>
+ <Step title="Reveal">
+ `get_vault_item({id})` returns `login.password`. The model shows the value to the principal — not the JSON envelope.
+ </Step>
 </Steps>
 
 ## Rotation propagation via `vault_refresh`

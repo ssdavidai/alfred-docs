@@ -1,0 +1,79 @@
+---
+title: "List Workflows"
+description: "List Temporal workflow executions on the alfred-learn task queue."
+api: "GET /api/v1/workflows"
+---
+
+Lists workflow executions visible to the tenant's Temporal cluster. Wraps `temporal workflow list --output json` and returns whatever the Temporal CLI emits.
+
+This includes every workflow type registered against the `alfred-learn` task queue — for example `EventProcessorWorkflow`, `JudgmentWorkflow`, `HourlyEnrichmentWorkflow`, `OnboardingPipelineWorkflow`, `DailyDigestWorkflow`, and any user-generated chore workflows.
+
+## Authentication
+
+Bearer token in the `Authorization` header.
+
+## Query parameters
+
+<ParamField query="query" type="string" optional>
+ Temporal visibility query passed straight to `--query`. Uses Temporal's SQL-like syntax. If omitted, no filter is applied.
+
+ Examples:
+ - `ExecutionStatus="Running"`
+ - `WorkflowType="JudgmentWorkflow" AND ExecutionStatus="Completed"`
+ - `StartTime > "2026-04-01T00:00:00Z"`
+</ParamField>
+
+<RequestExample>
+
+```bash All workflows
+curl -X GET https://alfred.black/api/v1/workflows \
+ -H "Authorization: Bearer alf_your_key_here"
+```
+
+```bash Running only
+curl -X GET --get https://alfred.black/api/v1/workflows \
+ --data-urlencode 'query=ExecutionStatus="Running"' \
+ -H "Authorization: Bearer alf_your_key_here"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+[
+ {
+ "execution": {
+ "workflowId": "al-judgment-run",
+ "runId": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+ },
+ "type": {"name": "JudgmentWorkflow"},
+ "taskQueue": "alfred-learn",
+ "startTime": "2026-04-25T09:14:00Z",
+ "status": "WORKFLOW_EXECUTION_STATUS_RUNNING"
+ },
+ {
+ "execution": {
+ "workflowId": "al-hourly-enrichment-run",
+ "runId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+ },
+ "type": {"name": "HourlyEnrichmentWorkflow"},
+ "taskQueue": "alfred-learn",
+ "startTime": "2026-04-25T09:00:00Z",
+ "closeTime": "2026-04-25T09:00:42Z",
+ "status": "WORKFLOW_EXECUTION_STATUS_COMPLETED"
+ }
+]
+```
+
+</ResponseExample>
+
+## When to use
+
+- Powering the Workflows tab in the dashboard.
+- Confirming that scheduled workflows are firing on cadence.
+- Filtering for stuck `RUNNING` executions older than a known threshold.
+
+<Note>
+ The exact JSON shape comes from Temporal's CLI output, not from ctrl-api. Treat the schema as Temporal's contract — it has historically been stable but can shift between Temporal server upgrades. The endpoint uses `parseJsonLines`, so it tolerates both pretty-printed JSON arrays and JSONL streams.
+</Note>

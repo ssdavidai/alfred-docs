@@ -1,0 +1,104 @@
+---
+title: "Stream logs"
+description: "Server-Sent Events stream of live container logs."
+api: "GET /api/v1/logs"
+---
+
+Opens a long-lived Server-Sent Events (SSE) connection that emits log lines from one container, or from every container in your Alfred stack, as they happen. Used by the dashboard's live log viewer and handy for ad-hoc debugging from a terminal.
+
+The stream backs onto `docker compose logs --tail <n> -f` on the VM.
+
+## Query parameters
+
+<ParamField query="service" type="string">
+ Filter to a single service (`ctrl-api`, `hermes`, `alfred-learn`, `temporal`, `init`, `caddy`, `web`, `web-client`). Must match `[a-zA-Z0-9_-]+`. Omit to stream every service interleaved.
+</ParamField>
+
+<ParamField query="tail" type="string" default="100">
+ Number of historical lines to emit before live tailing begins. Must be a non-negative integer. Pass `"0"` to skip backfill.
+</ParamField>
+
+## Response stream
+
+`Content-Type: text/event-stream`, no buffering (`X-Accel-Buffering: no`).
+
+Each line arrives as a single SSE `data:` event with a JSON payload:
+
+```
+data: {"line":"2026-04-25T08:14:02Z hermes | gateway listening on 0.0.0.0:18789"}
+
+
+```
+
+When the underlying `docker compose logs` process exits cleanly:
+
+```
+event: close
+data: {}
+```
+
+If the spawn fails:
+
+```
+data: {"error":"<error message>"}
+```
+
+When the client disconnects, ctrl-API sends `SIGTERM` to the underlying `docker compose logs` process to clean up immediately.
+
+## Errors
+
+`400 Bad Request` — `service` contains invalid characters or `tail` isn't numeric.
+
+<RequestExample>
+
+```bash All services
+curl -N -H "Authorization: Bearer alf_your_key_here" \
+ https://alfred.black/api/v1/logs
+```
+
+```bash Single service
+curl -N -H "Authorization: Bearer alf_your_key_here" \
+ "https://alfred.black/api/v1/logs?service=hermes&tail=200"
+```
+
+```bash Live only, no backfill
+curl -N -H "Authorization: Bearer alf_your_key_here" \
+ "https://alfred.black/api/v1/logs?service=alfred-learn&tail=0"
+```
+
+```javascript Browser EventSource
+// Standard EventSource cannot set Authorization headers — use a polyfill
+// (e.g. event-source-polyfill) or wrap fetch() with a ReadableStream reader.
+const es = new EventSourcePolyfill('/api/v1/logs?service=hermes', {
+ headers: { Authorization: 'Bearer alf_your_key_here' },
+});
+
+es.onmessage = (e) => {
+ const data = JSON.parse(e.data);
+ if (data.line) console.log(data.line);
+ if (data.error) console.error(data.error);
+};
+
+es.addEventListener('close', () => es.close());
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```
+data: {"line":"2026-04-25T08:14:02Z alfred | INFO curator watching inbox/"}
+
+data: {"line":"2026-04-25T08:14:03Z hermes | gateway listening on 0.0.0.0:18789"}
+
+data: {"line":"2026-04-25T08:14:04Z temporal | started WorkflowTaskPoller"}
+
+event: close
+data: {}
+```
+
+</ResponseExample>
+
+<Note>
+ For a one-shot, non-streaming dump of a single service's recent logs, use [`GET /api/v1/admin/containers/{service}/logs`](/api-reference/admin/container-logs) — that endpoint returns plain JSON and is easier to consume from scripts that don't speak SSE.
+</Note>

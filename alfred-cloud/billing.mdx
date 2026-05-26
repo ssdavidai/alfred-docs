@@ -57,7 +57,7 @@ To cancel, email the operator. Cancellation is processed at the end of the curre
 Once the billing period ends, the Docker stack is stopped on the VPS but the **encrypted volume is preserved**. The vault, the `alfred-state.db` audit ledger, the instinct library, chore source files, Vaultwarden secrets — all intact.
 
 <Warning>
-A suspended Alfred has a **30-day grace period**. During that window, the data is intact and resubscribing brings everything back. After 30 days, the instance and its volume are decommissioned and the data **cannot** be recovered. *(/tmp/alfred-doc-old/guides/billing.mdx:69-71)*
+A suspended Alfred has a **30-day grace period**. During that window, the data is intact and resubscribing brings everything back. After 30 days, the instance and its volume are decommissioned and the data **cannot** be recovered.
 </Warning>
 
 ### 6. Decommissioning
@@ -84,36 +84,36 @@ If preserving data matters and cancellation is permanent, request an **export** 
 ## Frequently asked
 
 <AccordionGroup>
-  <Accordion title="Can I see the price before signing up?">
-    Not on a public page, no. The onboarding call is partly a fit check — we want to make sure Cloud is the right tool for what you're trying to do before quoting. If you want a ballpark number before the call, mention it in your email and the operator will share a range.
-  </Accordion>
+ <Accordion title="Can I see the price before signing up?">
+ Not on a public page, no. The onboarding call is partly a fit check — we want to make sure Cloud is the right tool for what you're trying to do before quoting. If you want a ballpark number before the call, mention it in your email and the operator will share a range.
+ </Accordion>
 
-  <Accordion title="What happens to my data if I cancel?">
-    The encrypted volume is preserved for **30 days** after cancellation. Resubscribing during the grace period restores access to your existing vault. After 30 days, the volume is wiped and the instance is destroyed permanently. Request an export beforehand if you want a copy.
-  </Accordion>
+ <Accordion title="What happens to my data if I cancel?">
+ The encrypted volume is preserved for **30 days** after cancellation. Resubscribing during the grace period restores access to your existing vault. After 30 days, the volume is wiped and the instance is destroyed permanently. Request an export beforehand if you want a copy.
+ </Accordion>
 
-  <Accordion title="Can I get my data back after decommissioning?">
-    No. Once an instance is decommissioned, the volume is destroyed and the data cannot be recovered. If you resubscribe later, a fresh Alfred is provisioned from zero.
-  </Accordion>
+ <Accordion title="Can I get my data back after decommissioning?">
+ No. Once an instance is decommissioned, the volume is destroyed and the data cannot be recovered. If you resubscribe later, a fresh Alfred is provisioned from zero.
+ </Accordion>
 
-  <Accordion title="What if I want to move to self-hosted instead?">
-    Cancel and request a Cloud → self-hosted export during the 30-day grace window. See [Migration](/alfred-cloud/migration). You'll be running on your own VM with your existing vault + instincts in a day or two.
-  </Accordion>
+ <Accordion title="What if I want to move to self-hosted instead?">
+ Cancel and request a Cloud → self-hosted export during the 30-day grace window. See [Migration](/alfred-cloud/migration). You'll be running on your own VM with your existing vault + instincts in a day or two.
+ </Accordion>
 
-  <Accordion title="Where is my data stored?">
-    Your tenant runs on a dedicated `cx53` Hetzner Cloud VPS in the EU (Germany or Finland, depending on availability at provision time). The data volume is LUKS2-encrypted with a per-instance passphrase. The LUKS keyfile is held by the operator and backed up separately from the data. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:18)*
-  </Accordion>
+ <Accordion title="Where is my data stored?">
+ Your tenant runs on a dedicated `cx53` Hetzner Cloud VPS in the EU (Germany or Finland, depending on availability at provision time). The data volume is LUKS2-encrypted with a per-instance passphrase. The LUKS keyfile is held by the operator and backed up separately from the data.
+ </Accordion>
 
-  <Accordion title="Will pricing change at public launch?">
-    Public-launch pricing will be published separately. Existing private-beta subscribers will see their negotiated rate held for at least 12 months after public launch, and you'll have at least 60 days' notice before any change to your specific contract.
-  </Accordion>
+ <Accordion title="Will pricing change at public launch?">
+ Public-launch pricing will be published separately. Existing private-beta subscribers will see their negotiated rate held for at least 12 months after public launch, and you'll have at least 60 days' notice before any change to your specific contract.
+ </Accordion>
 </AccordionGroup>
 
 <CardGroup cols={2}>
-  <Card title="Private beta" icon="user-lock" href="/alfred-cloud/private-beta">
-    How to request access and what onboarding looks like.
-  </Card>
-  <Card title="Migration" icon="arrow-right-arrow-left" href="/alfred-cloud/migration">
-    Export Cloud → self-hosted within the 30-day grace window.
-  </Card>
+ <Card title="Private beta" icon="user-lock" href="/alfred-cloud/private-beta">
+ How to request access and what onboarding looks like.
+ </Card>
+ <Card title="Migration" icon="arrow-right-arrow-left" href="/alfred-cloud/migration">
+ Export Cloud → self-hosted within the 30-day grace window.
+ </Card>
 </CardGroup>

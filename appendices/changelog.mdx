@@ -23,37 +23,37 @@ turn.
 **Added**
 
 - **One-Alfred continuity layer (the centrepiece).** `state.db` gains an
-  append-only `alfred_journal` (migration `0002`) plus `alfred_principal` and
-  `alfred_principal_channel` tables. Every outbound Alfred message and every
-  inbound principal turn becomes a journal row keyed by
-  `principal_id × channel × chat_id` with stable `(ts, rowid)` ordering.
+ append-only `alfred_journal` (migration `0002`) plus `alfred_principal` and
+ `alfred_principal_channel` tables. Every outbound Alfred message and every
+ inbound principal turn becomes a journal row keyed by
+ `principal_id × channel × chat_id` with stable `(ts, rowid)` ordering.
 - `POST /api/v1/alfred-deliver` — the **single butler-voiced outbound**.
-  Used by `notify_principal`, by the delegate handoff, and by the Desk
-  "Hand it to Alfred" action. Talks directly to `api.telegram.org` and
-  `slack.com/api/chat.postMessage`; no Hermes webhook roundtrip.
+ Used by `notify_principal`, by the delegate handoff, and by the Desk
+ "Hand it to Alfred" action. Talks directly to `api.telegram.org` and
+ `slack.com/api/chat.postMessage`; no Hermes webhook roundtrip.
 - `packages/hermes/plugins/one-alfred/` — a Hermes plugin with three hooks
-  (`pre_gateway_dispatch`, `pre_llm_call`, `post_llm_call`) that injects
-  recent journal entries as **authoritative** continuity (`[ALFRED-CONTINUITY
-  — authoritative]` + "these DID happen"). 5-second dedupe latch.
+ (`pre_gateway_dispatch`, `pre_llm_call`, `post_llm_call`) that injects
+ recent journal entries as **authoritative** continuity (`[ALFRED-CONTINUITY
+ — authoritative]` + "these DID happen"). 5-second dedupe latch.
 - **Channels — Telegram and Slack go live** at `/channels`. Manifest-paste /
-  token-paste setup, paired-chat management, send-test, disconnect, runtime
-  workspace info, all backed by `/api/v1/channels/{telegram,slack}/*` routes
-  on ctrl-api that write directly to the per-profile Hermes `.env`.
+ token-paste setup, paired-chat management, send-test, disconnect, runtime
+ workspace info, all backed by `/api/v1/channels/{telegram,slack}/*` routes
+ on ctrl-api that write directly to the per-profile Hermes `.env`.
 - **Agent-autonomy toggles** at `/settings#agent`: `signal_action_mode`,
-  `state_mutator_mode`, `auto_task_create_mode` (`live | shadow | off`,
-  default `live`). See [Mode flags](/troubleshooting/gotchas#mode-flags--defaults).
+ `state_mutator_mode`, `auto_task_create_mode` (`live | shadow | off`,
+ default `live`). See [Mode flags](/troubleshooting/gotchas#mode-flags--defaults).
 - **Delegate pipeline end-to-end**: `DecisionRouter` fires
-  `dispatch_action_to_agent` for `intent=delegate`; the dispatch path mints a
-  re-routed signal in terminal state so `SignalRouter` cannot loop on its own
-  output; `principal_note` is the canonical task (`action_what` demoted to
-  context); `route_decision` budget grows from 60s to 1000s with a
-  `recover_stuck_dispatching` safety net.
+ `dispatch_action_to_agent` for `intent=delegate`; the dispatch path mints a
+ re-routed signal in terminal state so `SignalRouter` cannot loop on its own
+ output; `principal_note` is the canonical task (`action_what` demoted to
+ context); `route_decision` budget grows from 60s to 1000s with a
+ `recover_stuck_dispatching` safety net.
 
 **Changed**
 
 - Instinct scorer matches **multi-word patterns**; `MATCH_THRESHOLD` drops
-  from 0.15 → 0.10 → 0.05 across two rounds. The matcher reliably finds
-  matches. See [Incident history](/troubleshooting/incident-history).
+ from 0.15 → 0.10 → 0.05 across two rounds. The matcher reliably finds
+ matches. See [Incident history](/troubleshooting/incident-history).
 - Unconfirmed instincts are included in the matcher load.
 - The signal→instinct loop persists `matched_instinct` end-to-end.
 - Chore-run observations now route to `state.db` (not the vault).
@@ -63,31 +63,31 @@ turn.
 **Fixed**
 
 - `/channels` Telegram card: the broken `POST /pair` (which called a
-  non-existent `hermes pairing mint` subcommand) is dropped; the card now
-  reads the real `paired_chats` list.
+ non-existent `hermes pairing mint` subcommand) is dropped; the card now
+ reads the real `paired_chats` list.
 - `alfred-deliver` no longer routes through a Hermes webhook subscription —
-  it delivers bytes directly and journals the result.
+ it delivers bytes directly and journals the result.
 - `one-alfred` plugin: `post_llm_call` now accepts both `assistant_response`
-  (Hermes' real kwarg) and `response_text`; the continuity framing is
-  authoritative, not advisory; the re-injection latch drops from 10 minutes
-  to 5 seconds.
+ (Hermes' real kwarg) and `response_text`; the continuity framing is
+ authoritative, not advisory; the re-injection latch drops from 10 minutes
+ to 5 seconds.
 - Telegram bot-token regex relaxed (`{30,}` rather than `{35}` exact);
-  modern tokens stopped 400-ing at the gate.
+ modern tokens stopped 400-ing at the gate.
 - Init `.env` renderer preserves `TELEGRAM_*`, `SLACK_*`, `DISCORD_BOT_*`,
-  `WHATSAPP_*`, `SIGNAL_*`, `MATRIX_*`, `MATTERMOST_*`, `BLUEBUBBLES_*`
-  across re-renders.
+ `WHATSAPP_*`, `SIGNAL_*`, `MATRIX_*`, `MATTERMOST_*`, `BLUEBUBBLES_*`
+ across re-renders.
 - Fresh-deploy correctness: `matter/inbox.md` seeded on first boot;
-  `_resolve_parent_matter_path` validates with 4-tier fuzzy fallback;
-  onboarding writes tasks in their rich shape with `parent_matter` linkage;
-  task status vocab harmonised to the validator (`'queued' → 'todo'`).
+ `_resolve_parent_matter_path` validates with 4-tier fuzzy fallback;
+ onboarding writes tasks in their rich shape with `parent_matter` linkage;
+ task status vocab harmonised to the validator (`'queued' → 'todo'`).
 
 **Migration**
 
 - `state.db` migration `0002_alfred_journal.sql` runs transactionally on
-  ctrl-api boot. Additive (three tables + indexes); no data migration.
+ ctrl-api boot. Additive (three tables + indexes); no data migration.
 - The `one-alfred` Hermes plugin is enabled on the `main` profile only.
 - Set `DISPATCH_USE_EPHEMERAL_EXECUTOR=0` to revert to the legacy dispatch
-  path.
+ path.
 
 </Update>
 
@@ -105,69 +105,69 @@ The single biggest architectural shift is a **promotion contract** between
 the writers (the learn pipeline) and the vault gate (ctrl-api). Junk
 suppression — fabricated instinct confidence, per-service-sender notes,
 domain-only "orgs", non-human "persons", matter-per-domain explosion — is
-enforced both at the writer (Lane II) and re-enforced at the gate (Lane I),
+enforced both at the writer and re-enforced at the gate,
 so a bug on one side cannot pollute the principal's surface. The result is a
 first Brief composed against thousands of real emails, a vault the principal
 can actually read, and a Desk that has cards on day one.
 
 This is also the first release shipped under the current fix-campaign
 protocol: ~85 findings landed as gate-protected, contract-frozen lane
-fan-outs (`F1–F84`, `C12–C19`, `B1–B12`, `C-OB1–C-OB4`) with a golden-fixture
+fan-outs with a golden-fixture
 quality test suite guarding regressions. See [Bug-fixing protocol](/contributing/bug-fixing-protocol).
 
 **Hermes runtime additions**
 
 - `hermes-lcm` cross-session memory plugin installed and pinned for the
-  `main` profile, with runtime verification at supervisor boot.
+ `main` profile, with runtime verification at supervisor boot.
 - `MEMORY.md` and `USER.md` seeded into `$HERMES_HOME/memories` at
-  onboarding time.
+ onboarding time.
 - Consolidated personalised `SOUL.md` deployed into each Hermes profile and
-  re-consolidated at supervisor boot.
+ re-consolidated at supervisor boot.
 - `main` is the sticky default profile; each gateway launches with its
-  profile directory as CWD so `AGENTS.md` loads as designed.
+ profile directory as CWD so `AGENTS.md` loads as designed.
 
 **Onboarding artefacts**
 
-- `vault/SOUL.md` written once during onboarding (C-OB2).
+- `vault/SOUL.md` written once during onboarding.
 - `vault/RULES.md` — principal-facing standing-rules document, surfaced in
-  the web UI.
+ the web UI.
 - Day-one Desk seeds via `seed_day_one_desk_cards` so `/desk` isn't empty on
-  first login (C-OB3).
+ first login.
 
 **Web UI**
 
 - `/household` ships a structured `RULES.md` editor.
 - Matter relationship graph on matter detail, with CRM-style key-people /
-  orgs links.
-- Decision cards expose `signal → matter/task` provenance (B5).
-- `/connections` app launcher with multi-field API-key credential UI (F74).
+ orgs links.
+- Decision cards expose `signal → matter/task` provenance.
+- `/connections` app launcher with multi-field API-key credential UI.
 - Hermes auth-unhealthy banner with re-auth CTA on `/connections`.
-- Approval-secret rotation with a reveal-once panel (F77, C16).
+- Approval-secret rotation with a reveal-once panel.
 
 **Promotion contract enforcement**
 
 - Junk-suppression filters at materialise time: non-human "persons" rejected
-  (C-OB1); orgs restricted to facts-grounded names; the heuristic
-  matter_pack fallback that wrote fragment matters is gone;
-  per-service-sender summary notes suppressed at curator S1.
+; orgs restricted to facts-grounded names; the heuristic
+ matter_pack fallback that wrote fragment matters is gone;
+ per-service-sender summary notes suppressed at curator S1.
 - The C-OB1 gate at vault `POST` (ctrl-api) re-enforces the same contract.
 - Matter-pack near-duplicate dedup using token-set overlap ≥ 0.7.
 - Instinct tier and discretion clamped to the observation-earned ceiling —
-  fabricated "high-confidence" instincts no longer ship (C-B6, B6, C-OB4).
+ fabricated "high-confidence" instincts no longer ship (C-B6, B6, C-OB4).
 - Orgs deterministically materialised from extracted facts (no LLM, no
-  timeout).
+ timeout).
 
 **Signal → decision pipeline**
 
 - Token/entity signal→target matcher prefers `None` over a wrong bind (P0-1).
 - Relevance + dedup gate before any signal becomes a Desk card (P0-2).
 - Brief's propose-clerk fed signal/decision **content**, not just identifiers
-  (P0-3).
+ (P0-3).
 
 **Navigation**
 
 - `/study` consolidated into `/settings`, with the "Agent Configuration" tab
-  absorbing the older `/claude` page.
+ absorbing the older `/claude` page.
 - Legacy `/dashboard/*` paths redirect to canonical routes.
 - `/` redirects authenticated users to `/desk`.
 - `/staff` removed; the duplicate Developer/API-keys block on `/claude` removed.
@@ -176,7 +176,7 @@ quality test suite guarding regressions. See [Bug-fixing protocol](/contributing
 
 - Chore cron `DOW` autocorrected and retries bounded.
 - Duplicate generated `morning_briefing` chore swept; `BriefingWorkflow`
-  registered for morning and evening in local tz.
+ registered for morning and evening in local tz.
 - Boot-time reconciler drops orphaned `chore-*` schedules.
 
 **Composio / connections**
@@ -189,11 +189,11 @@ quality test suite guarding regressions. See [Bug-fixing protocol](/contributing
 **Continuity**
 
 - Running tenants: `docker compose pull && docker compose up -d`. No manual
-  filesystem ops required.
+ filesystem ops required.
 - Fresh tenants: same one-command deploy as 2026-05-20.
 - If an earlier onboarding produced a sparse vault, re-running on this
-  release populates it correctly. The promotion-quality report at
-  `GET /api/v1/onboarding/quality-report` shows what landed.
+ release populates it correctly. The promotion-quality report at
+ `GET /api/v1/onboarding/quality-report` shows what landed.
 
 </Update>
 
@@ -206,25 +206,25 @@ self-hosted deploy.
 **The platform**
 
 - **One-VM `docker compose up`** deploy. Bring a fresh Linux VM and a
-  domain; the stack brings everything else and serves the web app over
-  HTTPS.
+ domain; the stack brings everything else and serves the web app over
+ HTTPS.
 - **Web dashboard** for working with the vault.
 - **Hermes runtime** — a single isolated container that supervises three
-  profiles (`main`, `workers`, `heavy`).
+ profiles (`main`, `workers`, `heavy`).
 - **Bundled Caddy** reverse proxy with automatic per-host TLS (Let's
-  Encrypt HTTP-01); no DNS API token required.
+ Encrypt HTTP-01); no DNS API token required.
 - **Four-store storage model**: the vault (markdown), `alfred-state.db`
-  (working memory), `cold.db` (forensic long-tail >90 days), and `ingest.db`
-  (raw inbound stream, 7-day TTL).
+ (working memory), `cold.db` (forensic long-tail >90 days), and `ingest.db`
+ (raw inbound stream, 7-day TTL).
 - **Sidecars**: Plane (project management), Sure (personal finance),
-  Vaultwarden (secrets manager).
+ Vaultwarden (secrets manager).
 - **Optional Vexa profile** for meeting transcription, off by default
-  (`docker compose --profile vexa up -d`).
+ (`docker compose --profile vexa up -d`).
 
 **Onboarding + Brief**
 
 - Automatic owner onboarding ritual: connect Gmail, backfill recent email,
-  build a behavioural profile, confirm the inferred facts.
+ build a behavioural profile, confirm the inferred facts.
 - Daily Brief surface composed for the owner.
 
 **alfred-vault 1.0.0**

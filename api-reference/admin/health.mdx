@@ -1,0 +1,54 @@
+---
+title: "Instance health"
+description: "Roll-up health check across containers, disk, and memory."
+api: "GET /api/v1/admin/health"
+---
+
+Runs the host-level `/opt/alfred/healthcheck.sh` script and returns its result. The script is the canonical liveness probe for the entire Alfred stack on the VM — it inspects container states, disk pressure, and memory pressure in one pass. Use this from monitoring tools or as a smoke test after a deploy.
+
+## How it works
+
+ctrl-API runs `/opt/alfred/healthcheck.sh` on the host and parses its stdout as JSON. If the script emits non-JSON, the raw text is returned in a `raw` field instead.
+
+## Response
+
+The script returns a small object summarising overall status. The exact field set is whatever `healthcheck.sh` emits on your image; the example below is representative.
+
+<ResponseField name="status" type="string"> Overall status — `"ok"` when everything is healthy, `"degraded"` or `"failing"` otherwise.</ResponseField>
+<ResponseField name="containers" type="integer">Total compose containers expected.</ResponseField>
+<ResponseField name="unhealthy" type="integer">Containers reporting an unhealthy state.</ResponseField>
+<ResponseField name="disk_percent" type="integer">Disk usage on the encrypted vault mount.</ResponseField>
+<ResponseField name="memory_percent" type="integer">Memory usage on the host.</ResponseField>
+
+<RequestExample>
+
+```bash cURL
+curl -X GET https://alfred.black/api/v1/admin/health \
+ -H "Authorization: Bearer alf_your_key_here"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+ "status": "ok",
+ "containers": 8,
+ "unhealthy": 0,
+ "disk_percent": 45,
+ "memory_percent": 62
+}
+```
+
+```json Raw fallback
+{
+ "raw": "OK: 8 containers running, disk 45%, memory 62%"
+}
+```
+
+</ResponseExample>
+
+<Note>
+ This is a roll-up check, not the deepest signal. For per-container state use [`GET /api/v1/admin/containers`](/api-reference/admin/list-containers); for Hermes-specific liveness use [`GET /api/v1/openclaw/health`](/api-reference/openclaw/health).
+</Note>

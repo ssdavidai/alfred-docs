@@ -19,8 +19,8 @@ Once running, a user with a Linux VM can:
 
 ```sh
 git clone https://github.com/ssdavidai/alfred.git
-cd alfred && cp .env.example .env   # fill DOMAIN, ACME_EMAIL, owner, API keys
-./scripts/bootstrap.sh              # generates secrets, validates env
+cd alfred && cp .env.example .env # fill DOMAIN, ACME_EMAIL, owner, API keys
+./scripts/bootstrap.sh # generates secrets, validates env
 docker compose up -d
 ```
 
@@ -30,18 +30,18 @@ and the full intelligence layer.
 ## Where to start
 
 <CardGroup cols={2}>
-  <Card title="Quick start" icon="rocket" href="/quickstart/prerequisites">
-    DNS, env, bootstrap, first signup. About 15 minutes if your VM is ready.
-  </Card>
-  <Card title="What is Alfred?" icon="book-open" href="/introduction/what-is-alfred">
-    The principal model, why a single VM, and the vocabulary you'll use everywhere.
-  </Card>
-  <Card title="Architecture" icon="diagram-project" href="/architecture/overview">
-    The four-store model, the signal pipeline, and the Hermes runtime.
-  </Card>
-  <Card title="Contributing" icon="code-branch" href="/contributing/bug-fixing-protocol">
-    The lane fan-out protocol, the commit gate, and how to ship a fix.
-  </Card>
+ <Card title="Quick start" icon="rocket" href="/quickstart/prerequisites">
+ DNS, env, bootstrap, first signup. About 15 minutes if your VM is ready.
+ </Card>
+ <Card title="What is Alfred?" icon="book-open" href="/introduction/what-is-alfred">
+ The principal model, why a single VM, and the vocabulary you'll use everywhere.
+ </Card>
+ <Card title="Architecture" icon="diagram-project" href="/architecture/overview">
+ The four-store model, the signal pipeline, and the Hermes runtime.
+ </Card>
+ <Card title="Contributing" icon="code-branch" href="/contributing/bug-fixing-protocol">
+ The lane fan-out protocol, the commit gate, and how to ship a fix.
+ </Card>
 </CardGroup>
 
 ## What's in the box

@@ -1,0 +1,93 @@
+---
+title: "plane"
+description: "Plane project management — cross-project search, issue CRUD, comment threads, and metadata resolution. 11 MCP tools."
+---
+
+The `plane` app gives Alfred a complete read/write surface over a self-hosted [Plane](https://plane.so) workspace: list and search issues across projects, post and read comments, create and update issues, and resolve the metadata UUIDs (projects, states, cycles, labels) that every mutation needs.
+
+**Backend.** Every tool routes through `proxyToCtrl()` to ctrl-api's `/api/v1/plane/*` *(packages/mcp-server/src/tools/plane.ts:1-19)*. ctrl-api proxies the self-hosted Plane REST API at `plane-api:8000` using a tenant Personal Access Token; the model never sees the PAT.
+
+**Not exposed.** The `/api/v1/plane/webhook` route is intentionally withheld *(packages/mcp-server/src/tools/plane.ts:15-16)*. It is an inbound HMAC-authenticated ingest from Plane into Alfred, not an outbound surface for the agent.
+
+## Cross-project search with a fan-out cap
+
+Plane's REST API is project-scoped — every issue query targets one project at a time. `search_issues` solves this by fanning out one upstream call per project and merging results client-side *(packages/mcp-server/src/tools/plane.ts:88-117)*. The fan-out is **hard-capped at 15 projects** to keep workspace-wide queries bounded; workspaces with more than 15 projects must pass `project_ids` explicitly or receive HTTP 400 `FANOUT_TOO_LARGE`.
+
+State-group filtering is the killer feature: pass `state_groups: ['started', 'unstarted']` and the server resolves the friendly names to per-project state UUIDs *(packages/mcp-server/src/tools/plane.ts:96)*. The convenience flag `is_blocked: true` matches issues whose label is literally named `blocked`; for nuanced blocking semantics, fetch label UUIDs via `list_labels` and pass them directly.
+
+## The 11 tools
+
+<AccordionGroup>
+
+<Accordion title="Read — issue, comments, search, list (5 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `get_issue` | Fetch one issue by id — name, description (HTML + stripped), state, priority, labels, assignees, target_date, timestamps. | `project_id`, `issue_id` |
+| `list_issue_comments` | Full comment thread, oldest → newest. Each comment carries `is_alfred` so the model can identify its own past replies without a second call. | `project_id`, `issue_id` |
+| `list_issues` | Simple paginated list of issues in one project. | `project_id`, `state_id?`, `assignee_id?`, `cycle_id?`, `order_by?`, `limit?`, `offset?` |
+| `search_issues` | Multi-dimensional search across N projects (capped at 15). | `project_ids?`, `state_groups?`, `state_ids?`, `assignee_ids?`, `assigned_to_me?`, `priority?`, `label_ids?`, `cycle_ids?`, dates, `text_search?`, `is_blocked?`, `order_by?`, `limit?`, `offset?` |
+| `list_projects` | Every project in the workspace — id, name, identifier, description, archived_at. Always the first call when the principal mentions a project by name. | — |
+
+`search_issues` returns `{issues: [...with project_id tagged on each], total, limit, offset, scope: {projects_searched, cross_project, is_blocked_via_label_match}}`. The `scope.cross_project` flag tells the caller whether the response was a fan-out.
+
+</Accordion>
+
+<Accordion title="Write — create, update, comment (3 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `create_issue` | New issue with optional state, priority, assignees, labels, dates, parent (for sub-issues), cycle. | `project_id`, `name`, `description_html?`, `state?`, `priority?`, `assignees?`, `labels?`, `target_date?`, `start_date?`, `parent?`, `cycle?` |
+| `update_issue` | Partial patch. The `assignees`/`labels` arrays **replace** the existing set — fetch via `get_issue` first to merge. | `project_id`, `issue_id` + any updatable field |
+| `post_issue_comment` | Reply to an issue as Alfred. Pass `text` (auto-escaped, wrapped in `<p>`) or `text_html` (pre-rendered, verbatim). | `project_id`, `issue_id`, `text?` OR `text_html?` |
+
+<Note>
+`post_issue_comment` is not idempotent. If retrying after a network error, call `list_issue_comments` first to check whether the comment already landed *(packages/mcp-server/src/tools/plane.ts:50)*.
+</Note>
+
+`update_issue` is idempotent for non-array fields. Array fields (`assignees`, `labels`) are replace-not-merge.
+
+</Accordion>
+
+<Accordion title="Metadata resolution (3 tools)">
+
+Plane mutations take UUIDs, not names. These tools resolve a name into the UUID needed by `create_issue`, `update_issue`, or `search_issues`.
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_states` | Workflow states for one project — id, name, `group` (`backlog`/`unstarted`/`started`/`completed`/`cancelled`), color, project, default. | `project_id` |
+| `list_cycles` | Sprints/cycles for a project — id, name, description, start_date, end_date, status, total_issues, completed_issues. The active cycle has `status === 'CURRENT'`. | `project_id` |
+| `list_labels` | Available issue labels for a project — id, name, color, project. | `project_id` |
+
+For state-group filtering, prefer `search_issues({state_groups: [...]})` over `list_states` + `state_ids` — the server resolves per-project so cross-project queries work even when projects have differently-named states for the same group.
+
+</Accordion>
+
+</AccordionGroup>
+
+## Typical flow — resolve, then act
+
+The canonical pattern for any project mutation:
+
+<Steps>
+ <Step title="Resolve the project">
+ `list_projects` returns `{id, name, identifier}`. Pick the matching project. The principal often names a project by its `identifier` rather than full `name`.
+ </Step>
+ <Step title="Resolve the metadata">
+ For state transitions, `list_states({project_id})`. For label edits, `list_labels`. For cycle scoping, `list_cycles`. Cache the maps locally.
+ </Step>
+ <Step title="Read, then write">
+ `get_issue` to read current arrays (assignees, labels). Merge locally. Then `update_issue` with the merged set — remember it is replace-not-merge.
+ </Step>
+</Steps>
+
+## Related
+
+<CardGroup cols={2}>
+ <Card title="Plane integration" href="/integrations/plane">
+ The full Plane wiring — vault mirror, webhook, forward-sync, the @alfred mention flow.
+ </Card>
+ <Card title="alfred" href="/mcp-reference/alfred">
+ Vault read/write — the matter/task mirror that backs the Plane integration.
+ </Card>
+</CardGroup>

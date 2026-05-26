@@ -1,0 +1,31 @@
+---
+title: "Google identity for Gmail / Calendar / Drive"
+description: "Google identity for Gmail / Calendar / Drive."
+api: "GET /api/v1/integrations/:id/google-identity"
+---
+
+## Purpose
+
+Google identity for Gmail / Calendar / Drive. See the live route handler at `packages/ctrl/src/api/routes/integrations.ts:3151` for the authoritative request/response contract.
+
+<Note>
+This endpoint is part of the Alfred Black API. The OpenAPI spec for this endpoint is being authored — Mintlify will render parameters, request examples, and response examples here once the spec lands. Until then, see the source citation above for the authoritative shape.
+</Note>
+
+## Try it
+
+<CodeGroup>
+
+```bash cURL
+curl -X GET https://alfred.black/api/v1/integrations/:id/google-identity \
+ -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+```javascript JavaScript
+const r = await fetch('https://alfred.black/api/v1/integrations/:id/google-identity', {
+ method: 'GET',
+ headers: { 'Authorization': `Bearer ${process.env.AAS_API_KEY}` },
+});
+```
+
+</CodeGroup>

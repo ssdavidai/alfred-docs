@@ -1,0 +1,31 @@
+---
+title: "Delete Holdings"
+description: "DELETE /api/v1/sure/holdings/:id"
+api: "DELETE /api/v1/sure/holdings/:id"
+---
+
+## Purpose
+
+`DELETE /api/v1/sure/holdings/:id` — see live source for the authoritative contract. See the live route handler at `packages/ctrl/src/api/routes/sure.ts:738` for the authoritative request/response contract.
+
+<Note>
+This endpoint is part of the Alfred Black API. The OpenAPI spec for this endpoint is being authored — Mintlify will render parameters, request examples, and response examples here once the spec lands. Until then, see the source citation above for the authoritative shape.
+</Note>
+
+## Try it
+
+<CodeGroup>
+
+```bash cURL
+curl -X DELETE https://alfred.black/api/v1/sure/holdings/:id \
+ -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+```javascript JavaScript
+const r = await fetch('https://alfred.black/api/v1/sure/holdings/:id', {
+ method: 'DELETE',
+ headers: { 'Authorization': `Bearer ${process.env.AAS_API_KEY}` },
+});
+```
+
+</CodeGroup>

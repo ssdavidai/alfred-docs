@@ -1,0 +1,156 @@
+---
+title: "Create Record"
+description: "Create a new vault record either via the alfred CLI (validated, templated) or by writing raw markdown directly."
+api: "POST /api/v1/vault/records"
+---
+
+## When to use
+
+Two distinct modes, gated by whether `content` is present in the request body:
+
+1. **Validated CLI mode** (omit `content`) — Alfred's `vault create` runs in the alfred container. The record type is validated, status is checked against `status_by_type`, list-fields are enforced, and the type's template (if present in `_templates/`) is applied to scaffold the body. Use this for normal record creation by humans or agents.
+2. **Raw write mode** (provide `content`) — the server writes whatever bytes you give it directly to the path you specify. No validation, no template, no audit log entry from the alfred CLI. Use this only when you already have a fully-formed markdown document and need byte-perfect control (re-materializing from a backup, or writing pre-rendered content).
+
+Both modes return `201 Created`.
+
+## Body Parameters
+
+<ParamField body="type" type="string" required>
+ One of the types from `GET /api/v1/vault/schema`. Used to determine the destination directory (e.g., `task` -> `task/`, `instinct` -> `intuition/instincts/`).
+</ParamField>
+
+<ParamField body="name" type="string" required>
+ In CLI mode, the record's display name (e.g., `Alice Chen` produces `person/Alice Chen.md`). In raw-write mode, this can be either a bare slug (the server prepends `<type>/` and appends `.md`) or a full vault-relative path ending in `.md` (the server uses it as-is).
+</ParamField>
+
+<ParamField body="fields" type="object">
+ CLI mode only. Frontmatter key-value pairs. Each entry becomes a `--set key=value` flag on the alfred CLI. Values are JSON-decoded by the CLI before assignment, so you can pass arrays as JSON-encoded strings (e.g., `"tags": "[\"foo\",\"bar\"]"`). Plain strings work as-is.
+</ParamField>
+
+<ParamField body="content" type="string">
+ Raw-write mode only. The complete file contents (frontmatter + body, including the leading `---`). When this is set, all CLI-mode behavior is bypassed.
+</ParamField>
+
+## Response
+
+CLI mode response shape comes from `alfred vault create` and is JSON-passed through:
+
+<ResponseField name="path" type="string">
+ Vault-relative path of the created file (with `.md`).
+</ResponseField>
+
+<ResponseField name="warnings" type="string[]">
+ Non-fatal issues like wrong-directory placement or unresolved wikilinks in the body. Empty array on a clean create.
+</ResponseField>
+
+Raw-write mode returns just `{ "path": "<filePath>" }`.
+
+If the alfred CLI produces non-JSON output (rare), the response is wrapped as `{ "raw": "<stdout>" }`.
+
+## Request Example
+
+<RequestExample>
+
+```bash CLI mode (validated)
+curl -X POST https://alfred.black/api/v1/vault/records \
+ -H "Authorization: Bearer $AAS_API_KEY" \
+ -H "Content-Type: application/json" \
+ -d '{
+ "type": "person",
+ "name": "Alice Chen",
+ "fields": {
+ "role": "ML Engineer",
+ "org": "[[org/Acme Corp]]",
+ "status": "active"
+ }
+ }'
+```
+
+```bash Raw-write mode
+curl -X POST https://alfred.black/api/v1/vault/records \
+ -H "Authorization: Bearer $AAS_API_KEY" \
+ -H "Content-Type: application/json" \
+ -d '{
+ "type": "task",
+ "name": "task/2026-04-25-rebuild-docs.md",
+ "content": "---\ntype: task\nname: \"Rebuild API docs\"\nstatus: todo\ncreated: 2026-04-25\n---\n\n# Rebuild API docs\n\nFull rewrite of the vault section.\n"
+ }'
+```
+
+```javascript JavaScript
+const r = await fetch('https://alfred.black/api/v1/vault/records', {
+ method: 'POST',
+ headers: {
+ 'Authorization': `Bearer ${process.env.AAS_API_KEY}`,
+ 'Content-Type': 'application/json',
+ },
+ body: JSON.stringify({
+ type: 'note',
+ name: 'meeting-notes-2026-04-25',
+ fields: { status: 'draft', tags: '["meeting","q2-planning"]' },
+ }),
+});
+const { path, warnings } = await r.json();
+```
+
+</RequestExample>
+
+## Response Example
+
+<ResponseExample>
+
+```json 201 Created (CLI mode)
+{
+ "path": "person/Alice Chen.md",
+ "warnings": []
+}
+```
+
+```json 201 Created (raw-write mode)
+{
+ "path": "task/2026-04-25-rebuild-docs.md"
+}
+```
+
+```json 201 Created (with warnings)
+{
+ "path": "task/follow-up-with-zsolt.md",
+ "warnings": [
+ "Unresolved wikilink: [[person/Zsolt Rapali]]"
+ ]
+}
+```
+
+```json 400 Bad Request
+{
+ "error": {
+ "code": "VALIDATION_ERROR",
+ "message": "type and name are required"
+ }
+}
+```
+
+```json 500 Internal Server Error (CLI failure)
+{
+ "error": {
+ "code": "EXEC_ERROR",
+ "message": "alfred failed (1): {\"error\": \"File already exists: person/Alice Chen.md\"}"
+ }
+}
+```
+
+</ResponseExample>
+
+## Tips
+
+<Note>
+There is no separate "exists" error code. If the target path already exists, the alfred CLI exits non-zero with `{"error": "File already exists: ..."}` in stdout, which surfaces as a generic `EXEC_ERROR 500` from this endpoint. Inspect the message to disambiguate.
+</Note>
+
+<Warning>
+Raw-write mode does not validate frontmatter against the schema, does not check directory placement, and does not produce CLI audit-log entries. It also bypasses the per-path write mutex used by edit/delete, so do not interleave raw writes with edits to the same path.
+</Warning>
+
+<Note>
+For `matter/*` and `task/*` paths, a successful create fires a Plane forward-sync nudge in the background so external Plane projects/issues update within seconds rather than waiting for the next cron tick.
+</Note>

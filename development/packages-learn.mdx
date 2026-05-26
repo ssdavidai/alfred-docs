@@ -12,22 +12,22 @@ promotions. Every cron-scheduled side of Alfred runs through Temporal here.
 
 ```
 packages/learn/
-├── pyproject.toml             temporalio, httpx, pyyaml — minimal deps
-├── CONTRACT.md                provides / requires
-├── SPEC.md                    full intelligence-layer specification
-├── CLAUDE.md                  terminology & replay-safety rules
+├── pyproject.toml temporalio, httpx, pyyaml — minimal deps
+├── CONTRACT.md provides / requires
+├── SPEC.md full intelligence-layer specification
+├── CLAUDE.md terminology & replay-safety rules
 ├── docs/
-│   └── STATE-MUTATION.md      the state_mutator contract (§0–17)
+│ └── STATE-MUTATION.md the state_mutator contract (§0–17)
 └── src/
-    ├── worker.py              boots the Temporal worker, registers all activities
-    ├── config.py              env vars (TEMPORAL_HOST, ALFRED_CTRL_URL, …)
-    ├── workflows/             30+ workflow definitions
-    ├── activities/            80+ activities (clerk, vault, state_mutator, …)
-    ├── matching/              instinct scorer + discretion gate
-    ├── parsers/, validators/  proposal validation
-    ├── profiler/              Opus onboarding pipeline
-    ├── integrations/          plane, vexa, composio glue
-    └── cli/                   diagnostic CLI
+ ├── worker.py boots the Temporal worker, registers all activities
+ ├── config.py env vars (TEMPORAL_HOST, ALFRED_CTRL_URL, …)
+ ├── workflows/ 30+ workflow definitions
+ ├── activities/ 80+ activities (clerk, vault, state_mutator, …)
+ ├── matching/ instinct scorer + discretion gate
+ ├── parsers/, validators/ proposal validation
+ ├── profiler/ Opus onboarding pipeline
+ ├── integrations/ plane, vexa, composio glue
+ └── cli/ diagnostic CLI
 ```
 
 ## Boot sequence
@@ -70,21 +70,21 @@ invocation, so they can be toggled live.
 
 ```mermaid
 flowchart TD
-  A[ingest.db.stream_event] -->|2 min| B[EventProcessorWorkflow]
-  B -->|5 min| C[SignalExtractWorkflow]
-  C -->|writes| D[(state.db.signal status=unrouted)]
-  C -->|extract_observation_from_signal| E[(state.db.observation)]
-  D -->|2 min| F[SignalRouterWorkflow]
-  F -->|HIGH + live| G[dispatch_action_to_agent]
-  F -->|HUMAN| H[needs_attention card]
-  F -->|suppressed| I[skip]
-  H -->|principal click| J[POST /api/v1/decisions]
-  J -->|state=open| K[DecisionRouterWorkflow 60s]
-  K -->|side-effects| H
-  K -->|extract_observation_from_decision| E
-  E -->|02:00 UTC daily| L[ReflectionWorkflow]
-  L -->|apply_instinct_change| M[(vault/instinct/*.md)]
-  M -->|next cycle| F
+ A[ingest.db.stream_event] -->|2 min| B[EventProcessorWorkflow]
+ B -->|5 min| C[SignalExtractWorkflow]
+ C -->|writes| D[(state.db.signal status=unrouted)]
+ C -->|extract_observation_from_signal| E[(state.db.observation)]
+ D -->|2 min| F[SignalRouterWorkflow]
+ F -->|HIGH + live| G[dispatch_action_to_agent]
+ F -->|HUMAN| H[needs_attention card]
+ F -->|suppressed| I[skip]
+ H -->|principal click| J[POST /api/v1/decisions]
+ J -->|state=open| K[DecisionRouterWorkflow 60s]
+ K -->|side-effects| H
+ K -->|extract_observation_from_decision| E
+ E -->|02:00 UTC daily| L[ReflectionWorkflow]
+ L -->|apply_instinct_change| M[(vault/instinct/*.md)]
+ M -->|next cycle| F
 ```
 
 The loop closes at `extract_observation_from_decision`. This activity has
@@ -144,49 +144,49 @@ don't drift across the wire.
 ## Build, run, test
 
 <Tabs>
-  <Tab title="Build">
-    ```sh
-    cd packages/learn
-    pip install -e .[temporal,surveyor]
-    ```
+ <Tab title="Build">
+ ```sh
+ cd packages/learn
+ pip install -e .[temporal,surveyor]
+ ```
 
-    There is no compile step — `worker.py` runs the Temporal Python SDK
-    directly. CI builds `ssdavidai00/alfred-learn:latest` (a ~25 minute
-    pole, the longest in the matrix) by copying the source into a Python
-    3.12 base image.
-  </Tab>
-  <Tab title="Run">
-    ```sh
-    TEMPORAL_HOST=temporal:7233 \
-    TASK_QUEUE=alfred-learn \
-    ALFRED_CTRL_URL=http://ctrl-api:3100 \
-    OPENCLAW_GATEWAY_URL=http://hermes:18789 \
-    OPENCLAW_WORKERS_GATEWAY_URL=http://hermes:18790 \
-    HERMES_HEAVY_GATEWAY_URL=http://hermes:18791 \
-    OPENCLAW_GATEWAY_TOKEN_FILE=/alfred-data/.gateway-token \
-    VAULT_PATH=/vault \
-    python -m alfred_learn.worker
-    ```
+ There is no compile step — `worker.py` runs the Temporal Python SDK
+ directly. CI builds `ssdavidai00/alfred-learn:latest` (a ~25 minute
+ pole, the longest in the matrix) by copying the source into a Python
+ 3.12 base image.
+ </Tab>
+ <Tab title="Run">
+ ```sh
+ TEMPORAL_HOST=temporal:7233 \
+ TASK_QUEUE=alfred-learn \
+ ALFRED_CTRL_URL=http://ctrl-api:3100 \
+ OPENCLAW_GATEWAY_URL=http://hermes:18789 \
+ OPENCLAW_WORKERS_GATEWAY_URL=http://hermes:18790 \
+ HERMES_HEAVY_GATEWAY_URL=http://hermes:18791 \
+ OPENCLAW_GATEWAY_TOKEN_FILE=/alfred-data/.gateway-token \
+ VAULT_PATH=/vault \
+ python -m alfred_learn.worker
+ ```
 
-    Schedules are registered separately via `scripts/register_schedules.py`
-    — registration is gated by env flags so a tenant with
-    `STEWARD_SIGNAL_EXTRACT_ENABLED` unset never gets the schedule at all.
-  </Tab>
-  <Tab title="Test">
-    ```sh
-    pytest packages/learn/tests
-    ```
+ Schedules are registered separately via `scripts/register_schedules.py`
+ — registration is gated by env flags so a tenant with
+ `STEWARD_SIGNAL_EXTRACT_ENABLED` unset never gets the schedule at all.
+ </Tab>
+ <Tab title="Test">
+ ```sh
+ pytest packages/learn/tests
+ ```
 
-    The suite covers activity contracts, propose-function registration,
-    discretion-gate behaviour, the four-tier matter resolver, and the
-    state-mutator three-artefact write. CI runs `pytest` plus
-    `docker compose config` as a regression gate *(packages/learn/CLAUDE.md)*.
-  </Tab>
+ The suite covers activity contracts, propose-function registration,
+ discretion-gate behaviour, the four-tier matter resolver, and the
+ state-mutator three-artefact write. CI runs `pytest` plus
+ `docker compose config` as a regression gate *(packages/learn/CLAUDE.md)*.
+ </Tab>
 </Tabs>
 
 ## Where to look next
 
 - Full workflow + schedule reference: [Workflows & schedules](/reference/workflows)
 - The state contract: `packages/learn/docs/STATE-MUTATION.md`
-- Frozen contracts learn participates in: `docs/FIX-CONTRACTS.md` (C1, C2, C3, C6, C10, C11, C18)
+- Frozen contracts learn participates in: `docs/FIX-CONTRACTS.md`
 - Terminology & replay-safety rules: `packages/learn/CLAUDE.md`

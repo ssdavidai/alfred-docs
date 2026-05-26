@@ -1,0 +1,92 @@
+---
+title: "Get agent"
+description: "Get the resolved model and provider auth for a single agent."
+api: "GET /api/v1/admin/agents/{agentId}"
+---
+
+Returns the full model status for one agent. For Hermes agents (`main`, `learn-clerk`, `vault-curator`, `vault-janitor`, `vault-distiller`) this reads the Hermes profile config for the configured model and shells into the Hermes container for live provider-credential status. For `surveyor`, it reads the surveyor block from `config.yaml`.
+
+## Path parameters
+
+<ParamField path="agentId" type="string" required>
+ One of `main`, `learn-clerk`, `vault-curator`, `vault-janitor`, `vault-distiller`, `surveyor`.
+</ParamField>
+
+## Response — Hermes agent
+
+<ResponseField name="id" type="string">Agent id.</ResponseField>
+<ResponseField name="label" type="string">Display label.</ResponseField>
+<ResponseField name="description" type="string">One-line role description.</ResponseField>
+<ResponseField name="defaultModel" type="string | null">Model explicitly assigned to this agent in the Hermes profile config, or the global default if no per-agent override is set.
+<ResponseField name="resolvedDefault" type="string | null">Model that will actually be used.</ResponseField>
+<ResponseField name="fallbacks" type="string[]">Fallback model chain. Currently always empty in this response.</ResponseField>
+<ResponseField name="providers" type="array">
+ Provider auth status from `hermes models status`.
+ <Expandable title="Provider fields">
+ <ResponseField name="provider" type="string">e.g. `openrouter`, `anthropic`, `google`, `xai`.</ResponseField>
+ <ResponseField name="status" type="string">Whether the credential is configured.</ResponseField>
+ <ResponseField name="source" type="string">Where the credential was found (`env`, `config`).</ResponseField>
+ </Expandable>
+</ResponseField>
+<ResponseField name="missingProviders" type="string[]">Providers required by the configured model but not currently set.</ResponseField>
+
+## Response — Surveyor
+
+<ResponseField name="labeler_model" type="string">Cluster-labelling model.</ResponseField>
+<ResponseField name="embedder_model" type="string">Embedding model.</ResponseField>
+<ResponseField name="embedder_source" type="string">`ollama` or `openrouter`.</ResponseField>
+
+<RequestExample>
+
+```bash cURL — Hermes agent
+curl -X GET https://alfred.black/api/v1/admin/agents/vault-curator \
+ -H "Authorization: Bearer alf_your_key_here"
+```
+
+```bash cURL — Surveyor
+curl -X GET https://alfred.black/api/v1/admin/agents/surveyor \
+ -H "Authorization: Bearer alf_your_key_here"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK — Hermes agent
+{
+ "id": "vault-curator",
+ "label": "Curator",
+ "description": "Processes inbox into structured vault records",
+ "defaultModel": "xai/grok-4-1-fast-reasoning",
+ "resolvedDefault": "xai/grok-4-1-fast-reasoning",
+ "fallbacks": [],
+ "providers": [
+ { "provider": "xai", "status": "configured", "source": "env" },
+ { "provider": "openrouter", "status": "configured", "source": "env" }
+ ],
+ "missingProviders": []
+}
+```
+
+```json 200 OK — Surveyor
+{
+ "labeler_model": "x-ai/grok-4.1-fast",
+ "embedder_model": "nomic-embed-text",
+ "embedder_source": "ollama"
+}
+```
+
+```json 400 Unknown agent
+{
+ "error": {
+ "code": "VALIDATION_ERROR",
+ "message": "Unknown agent: foo. Known agents: main, learn-clerk, vault-curator, vault-janitor, vault-distiller, surveyor"
+ }
+}
+```
+
+</ResponseExample>
+
+<Note>
+ If Hermes is restarting (e.g. just after a Composio app connect), the `providers` array may come back empty and the response will still succeed — the per-agent model is read from the Hermes profile config directly and doesn't require a live gateway.
+</Note>

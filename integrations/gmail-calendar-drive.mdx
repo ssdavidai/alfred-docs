@@ -14,18 +14,18 @@ These are the discovery shape of `create_connection({toolkit_slug: 'gmail'})` at
 The full flow:
 
 <Steps>
-  <Step title="Initiate">
-    From the Connections page (`/connections`) or from chat, trigger the connect flow for `gmail`, `googlecalendar`, or `googledrive`. The dashboard calls `create_connection({toolkit_slug})` which returns `{connect_url, connection_id}`. *(packages/web/src/integrations/ConnectionsPage.tsx:228–234)*
-  </Step>
-  <Step title="Authorise">
-    The principal opens `connect_url` in a popup, signs in to the Google account, and approves the requested scopes on Google's consent screen.
-  </Step>
-  <Step title="Complete">
-    Google redirects back to `connections?composio_callback=success&toolkit=<slug>` *(packages/web/src/integrations/ConnectionsPage.tsx:228)*. The dashboard polls `list_connections` until the new row's status flips to `ACTIVE` (12-second timeout, after which it surfaces a manual reconnect prompt).
-  </Step>
-  <Step title="Auto-config">
-    On `ACTIVE`, `autoConfigIntegration({connectionId})` runs — it scaffolds the per-toolkit skill file (`alfred-composio-gmail`, etc.) so Hermes has canonical payloads, and starts any background polling Alfred needs (email ingest, calendar event sync).
-  </Step>
+ <Step title="Initiate">
+ From the Connections page (`/connections`) or from chat, trigger the connect flow for `gmail`, `googlecalendar`, or `googledrive`. The dashboard calls `create_connection({toolkit_slug})` which returns `{connect_url, connection_id}`. *(packages/web/src/integrations/ConnectionsPage.tsx:228–234)*
+ </Step>
+ <Step title="Authorise">
+ The principal opens `connect_url` in a popup, signs in to the Google account, and approves the requested scopes on Google's consent screen.
+ </Step>
+ <Step title="Complete">
+ Google redirects back to `connections?composio_callback=success&toolkit=<slug>` *(packages/web/src/integrations/ConnectionsPage.tsx:228)*. The dashboard polls `list_connections` until the new row's status flips to `ACTIVE` (12-second timeout, after which it surfaces a manual reconnect prompt).
+ </Step>
+ <Step title="Auto-config">
+ On `ACTIVE`, `autoConfigIntegration({connectionId})` runs — it scaffolds the per-toolkit skill file (`alfred-composio-gmail`, etc.) so Hermes has canonical payloads, and starts any background polling Alfred needs (email ingest, calendar event sync).
+ </Step>
 </Steps>
 
 ## Scopes

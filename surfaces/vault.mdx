@@ -20,14 +20,14 @@ A *+ New record* affordance opens an inline dialog (type select + name input) an
 Edit mode does not save with a single PATCH. It diffs the principal's draft against the snapshot the editor mounted with and **routes state-field changes through a different endpoint** than body or non-state frontmatter changes *(VaultPage.tsx:320-394)*.
 
 <Tabs>
-  <Tab title="State fields → applyManualStateChange">
-    For `matter/*` records the declared state fields are `current_state`, `as_of`, `status`, `surface_class`, `last_briefing_at` *(VaultPage.tsx:40-46)*. For `task/*` they are `current_state`, `as_of`, `status`, `outcome`, `pending_confirmation`, `last_steward_outcome` *(VaultPage.tsx:48-55)*.
+ <Tab title="State fields → applyManualStateChange">
+ For `matter/*` records the declared state fields are `current_state`, `as_of`, `status`, `surface_class`, `last_briefing_at` *(VaultPage.tsx:40-46)*. For `task/*` they are `current_state`, `as_of`, `status`, `outcome`, `pending_confirmation`, `last_steward_outcome` *(VaultPage.tsx:48-55)*.
 
-    A change to any of these fires `applyManualStateChange({ target_path, fields, expected_as_of, reason })` which POSTs to `/api/v1/state-changes`. The server attaches `source=manual.<userId>`, `confidence=1.0`, `mode=live`, and writes a row to `alfred-state.db.state_change` **plus** patches the frontmatter on disk. The audit trail is durable and queryable from `/decisions` State Changes tab.
-  </Tab>
-  <Tab title="Body & non-state fm → createVaultRecord">
-    Body edits (and any frontmatter the editor does not flag as a state field) are wrapped into a full file blob (`buildContent`) and POSTed through `createVaultRecord` — the same endpoint used by *+ New record*, which upserts on POST. The frontmatter is recomposed from the mounted snapshot so this path never re-PATCHes a state field through the legacy endpoint; ctrl-api has already bumped `as_of` if a state-change envelope ran *(VaultPage.tsx:364-382)*.
-  </Tab>
+ A change to any of these fires `applyManualStateChange({ target_path, fields, expected_as_of, reason })` which POSTs to `/api/v1/state-changes`. The server attaches `source=manual.<userId>`, `confidence=1.0`, `mode=live`, and writes a row to `alfred-state.db.state_change` **plus** patches the frontmatter on disk. The audit trail is durable and queryable from `/decisions` State Changes tab.
+ </Tab>
+ <Tab title="Body & non-state fm → createVaultRecord">
+ Body edits (and any frontmatter the editor does not flag as a state field) are wrapped into a full file blob (`buildContent`) and POSTed through `createVaultRecord` — the same endpoint used by *+ New record*, which upserts on POST. The frontmatter is recomposed from the mounted snapshot so this path never re-PATCHes a state field through the legacy endpoint; ctrl-api has already bumped `as_of` if a state-change envelope ran *(VaultPage.tsx:364-382)*.
+ </Tab>
 </Tabs>
 
 ## The `as_of` fence and the 409 dialog

@@ -25,13 +25,13 @@ The fix is to disable the agent for this connection with `-o IdentityAgent=none`
 
 ```bash
 ssh \
-  -o ConnectTimeout=15 \
-  -o ServerAliveInterval=10 \
-  -o BatchMode=yes \
-  -o StrictHostKeyChecking=accept-new \
-  -o IdentityAgent=none \
-  -i ~/.ssh/alfred-black-verify \
-  root@<VM-IP>
+ -o ConnectTimeout=15 \
+ -o ServerAliveInterval=10 \
+ -o BatchMode=yes \
+ -o StrictHostKeyChecking=accept-new \
+ -o IdentityAgent=none \
+ -i ~/.ssh/alfred-black-verify \
+ root@<VM-IP>
 ```
 
 The other options:

@@ -25,18 +25,18 @@ The file lives on the shared `alfred_data` Docker volume *(`docker-compose.yaml:
 The writer never writes the file in place. It uses the standard temp-file + rename trick *(`settings.ts:126-133`)*:
 
 <Steps>
-  <Step title="Read">
-    Read the existing `settings.json` (or `{}` if it doesn't exist yet).
-  </Step>
-  <Step title="Modify">
-    Set the new key/value in the in-memory object.
-  </Step>
-  <Step title="Write temp">
-    Write the full JSON to `/alfred-data/settings.json.tmp`.
-  </Step>
-  <Step title="Rename">
-    `rename(2)` `.tmp` → `settings.json`. On POSIX this is atomic — no reader can ever observe a partial write.
-  </Step>
+ <Step title="Read">
+ Read the existing `settings.json` (or `{}` if it doesn't exist yet).
+ </Step>
+ <Step title="Modify">
+ Set the new key/value in the in-memory object.
+ </Step>
+ <Step title="Write temp">
+ Write the full JSON to `/alfred-data/settings.json.tmp`.
+ </Step>
+ <Step title="Rename">
+ `rename(2)` `.tmp` → `settings.json`. On POSIX this is atomic — no reader can ever observe a partial write.
+ </Step>
 </Steps>
 
 Because there is exactly one writer process, the read-modify-write cycle can't race with itself. A reader that opens the file mid-rename always gets either the pre-rename or post-rename version, never a torn middle.
@@ -57,9 +57,9 @@ A typical live file looks like:
 
 ```json
 {
-  "signal_action_mode": "live",
-  "state_mutator_mode": "shadow",
-  "auto_task_create_mode": "live"
+ "signal_action_mode": "live",
+ "state_mutator_mode": "shadow",
+ "auto_task_create_mode": "live"
 }
 ```
 
@@ -83,19 +83,19 @@ A legacy hyphenated alias `/api/v1/settings/signal-action-mode` is kept for back
 
 ```bash curl
 curl -X PUT https://api.${DOMAIN}/api/v1/settings/signal_action_mode \
-  -H "Authorization: Bearer ${AAS_API_KEY}" \
-  -H "Content-Type: application/json" \
-  -d '{"mode": "shadow"}'
+ -H "Authorization: Bearer ${AAS_API_KEY}" \
+ -H "Content-Type: application/json" \
+ -d '{"mode": "shadow"}'
 ```
 
 ```javascript JavaScript
 await fetch(`https://api.${DOMAIN}/api/v1/settings/signal_action_mode`, {
-  method: "PUT",
-  headers: {
-    "Authorization": `Bearer ${AAS_API_KEY}`,
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify({ mode: "shadow" }),
+ method: "PUT",
+ headers: {
+ "Authorization": `Bearer ${AAS_API_KEY}`,
+ "Content-Type": "application/json",
+ },
+ body: JSON.stringify({ mode: "shadow" }),
 });
 ```
 

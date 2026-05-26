@@ -49,92 +49,92 @@ The server timing-safe-compares the bearer to the approval secret *(packages/mcp
 ## Wiring it into each client
 
 <Tabs>
-  <Tab title="claude.ai (browser)">
-    1. Open claude.ai, then **Settings → Connectors → Add custom connector**.
-    2. Paste each MCP URL one by one (e.g. `https://mcp.{your-domain}/alfred/mcp`). Give each a name (`Alfred`, `Sure`, `Plane`, `Vaultwarden`, `Execute`, `Hermes`).
-    3. Click **Connect** on the new connector. Browser opens the OAuth form.
-    4. Paste the **approval secret** from `/settings#agent` into the form. Submit.
-    5. The connector lands as `Connected`; the tools appear in the model's catalogue.
+ <Tab title="claude.ai (browser)">
+ 1. Open claude.ai, then **Settings → Connectors → Add custom connector**.
+ 2. Paste each MCP URL one by one (e.g. `https://mcp.{your-domain}/alfred/mcp`). Give each a name (`Alfred`, `Sure`, `Plane`, `Vaultwarden`, `Execute`, `Hermes`).
+ 3. Click **Connect** on the new connector. Browser opens the OAuth form.
+ 4. Paste the **approval secret** from `/settings#agent` into the form. Submit.
+ 5. The connector lands as `Connected`; the tools appear in the model's catalogue.
 
-    Repeat per app — claude.ai treats each `<app>/mcp` URL as a distinct connector.
-  </Tab>
+ Repeat per app — claude.ai treats each `<app>/mcp` URL as a distinct connector.
+ </Tab>
 
-  <Tab title="Claude Desktop">
-    Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+ <Tab title="Claude Desktop">
+ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
-    ```json
-    {
-      "mcpServers": {
-        "alfred": {
-          "url": "https://mcp.your-domain.com/alfred/mcp",
-          "headers": {
-            "Authorization": "Bearer YOUR_MCP_APPROVAL_SECRET"
-          }
-        },
-        "alfred-sure": {
-          "url": "https://mcp.your-domain.com/sure/mcp",
-          "headers": {
-            "Authorization": "Bearer YOUR_MCP_APPROVAL_SECRET"
-          }
-        },
-        "alfred-plane": {
-          "url": "https://mcp.your-domain.com/plane/mcp",
-          "headers": {
-            "Authorization": "Bearer YOUR_MCP_APPROVAL_SECRET"
-          }
-        },
-        "alfred-vaultwarden": {
-          "url": "https://mcp.your-domain.com/vaultwarden/mcp",
-          "headers": {
-            "Authorization": "Bearer YOUR_MCP_APPROVAL_SECRET"
-          }
-        },
-        "alfred-execute": {
-          "url": "https://mcp.your-domain.com/execute/mcp",
-          "headers": {
-            "Authorization": "Bearer YOUR_MCP_APPROVAL_SECRET"
-          }
-        },
-        "alfred-hermes": {
-          "url": "https://mcp.your-domain.com/hermes/mcp",
-          "headers": {
-            "Authorization": "Bearer YOUR_MCP_APPROVAL_SECRET"
-          }
-        }
-      }
-    }
-    ```
+ ```json
+ {
+ "mcpServers": {
+ "alfred": {
+ "url": "https://mcp.your-domain.com/alfred/mcp",
+ "headers": {
+ "Authorization": "Bearer YOUR_MCP_APPROVAL_SECRET"
+ }
+ },
+ "alfred-sure": {
+ "url": "https://mcp.your-domain.com/sure/mcp",
+ "headers": {
+ "Authorization": "Bearer YOUR_MCP_APPROVAL_SECRET"
+ }
+ },
+ "alfred-plane": {
+ "url": "https://mcp.your-domain.com/plane/mcp",
+ "headers": {
+ "Authorization": "Bearer YOUR_MCP_APPROVAL_SECRET"
+ }
+ },
+ "alfred-vaultwarden": {
+ "url": "https://mcp.your-domain.com/vaultwarden/mcp",
+ "headers": {
+ "Authorization": "Bearer YOUR_MCP_APPROVAL_SECRET"
+ }
+ },
+ "alfred-execute": {
+ "url": "https://mcp.your-domain.com/execute/mcp",
+ "headers": {
+ "Authorization": "Bearer YOUR_MCP_APPROVAL_SECRET"
+ }
+ },
+ "alfred-hermes": {
+ "url": "https://mcp.your-domain.com/hermes/mcp",
+ "headers": {
+ "Authorization": "Bearer YOUR_MCP_APPROVAL_SECRET"
+ }
+ }
+ }
+ }
+ ```
 
-    Restart Claude Desktop. The six servers appear in the connectors list with their tool catalogues populated.
-  </Tab>
+ Restart Claude Desktop. The six servers appear in the connectors list with their tool catalogues populated.
+ </Tab>
 
-  <Tab title="Claude Code">
-    Add the servers via the CLI (one command per app):
+ <Tab title="Claude Code">
+ Add the servers via the CLI (one command per app):
 
-    ```sh
-    claude mcp add --transport http alfred https://mcp.your-domain.com/alfred/mcp \
-      --header "Authorization: Bearer YOUR_MCP_APPROVAL_SECRET"
+ ```sh
+ claude mcp add --transport http alfred https://mcp.your-domain.com/alfred/mcp \
+ --header "Authorization: Bearer YOUR_MCP_APPROVAL_SECRET"
 
-    claude mcp add --transport http alfred-sure https://mcp.your-domain.com/sure/mcp \
-      --header "Authorization: Bearer YOUR_MCP_APPROVAL_SECRET"
+ claude mcp add --transport http alfred-sure https://mcp.your-domain.com/sure/mcp \
+ --header "Authorization: Bearer YOUR_MCP_APPROVAL_SECRET"
 
-    claude mcp add --transport http alfred-plane https://mcp.your-domain.com/plane/mcp \
-      --header "Authorization: Bearer YOUR_MCP_APPROVAL_SECRET"
+ claude mcp add --transport http alfred-plane https://mcp.your-domain.com/plane/mcp \
+ --header "Authorization: Bearer YOUR_MCP_APPROVAL_SECRET"
 
-    claude mcp add --transport http alfred-vaultwarden https://mcp.your-domain.com/vaultwarden/mcp \
-      --header "Authorization: Bearer YOUR_MCP_APPROVAL_SECRET"
+ claude mcp add --transport http alfred-vaultwarden https://mcp.your-domain.com/vaultwarden/mcp \
+ --header "Authorization: Bearer YOUR_MCP_APPROVAL_SECRET"
 
-    claude mcp add --transport http alfred-execute https://mcp.your-domain.com/execute/mcp \
-      --header "Authorization: Bearer YOUR_MCP_APPROVAL_SECRET"
+ claude mcp add --transport http alfred-execute https://mcp.your-domain.com/execute/mcp \
+ --header "Authorization: Bearer YOUR_MCP_APPROVAL_SECRET"
 
-    claude mcp add --transport http alfred-hermes https://mcp.your-domain.com/hermes/mcp \
-      --header "Authorization: Bearer YOUR_MCP_APPROVAL_SECRET"
-    ```
+ claude mcp add --transport http alfred-hermes https://mcp.your-domain.com/hermes/mcp \
+ --header "Authorization: Bearer YOUR_MCP_APPROVAL_SECRET"
+ ```
 
-    Then `claude mcp list` to verify. Each server's tools become callable as `mcp__alfred__*`, `mcp__alfred-sure__*`, and so on.
+ Then `claude mcp list` to verify. Each server's tools become callable as `mcp__alfred__*`, `mcp__alfred-sure__*`, and so on.
 
-    For project-scoped wiring instead of user-scoped, add `--scope project` and check the resulting `.mcp.json` into the repo (omitting the secret — use an env-var substitution).
-  </Tab>
+ For project-scoped wiring instead of user-scoped, add `--scope project` and check the resulting `.mcp.json` into the repo (omitting the secret — use an env-var substitution).
+ </Tab>
 </Tabs>
 
 ## Picking which apps to connect

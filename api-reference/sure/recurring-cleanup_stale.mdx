@@ -1,0 +1,31 @@
+---
+title: "Drop stale"
+description: "Drop stale."
+api: "POST /api/v1/sure/recurring/cleanup_stale"
+---
+
+## Purpose
+
+Drop stale. See the live route handler at `packages/ctrl/src/api/routes/sure.ts:778` for the authoritative request/response contract.
+
+<Note>
+This endpoint is part of the Alfred Black API. The OpenAPI spec for this endpoint is being authored — Mintlify will render parameters, request examples, and response examples here once the spec lands. Until then, see the source citation above for the authoritative shape.
+</Note>
+
+## Try it
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://alfred.black/api/v1/sure/recurring/cleanup_stale \
+ -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+```javascript JavaScript
+const r = await fetch('https://alfred.black/api/v1/sure/recurring/cleanup_stale', {
+ method: 'POST',
+ headers: { 'Authorization': `Bearer ${process.env.AAS_API_KEY}` },
+});
+```
+
+</CodeGroup>

@@ -18,13 +18,13 @@ Matters have **two parallel state surfaces**:
 
 ```mermaid
 stateDiagram-v2
-  [*] --> active
-  active --> dormant: no activity > threshold
-  active --> completed: roll-up state=done
-  dormant --> active: new signal arrives
-  dormant --> archived: decay watcher
-  completed --> archived: archival sweep
-  archived --> [*]
+ [*] --> active
+ active --> dormant: no activity > threshold
+ active --> completed: roll-up state=done
+ dormant --> active: new signal arrives
+ dormant --> archived: decay watcher
+ completed --> archived: archival sweep
+ archived --> [*]
 ```
 
 There's also a **derived roll-up `state`** — `done | active | waiting` — computed at read time by `deriveMatterState` from the linked tasks *(packages/ctrl/src/api/routes/matters.ts:486-497)*. `done` = every task done or archived; `active` = at least one task in_progress; `waiting` = otherwise. This is read-only — never write to it directly.
@@ -45,13 +45,13 @@ A **task** is one concrete step toward a matter's resolution, at `vault/task/<sl
 
 ```mermaid
 stateDiagram-v2
-  [*] --> todo_pending: created
-  todo_pending --> active_inprogress: principal starts
-  active_inprogress --> blocked_pending: waiting on someone
-  blocked_pending --> active_inprogress: unblock signal
-  active_inprogress --> done_done: closure predicate fires
-  todo_pending --> cancelled_archived: principal cancels
-  done_done --> [*]: archival sweep
+ [*] --> todo_pending: created
+ todo_pending --> active_inprogress: principal starts
+ active_inprogress --> blocked_pending: waiting on someone
+ blocked_pending --> active_inprogress: unblock signal
+ active_inprogress --> done_done: closure predicate fires
+ todo_pending --> cancelled_archived: principal cancels
+ done_done --> [*]: archival sweep
 ```
 
 (State pairs read as `status_state`.)
@@ -79,15 +79,15 @@ A **decision** is the audit record of a principal click (or autonomous agent fir
 
 ```mermaid
 stateDiagram-v2
-  [*] --> open: click on /desk
-  open --> completed: side-effects done
-  open --> dispatching: delegate intent
-  dispatching --> executing: agent accepted
-  dispatching --> open: 10-min stuck recovery
-  executing --> completed: outcome matched
-  completed --> reversed: principal reverses
-  reversed --> [*]: inverse side-effects applied
-  completed --> [*]
+ [*] --> open: click on /desk
+ open --> completed: side-effects done
+ open --> dispatching: delegate intent
+ dispatching --> executing: agent accepted
+ dispatching --> open: 10-min stuck recovery
+ executing --> completed: outcome matched
+ completed --> reversed: principal reverses
+ reversed --> [*]: inverse side-effects applied
+ completed --> [*]
 ```
 
 **Three write paths**, all of which mint `state=open` so DecisionRouter runs `extract_observation_from_decision` (the learning-loop closer):
@@ -106,15 +106,15 @@ Status vocabulary: `unrouted | routed_human | routed_agent | routed_suppressed |
 
 ```mermaid
 stateDiagram-v2
-  [*] --> unrouted: extracted from event
-  unrouted --> routed_human: discretion gate failed
-  unrouted --> dispatching: HIGH path begins
-  dispatching --> routed_agent: agent accepted
-  unrouted --> routed_suppressed: dedup gate
-  routed_agent --> agent_responded: outcome signal arrives
-  routed_human --> [*]
-  routed_suppressed --> [*]
-  agent_responded --> [*]
+ [*] --> unrouted: extracted from event
+ unrouted --> routed_human: discretion gate failed
+ unrouted --> dispatching: HIGH path begins
+ dispatching --> routed_agent: agent accepted
+ unrouted --> routed_suppressed: dedup gate
+ routed_agent --> agent_responded: outcome signal arrives
+ routed_human --> [*]
+ routed_suppressed --> [*]
+ agent_responded --> [*]
 ```
 
 Only `unrouted` is fed into `SignalRouterWorkflow`'s working set. Once routed, signals are terminal from the router's perspective.
@@ -127,13 +127,13 @@ A **chore** is a recurring piece of automation. It lives at `vault/chore/<slug>.
 
 ```mermaid
 stateDiagram-v2
-  [*] --> quarantine: just created
-  quarantine --> live: 3 successful dry runs
-  quarantine --> failed: dry-run errors
-  live --> paused: principal pauses
-  paused --> live: principal resumes
-  live --> proposed_for_promotion: 20+ runs, 95%+ success
-  failed --> [*]: principal deletes
+ [*] --> quarantine: just created
+ quarantine --> live: 3 successful dry runs
+ quarantine --> failed: dry-run errors
+ live --> paused: principal pauses
+ paused --> live: principal resumes
+ live --> proposed_for_promotion: 20+ runs, 95%+ success
+ failed --> [*]: principal deletes
 ```
 
 `workflow_class_name` in the chore frontmatter **must match the `@workflow.defn(name=...)` of the deployed `.py`**, exactly — capitalisation included. The dynamic loader resolves the class at worker boot.
@@ -152,15 +152,15 @@ Status is separate from tier: `unconfirmed | active | deprecated`. The signal-ro
 
 ```mermaid
 stateDiagram-v2
-  [*] --> Asking_unconfirmed: clerk proposes
-  Asking_unconfirmed --> Confirming_active: observations accumulate
-  Confirming_active --> Acting_active: confidence + count cross threshold
-  Acting_active --> Confirming_active: reversal calibration triggers
-  Confirming_active --> Asking_unconfirmed: more reversals
-  Asking_unconfirmed --> deprecated: clerk deprecates
-  Confirming_active --> deprecated: clerk deprecates
-  Acting_active --> deprecated: clerk deprecates
-  deprecated --> [*]
+ [*] --> Asking_unconfirmed: clerk proposes
+ Asking_unconfirmed --> Confirming_active: observations accumulate
+ Confirming_active --> Acting_active: confidence + count cross threshold
+ Acting_active --> Confirming_active: reversal calibration triggers
+ Confirming_active --> Asking_unconfirmed: more reversals
+ Asking_unconfirmed --> deprecated: clerk deprecates
+ Confirming_active --> deprecated: clerk deprecates
+ Acting_active --> deprecated: clerk deprecates
+ deprecated --> [*]
 ```
 
 The **discretion threshold** is per-instinct, computed from `observation_count` by `matching/discretion.py`. ctrl-api's `live_observation_count` enrichment takes precedence over any snapshotted value on the instinct itself — so the router always uses the current count, not a stale frontmatter field.

@@ -1,0 +1,31 @@
+---
+title: "Create Task"
+description: "Spawn a task on the `main` Hermes profile (synchronous Responses API)."
+api: "POST /api/v1/agents/main/task"
+---
+
+## Purpose
+
+Spawn a task on the `main` Hermes profile (synchronous Responses API). See the live route handler at `packages/ctrl/src/api/routes/agents.ts:360` for the authoritative request/response contract.
+
+<Note>
+This endpoint is part of the Alfred Black API. The OpenAPI spec for this endpoint is being authored — Mintlify will render parameters, request examples, and response examples here once the spec lands. Until then, see the source citation above for the authoritative shape.
+</Note>
+
+## Try it
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://alfred.black/api/v1/agents/main/task \
+ -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+```javascript JavaScript
+const r = await fetch('https://alfred.black/api/v1/agents/main/task', {
+ method: 'POST',
+ headers: { 'Authorization': `Bearer ${process.env.AAS_API_KEY}` },
+});
+```
+
+</CodeGroup>

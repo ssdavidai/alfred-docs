@@ -1,0 +1,68 @@
+---
+title: "Ingest Bulk Conversation"
+description: "Split a bulk conversation export into per-message inbox files."
+api: "POST /api/v1/workers/ingest"
+---
+
+Runs `alfred ingest`, which reads a bulk conversation export from a known path inside the `alfred` container and writes one inbox file per message. Curator picks them up on its next sweep. Use this to bootstrap the vault from a Slack, ChatGPT, or similar export rather than dropping files into `vault/inbox/` by hand.
+
+The endpoint streams stdout back. If the CLI emits JSON, that JSON is returned as-is; otherwise the trimmed text is returned under `raw`.
+
+## Authentication
+
+Bearer token in the `Authorization` header.
+
+## Request body
+
+<ParamField body="dry_run" type="boolean" optional default={false}>
+ When `true`, the CLI is invoked with `--dry-run`: it reports what would be written without creating any inbox files.
+</ParamField>
+
+<RequestExample>
+
+```bash Real ingest
+curl -X POST https://alfred.black/api/v1/workers/ingest \
+ -H "Authorization: Bearer alf_your_key_here" \
+ -H "Content-Type: application/json" \
+ -d '{}'
+```
+
+```bash Dry run
+curl -X POST https://alfred.black/api/v1/workers/ingest \
+ -H "Authorization: Bearer alf_your_key_here" \
+ -H "Content-Type: application/json" \
+ -d '{"dry_run": true}'
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 Structured
+{
+ "ingested": 412,
+ "skipped": 3,
+ "source": "vault/inbox/conversation-export.md"
+}
+```
+
+```json 200 Raw fallback
+{
+ "raw": "Ingested 412 messages from vault/inbox/conversation-export.md (skipped 3 duplicates)"
+}
+```
+
+</ResponseExample>
+
+<ResponseField name="raw" type="string">
+ Trimmed stdout when the underlying CLI did not return JSON. Present only in the fallback case.
+</ResponseField>
+
+## When to use
+
+- Onboarding a new vault from an external chat export.
+- Replaying a backed-up conversation after a vault reset.
+
+<Note>
+ Run with `dry_run: true` first when ingesting anything large — the resulting inbox files are real, and a flood of them will keep Curator busy for a long time.
+</Note>

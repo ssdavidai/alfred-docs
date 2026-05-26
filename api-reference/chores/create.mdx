@@ -1,0 +1,31 @@
+---
+title: "Create a chore (writes vault record + materialises"
+description: "Create a chore (writes vault record + materialises `.py` + registers Temporal schedule)."
+api: "POST /api/v1/chores"
+---
+
+## Purpose
+
+Create a chore (writes vault record + materialises `.py` + registers Temporal schedule). See the live route handler at `packages/ctrl/src/api/routes/chores.ts:579` for the authoritative request/response contract.
+
+<Note>
+This endpoint is part of the Alfred Black API. The OpenAPI spec for this endpoint is being authored — Mintlify will render parameters, request examples, and response examples here once the spec lands. Until then, see the source citation above for the authoritative shape.
+</Note>
+
+## Try it
+
+<CodeGroup>
+
+```bash cURL
+curl -X POST https://alfred.black/api/v1/chores \
+ -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+```javascript JavaScript
+const r = await fetch('https://alfred.black/api/v1/chores', {
+ method: 'POST',
+ headers: { 'Authorization': `Bearer ${process.env.AAS_API_KEY}` },
+});
+```
+
+</CodeGroup>

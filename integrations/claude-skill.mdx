@@ -34,18 +34,18 @@ claude.ai treats the two surfaces differently:
 claude.ai's **Custom Skills** feature lets you attach markdown files to a specific connector. The model loads the skill content as system context whenever it routes a call through that connector.
 
 <Steps>
-  <Step title="Open Settings">
-    In claude.ai, go to **Settings → Connectors**.
-  </Step>
-  <Step title="Pick a connector">
-    Click the connector you wired up earlier (`Alfred`, `Sure`, `Plane`, `Vaultwarden`, `Execute`). Each has its own skill surface.
-  </Step>
-  <Step title="Upload the skill">
-    Click **Add skill**. Upload the matching markdown file (download from `/settings#agent` on the dashboard, or grab the file directly from `packages/mcp-server/skills/`).
-  </Step>
-  <Step title="Repeat per connector">
-    Each connector gets its own skill. Composio's auto-generated `alfred-composio-<toolkit>` files attach to the `Execute` connector — one per toolkit.
-  </Step>
+ <Step title="Open Settings">
+ In claude.ai, go to **Settings → Connectors**.
+ </Step>
+ <Step title="Pick a connector">
+ Click the connector you wired up earlier (`Alfred`, `Sure`, `Plane`, `Vaultwarden`, `Execute`). Each has its own skill surface.
+ </Step>
+ <Step title="Upload the skill">
+ Click **Add skill**. Upload the matching markdown file (download from `/settings#agent` on the dashboard, or grab the file directly from `packages/mcp-server/skills/`).
+ </Step>
+ <Step title="Repeat per connector">
+ Each connector gets its own skill. Composio's auto-generated `alfred-composio-<toolkit>` files attach to the `Execute` connector — one per toolkit.
+ </Step>
 </Steps>
 
 ### Personalisation (profile-level)

@@ -32,15 +32,15 @@ Two **registration-time** gates also exist: `STEWARD_SIGNAL_EXTRACT_ENABLED` and
 Every flag resolves through the same three-step chain *(`state_mutator.py:214-279`, `task_creation.py:143-212`, `signal_actions.py:116-182`)*:
 
 <Steps>
-  <Step title="Env variable (override)">
-    If the env var (`STEWARD_LIVE_MODE`, `STEWARD_SIGNAL_ACTION_LIVE_MODE`, `STEWARD_SIGNAL_AUTOCREATE_TASKS`) is set and is one of the valid mode strings, that value wins. Reserved for ops emergencies — bake into the compose file or push via `docker compose --env-file` to disable a runaway pipeline without going through the dashboard.
-  </Step>
-  <Step title="settings.json file">
-    `/alfred-data/settings.json` is read; if it parses to a JSON object containing the matching key (`signal_action_mode`, `state_mutator_mode`, or `auto_task_create_mode`) with a valid string value, that wins.
-  </Step>
-  <Step title="Default">
-    `"live"` for all three.
-  </Step>
+ <Step title="Env variable (override)">
+ If the env var (`STEWARD_LIVE_MODE`, `STEWARD_SIGNAL_ACTION_LIVE_MODE`, `STEWARD_SIGNAL_AUTOCREATE_TASKS`) is set and is one of the valid mode strings, that value wins. Reserved for ops emergencies — bake into the compose file or push via `docker compose --env-file` to disable a runaway pipeline without going through the dashboard.
+ </Step>
+ <Step title="settings.json file">
+ `/alfred-data/settings.json` is read; if it parses to a JSON object containing the matching key (`signal_action_mode`, `state_mutator_mode`, or `auto_task_create_mode`) with a valid string value, that wins.
+ </Step>
+ <Step title="Default">
+ `"live"` for all three.
+ </Step>
 </Steps>
 
 Unrecognised values (env or file) log a `WARNING` line and fall back to the next step *(`state_mutator.py:244-248`, `signal_actions.py:148-152`)*. A missing settings file is the steady state on a fresh tenant — the resolver intentionally does **not** warn in that case *(`state_mutator.py:232-234`)*.
@@ -55,16 +55,16 @@ You can do the same from the host with curl:
 
 ```bash
 curl -X PUT https://api.${DOMAIN}/api/v1/settings/state_mutator_mode \
-  -H "Authorization: Bearer ${AAS_API_KEY}" \
-  -H "Content-Type: application/json" \
-  -d '{"mode": "shadow"}'
+ -H "Authorization: Bearer ${AAS_API_KEY}" \
+ -H "Content-Type: application/json" \
+ -d '{"mode": "shadow"}'
 ```
 
 Inspect the resolved view (which mode wins right now, and from where) with:
 
 ```bash
 curl https://api.${DOMAIN}/api/v1/settings \
-  -H "Authorization: Bearer ${AAS_API_KEY}"
+ -H "Authorization: Bearer ${AAS_API_KEY}"
 ```
 
 The response includes `{ mode, source, env_override_active }` per key so you can tell whether your dashboard toggle is being shadowed by an env override.
@@ -87,16 +87,16 @@ Restart not required for any of the three — the resolver re-reads on every act
 
 ```mermaid
 flowchart TB
-    A[Inbound event] --> B[ingest.db]
-    B --> C[SignalExtractWorkflow]
-    C -->|registration-time gate:<br/>STEWARD_SIGNAL_EXTRACT_ENABLED| D[SignalRouterWorkflow]
-    D -->|registration-time gate:<br/>STEWARD_SIGNAL_ROUTER_ENABLED| E{effect?}
-    E -->|action| F[route_signal_action]
-    E -->|mutation| G[apply_signal_mutation]
-    E -->|no target| H[create_task_from_signal]
-    F -.->|signal_action_mode| I[Dispatch agent or Desk card]
-    G -.->|state_mutator_mode| J[Patch frontmatter or audit only]
-    H -.->|auto_task_create_mode| K[Write task or log only]
+ A[Inbound event] --> B[ingest.db]
+ B --> C[SignalExtractWorkflow]
+ C -->|registration-time gate:<br/>STEWARD_SIGNAL_EXTRACT_ENABLED| D[SignalRouterWorkflow]
+ D -->|registration-time gate:<br/>STEWARD_SIGNAL_ROUTER_ENABLED| E{effect?}
+ E -->|action| F[route_signal_action]
+ E -->|mutation| G[apply_signal_mutation]
+ E -->|no target| H[create_task_from_signal]
+ F -.->|signal_action_mode| I[Dispatch agent or Desk card]
+ G -.->|state_mutator_mode| J[Patch frontmatter or audit only]
+ H -.->|auto_task_create_mode| K[Write task or log only]
 ```
 
 All three flags fire downstream of the signal pipeline, so flipping any of them to shadow does *not* stop inbound events from being recorded or signals from being extracted — only the action they would have triggered.

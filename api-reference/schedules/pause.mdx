@@ -1,0 +1,61 @@
+---
+title: "Pause Schedule"
+description: "Pause a Temporal schedule so it stops firing new runs."
+api: "POST /api/v1/schedules/{schId}/pause"
+---
+
+Pauses a Temporal schedule. Wraps `temporal schedule update --schedule-id <id> --pause`. The schedule remains registered but stops firing new workflow executions. Already-running workflows are unaffected. Reverse with [`unpause`](/api-reference/schedules/unpause).
+
+## Authentication
+
+Bearer token in the `Authorization` header.
+
+## Path parameters
+
+<ParamField path="schId" type="string" required>
+ Schedule ID to pause.
+</ParamField>
+
+## Request body
+
+<ParamField body="reason" type="string" optional>
+ Free-text rationale recorded on the schedule's notes field via Temporal's `--reason` flag.
+</ParamField>
+
+<RequestExample>
+
+```bash With reason
+curl -X POST https://alfred.black/api/v1/schedules/al-judgment/pause \
+ -H "Authorization: Bearer alf_your_key_here" \
+ -H "Content-Type: application/json" \
+ -d '{"reason": "Hermes gateway maintenance window"}'
+```
+
+```bash No reason
+curl -X POST https://alfred.black/api/v1/schedules/al-judgment/pause \
+ -H "Authorization: Bearer alf_your_key_here" \
+ -H "Content-Type: application/json" \
+ -d '{}'
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200
+{
+ "message": "Schedule paused"
+}
+```
+
+</ResponseExample>
+
+## When to use
+
+- Quiescing a workflow during maintenance windows.
+- Pausing a noisy chore while debugging the underlying activity.
+- Holding back a schedule until a dependency comes back online.
+
+<Note>
+ Pause only stops new fires. To stop a workflow currently in flight as well, also call [`POST /api/v1/workflows/{wfId}/cancel`](/api-reference/workflows/cancel) on the live execution.
+</Note>

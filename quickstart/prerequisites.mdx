@@ -46,12 +46,12 @@ The Caddyfile's comment header (caddy/Caddyfile:13) lists seven records and omit
 `scripts/bootstrap.sh` refuses to run until each of these is non-empty in your `.env` *(scripts/bootstrap.sh:71–98)*.
 
 <CardGroup cols={2}>
-  <Card title="OpenRouter" icon="key" href="https://openrouter.ai/keys">
-    `OPENROUTER_API_KEY` — Hermes's primary LLM provider. Funds the three profiles' model calls.
-  </Card>
-  <Card title="Composio" icon="key" href="https://composio.dev">
-    `COMPOSIO_API_KEY` — the bridge to ~1000 third-party apps (Gmail, Calendar, Notion, Slack…). Powers onboarding's "connect Gmail" flow.
-  </Card>
+ <Card title="OpenRouter" icon="key" href="https://openrouter.ai/keys">
+ `OPENROUTER_API_KEY` — Hermes's primary LLM provider. Funds the three profiles' model calls.
+ </Card>
+ <Card title="Composio" icon="key" href="https://composio.dev">
+ `COMPOSIO_API_KEY` — the bridge to ~1000 third-party apps (Gmail, Calendar, Notion, Slack…). Powers onboarding's "connect Gmail" flow.
+ </Card>
 </CardGroup>
 
 You'll also fill `DOMAIN`, `ACME_EMAIL`, and `OWNER_NAME` — the apex domain, the email Let's Encrypt registers under, and your display name *(.env.example:14–32)*.

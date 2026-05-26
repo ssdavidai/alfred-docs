@@ -1,0 +1,77 @@
+---
+title: "Distiller Run"
+description: "Scan plus extract: write learning records for every candidate."
+api: "POST /api/v1/workers/distiller/run"
+---
+
+Runs `alfred distiller run`: scans for candidates, then invokes the Distiller agent to extract latent knowledge from each one. New records are written for every assumption, decision, constraint, contradiction, and synthesis that the agent surfaces.
+
+This is an LLM-bound operation — every candidate requires a Hermes gateway call. Use [`distiller/scan`](/api-reference/workers/distiller-scan) first if you want to see how many candidates are on the table before paying for a run.
+
+## Authentication
+
+Bearer token in the `Authorization` header.
+
+## Request body
+
+<ParamField body="project" type="string" optional>
+ Restrict extraction to a single project slug. Omit to run across the entire vault.
+</ParamField>
+
+<RequestExample>
+
+```bash Whole vault
+curl -X POST https://alfred.black/api/v1/workers/distiller/run \
+ -H "Authorization: Bearer alf_your_key_here" \
+ -H "Content-Type: application/json" \
+ -d '{}'
+```
+
+```bash Single project
+curl -X POST https://alfred.black/api/v1/workers/distiller/run \
+ -H "Authorization: Bearer alf_your_key_here" \
+ -H "Content-Type: application/json" \
+ -d '{"project": "acme-redesign"}'
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 Structured
+{
+ "run_id": "run-0043",
+ "timestamp": "2026-04-25T09:14:02Z",
+ "candidates_found": 8,
+ "candidates_processed": 8,
+ "records_created": {
+ "assumption": 4,
+ "decision": 6,
+ "constraint": 3,
+ "contradiction": 1,
+ "synthesis": 4
+ }
+}
+```
+
+```json 200 Raw fallback
+{
+ "raw": "Extraction Run run-0043 — 2026-04-25T09:14:02Z\nCandidates: 8 found / 8 processed\nRecords created: assumption:4 decision:6 constraint:3 contradiction:1 synthesis:4"
+}
+```
+
+</ResponseExample>
+
+<ResponseField name="raw" type="string">
+ Trimmed stdout when the CLI did not return JSON. Present only in the fallback case.
+</ResponseField>
+
+## When to use
+
+- Manual triggers after a major vault edit you want distilled immediately.
+- Project-scoped knowledge passes (for example after closing out an engagement).
+- Recovering missed extractions after a Distiller daemon outage.
+
+<Warning>
+ Distiller writes new vault records under their respective entity directories. The runs are tracked in [`distiller/history`](/api-reference/workers/distiller-history) but the writes themselves are not transactional — an aborted run may leave a partial set of new records.
+</Warning>

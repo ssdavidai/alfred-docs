@@ -1,0 +1,81 @@
+---
+title: "execute"
+description: "Composio surface — one execute primitive over ~1,000 third-party apps. 6 MCP tools."
+---
+
+The `execute` app is the bridge to Composio's catalogue of roughly a thousand third-party apps — Gmail, GitHub, Notion, Slack, Calendar, Drive, Linear, Zoom, LinkedIn, YouTube, Stripe, and the long tail. The whole surface is built around one primitive: `composio_execute(action, arguments)`. Adding a new toolkit requires no MCP redeploy because there is no hardcoded action inventory; agents enumerate at runtime.
+
+**Backend.** Every tool routes through `proxyToCtrl()` to ctrl-api's `/api/v1/integrations/*` *(packages/mcp-server/src/tools/execute.ts:1-19)*. ctrl-api fronts Composio's v3 platform using `COMPOSIO_API_KEY` + `COMPOSIO_USER_ID` and resolves the connection-id-per-toolkit at execute time, so Hermes never sees the third-party tokens.
+
+**Design choice.** Composio itself models the world as a single execute handler with the action submitted as a parameter — `GMAIL_SEND_EMAIL`, `GITHUB_CREATE_AN_ISSUE`, `NOTION_CREATE_PAGE`. Mirroring that shape inside MCP keeps the tool catalogue small and lets Alfred onboard a new toolkit the moment Composio adds support.
+
+## The 6 tools
+
+<AccordionGroup>
+
+<Accordion title="Discovery and execution (2 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_composio_tools` | No args → list connected toolkits. With `{toolkit}` → enumerate that toolkit's action slugs. | `toolkit?` (lowercase, e.g. `gmail`) |
+| `composio_execute` | Execute one Composio action. Returns `{action, toolkit, result}`. | `action` (UPPER_SNAKE_CASE, e.g. `GMAIL_SEND_EMAIL`), `arguments` (per-action JSON) |
+
+<Warning>
+`composio_execute` is **not idempotent on writes** — calling twice creates duplicates *(packages/mcp-server/src/tools/execute.ts:67)*. If retrying after a network error, query the toolkit (a `GMAIL_LIST_MESSAGES` or equivalent) to check whether the prior call landed before re-running.
+</Warning>
+
+For common toolkits the dashboard auto-generates a per-toolkit skill file (`alfred-composio-gmail`, `alfred-composio-slack`, …) so the model knows canonical payloads without `list_composio_tools` discovery on every call.
+
+</Accordion>
+
+<Accordion title="Connection management (4 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_connections` | Active connected accounts on this tenant — id, toolkit, display name, status (`ACTIVE` / `DISABLED` / `EXPIRED`), auth scheme, created_at. | — |
+| `create_connection` | Start an OAuth flow for a new toolkit. Returns `{redirect_url, connection_id}` — the principal opens the URL in a browser, completes third-party auth, and the connection lands as `ACTIVE`. | `toolkit_slug`, `redirect_url?` |
+| `reconnect_connection` | In-place credential refresh for an expired or broken connection. Returns a fresh `redirect_url`; the `connection_id` stays the same. | `id` |
+| `delete_connection` | Disconnect — revokes the OAuth grant upstream where supported, removes the `connected_account` record, and deletes the auto-generated `alfred-composio-<toolkit>` skill if no other connection on the tenant uses it. | `id` |
+
+After `delete_connection`, subsequent `composio_execute` calls against any of that toolkit's actions return `No active <toolkit> connection found`. Confirm with the principal before deletion — it revokes Alfred's access to that app, including any background polling streams.
+
+</Accordion>
+
+</AccordionGroup>
+
+## Discover, then execute
+
+The canonical flow inside a conversation:
+
+<Steps>
+ <Step title="Discover the toolkit">
+ `list_composio_tools` with no arguments. Returns the connected toolkits on this tenant. Pick one.
+ </Step>
+ <Step title="Discover the action">
+ `list_composio_tools({toolkit: 'gmail'})`. Returns the list of action slugs (`GMAIL_SEND_EMAIL`, `GMAIL_FETCH_EMAILS`, …) with their JSON-schema shape.
+ </Step>
+ <Step title="Execute">
+ `composio_execute({action: 'GMAIL_SEND_EMAIL', arguments: { recipient_email: '...', subject: '...', body: '...' }})`. Returns `{action, toolkit, result}`.
+ </Step>
+</Steps>
+
+## What execute is not for
+
+<Note>
+`execute` reaches third-party apps. It is **not** the path for notifying the principal on Telegram or Slack — those are Hermes main-profile channels, not Composio toolkits, and only the main runtime can reach them. Use [`notify_principal`](/mcp-reference/alfred) on the `alfred` app instead.
+</Note>
+
+## Per-tenant scoping
+
+Composio scopes connections by `COMPOSIO_USER_ID`, which `bootstrap.sh` sets to `alfred-owner-<4-byte-hex>` on first install. The script enforces a non-empty, non-`default` value so two installs on the same Composio account stay isolated. Changing `COMPOSIO_USER_ID` after install makes the existing connections unreachable.
+
+## Related
+
+<CardGroup cols={2}>
+ <Card title="Composio integration" href="/integrations/composio">
+ The full picture — Composio's v3 platform, OAuth flow through the Connections dashboard, per-toolkit skill auto-generation.
+ </Card>
+ <Card title="Gmail / Calendar / Drive" href="/integrations/gmail-calendar-drive">
+ Canonical actions, payload shapes, and ingestion details for the three most-used Composio toolkits.
+ </Card>
+</CardGroup>

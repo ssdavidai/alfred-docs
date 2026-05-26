@@ -20,29 +20,29 @@ The operational store is called `alfred-state.db` (not `state.db`) to avoid coll
 
 ```mermaid
 flowchart LR
-  subgraph writers[Writers]
-    Ctrl[ctrl-api]
-    AlfredD[alfred vault daemon]
-    Learn[alfred-learn]
-    Hermes[hermes]
-  end
+ subgraph writers[Writers]
+ Ctrl[ctrl-api]
+ AlfredD[alfred vault daemon]
+ Learn[alfred-learn]
+ Hermes[hermes]
+ end
 
-  subgraph stores[Stores]
-    Vault[(vault<br/>markdown)]
-    State[(alfred-state.db<br/>SQLite+WAL)]
-    Ingest[(ingest.db<br/>7-day TTL)]
-    Cold[(cold.db<br/>zstd blobs)]
-  end
+ subgraph stores[Stores]
+ Vault[(vault<br/>markdown)]
+ State[(alfred-state.db<br/>SQLite+WAL)]
+ Ingest[(ingest.db<br/>7-day TTL)]
+ Cold[(cold.db<br/>zstd blobs)]
+ end
 
-  AlfredD -->|markdown writes<br/>via docker exec| Vault
-  Ctrl -->|writes via daemon| Vault
-  Ctrl -->|all SQL writes| State
-  Ctrl -->|all SQL writes| Ingest
-  Ctrl -->|nightly compactor| Cold
-  Learn -->|HTTP only| Ctrl
-  Hermes -->|MCP/HTTP only| Ctrl
-  State -.->|aged rows| Cold
-  Ingest -.->|processed+expired| Cold
+ AlfredD -->|markdown writes<br/>via docker exec| Vault
+ Ctrl -->|writes via daemon| Vault
+ Ctrl -->|all SQL writes| State
+ Ctrl -->|all SQL writes| Ingest
+ Ctrl -->|nightly compactor| Cold
+ Learn -->|HTTP only| Ctrl
+ Hermes -->|MCP/HTTP only| Ctrl
+ State -.->|aged rows| Cold
+ Ingest -.->|processed+expired| Cold
 ```
 
 ## Single-writer discipline
@@ -60,7 +60,7 @@ The vault is mounted at `/vault` inside ctrl-api and the alfred daemon, backed b
 ### The 12 canonical record types
 
 ```
-matter  task  note  person  org  place  asset  chore  instinct  decision  briefing  daybook
+matter task note person org place asset chore instinct decision briefing daybook
 ```
 
 The list is frozen in code as `CANONICAL_RECORD_TYPES` *(packages/ctrl/src/db/promotionContract.ts:29-43)*. Each record lives at `<type>/<slug>.md` with YAML frontmatter and a markdown body. Closed records may move to `<type>/_closed/` but stay under the same canonical root.
@@ -129,9 +129,9 @@ When ctrl-api rejects a non-canonical write, the response includes the exact des
 
 ```json
 {
-  "error": "Record type \"signal\" is not a canonical vault type.",
-  "recordType": "signal",
-  "destination": "alfred-state.db signal table (POST /api/v1/state/signals)"
+ "error": "Record type \"signal\" is not a canonical vault type.",
+ "recordType": "signal",
+ "destination": "alfred-state.db signal table (POST /api/v1/state/signals)"
 }
 ```
 

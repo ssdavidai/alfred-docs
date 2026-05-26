@@ -1,0 +1,49 @@
+---
+title: "Restart container"
+description: "Restart one container in the tenant Docker stack."
+api: "POST /api/v1/admin/containers/{service}/restart"
+---
+
+Restarts the named compose service via `docker compose restart <service>`. Use this to recover a service that has wedged or to apply config changes that don't require a full recreate.
+
+## Path parameters
+
+<ParamField path="service" type="string" required>
+ Compose service id. Must match `[a-zA-Z0-9_-]+`. Common values: `ctrl-api`, `hermes`, `alfred-learn`, `temporal`, `caddy`, `web`, `web-client`.
+</ParamField>
+
+## Response
+
+<ResponseField name="message" type="string">Confirmation that the restart was issued.</ResponseField>
+
+## Errors
+
+`400 Bad Request` — `service` contains invalid characters.
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://alfred.black/api/v1/admin/containers/hermes/restart \
+ -H "Authorization: Bearer alf_your_key_here"
+```
+
+```bash Restart alfred-learn
+curl -X POST https://alfred.black/api/v1/admin/containers/alfred-learn/restart \
+ -H "Authorization: Bearer alf_your_key_here"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+ "message": "Container \"hermes\" restarted"
+}
+```
+
+</ResponseExample>
+
+<Warning>
+ Restarting `alfred-learn` interrupts every in-flight Temporal activity that is heartbeating from inside the container. The chore-generation pipeline has a dedicated rate-limited route ([`POST /api/v1/admin/restart-learn`](/api-reference/admin/list-containers)) for this exact reason — prefer that path when reloading dynamic chore templates. Restarting `temporal` briefly halts every workflow.
+</Warning>

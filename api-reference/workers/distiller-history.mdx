@@ -1,0 +1,72 @@
+---
+title: "Distiller Run History"
+description: "List the most recent Distiller extraction runs."
+api: "GET /api/v1/workers/distiller/history"
+---
+
+Returns the most recent Distiller runs in reverse chronological order, with per-type record counts for each. Wraps `alfred distiller history --limit <N>`.
+
+## Authentication
+
+Bearer token in the `Authorization` header.
+
+## Query parameters
+
+<ParamField query="limit" type="string" optional default="10">
+ Maximum number of runs to return. Passed through to the CLI as a string.
+</ParamField>
+
+<RequestExample>
+
+```bash Default (10 runs)
+curl -X GET https://alfred.black/api/v1/workers/distiller/history \
+ -H "Authorization: Bearer alf_your_key_here"
+```
+
+```bash Last 25 runs
+curl -X GET "https://alfred.black/api/v1/workers/distiller/history?limit=25" \
+ -H "Authorization: Bearer alf_your_key_here"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 Structured
+{
+ "runs": [
+ {
+ "run_id": "run-0043",
+ "timestamp": "2026-04-25T09:14:02Z",
+ "candidates_found": 8,
+ "candidates_processed": 8,
+ "records_created": {"assumption": 4, "decision": 6, "constraint": 3}
+ },
+ {
+ "run_id": "run-0042",
+ "timestamp": "2026-04-24T21:00:00Z",
+ "candidates_found": 6,
+ "candidates_processed": 6,
+ "records_created": {"assumption": 2, "decision": 5, "synthesis": 1}
+ }
+ ]
+}
+```
+
+```json 200 Raw fallback
+{
+ "raw": "run_id timestamp found proc. records\nrun-0043 2026-04-25T09:14:02Z 8 8 assumption:4 decision:6 constraint:3\nrun-0042 2026-04-24T21:00:00Z 6 6 assumption:2 decision:5 synthesis:1"
+}
+```
+
+</ResponseExample>
+
+<ResponseField name="raw" type="string">
+ Trimmed stdout when the CLI did not return JSON. Present only in the fallback case.
+</ResponseField>
+
+## When to use
+
+- Reviewing whether the Distiller daemon's scheduled runs are producing useful learnings.
+- Tracking trends in extraction volume to spot a stalled daemon.
+- Auditing which run produced a specific learning record (cross-reference by timestamp).

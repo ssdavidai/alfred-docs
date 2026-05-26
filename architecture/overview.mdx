@@ -11,31 +11,31 @@ The system has three load-bearing layers: a **runtime** (the AI), an **intellige
 
 ```mermaid
 flowchart TD
-  P([Principal])
-  Caddy[Caddy<br/>:80/:443<br/>Lets Encrypt TLS]
-  Web[web + web-client<br/>Wasp dashboard]
-  Ctrl[ctrl-api :3100<br/>HTTP API + 4-store layer]
-  Hermes[hermes runtime<br/>main :18789 · workers :18790 · heavy :18791]
-  Learn[alfred-learn<br/>Temporal workflows]
-  Temp[(temporal :7233)]
-  Vault[(vault_data<br/>markdown)]
-  State[(alfred-state.db<br/>SQLite + WAL)]
-  Ingest[(ingest.db<br/>7-day TTL)]
-  Side[Sidecars:<br/>Plane · Sure · Vaultwarden · MCP]
+ P([Principal])
+ Caddy[Caddy<br/>:80/:443<br/>Lets Encrypt TLS]
+ Web[web + web-client<br/>Wasp dashboard]
+ Ctrl[ctrl-api :3100<br/>HTTP API + 4-store layer]
+ Hermes[hermes runtime<br/>main :18789 · workers :18790 · heavy :18791]
+ Learn[alfred-learn<br/>Temporal workflows]
+ Temp[(temporal :7233)]
+ Vault[(vault_data<br/>markdown)]
+ State[(alfred-state.db<br/>SQLite + WAL)]
+ Ingest[(ingest.db<br/>7-day TTL)]
+ Side[Sidecars:<br/>Plane · Sure · Vaultwarden · MCP]
 
-  P -->|HTTPS| Caddy
-  Caddy --> Web
-  Caddy --> Side
-  Caddy -->|/api/*| Ctrl
-  Web -->|REST| Ctrl
-  Ctrl --> Vault
-  Ctrl --> State
-  Ctrl --> Ingest
-  Ctrl -->|/v1/responses| Hermes
-  Learn --> Temp
-  Learn -->|HTTP| Ctrl
-  Learn -->|/v1/runs| Hermes
-  Hermes -->|MCP stdio| Ctrl
+ P -->|HTTPS| Caddy
+ Caddy --> Web
+ Caddy --> Side
+ Caddy -->|/api/*| Ctrl
+ Web -->|REST| Ctrl
+ Ctrl --> Vault
+ Ctrl --> State
+ Ctrl --> Ingest
+ Ctrl -->|/v1/responses| Hermes
+ Learn --> Temp
+ Learn -->|HTTP| Ctrl
+ Learn -->|/v1/runs| Hermes
+ Hermes -->|MCP stdio| Ctrl
 ```
 
 Caddy terminates TLS on the host and reverse-proxies seven hostnames — apex, `api`, `plane`, `sure`, `vault`, `mcp`, `sms`, `voice` — to internal services *(caddy/Caddyfile)*. The dashboard SPA (`web-client`, nginx) lives at the apex; the Wasp server (`web`) handles auth and operations at `api.{$DOMAIN}` *(docker-compose.yaml:80-137)*.

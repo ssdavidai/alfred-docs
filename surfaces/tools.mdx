@@ -8,15 +8,15 @@ description: "The Hermes allowlist audit — every Composio action, stream, buil
 ## The three sections
 
 <CardGroup cols={3}>
-  <Card title="Connected apps">
-    One block per Composio toolkit the principal has authorised, split into **Streams** (sources Alfred can read from) and **Actions** (operations Alfred can perform). Each entry shows its slug, a one-line description, and a deprecation marker when applicable *(ToolsPage2.tsx:212-237, 346-384)*.
-  </Card>
-  <Card title="Built-in">
-    Primitives the Hermes runtime ships with — file operations, shell, vault read/write — independent of any connected toolkit *(ToolsPage2.tsx:240-285)*.
-  </Card>
-  <Card title="MCP servers">
-    Every tool registered through one of Alfred's MCP servers (`alfred`, `sure`, `plane`, `vaultwarden`, `execute`, `hermes`, `alfred-ctrl`). Each row is `name · server · description` *(ToolsPage2.tsx:287-338)*.
-  </Card>
+ <Card title="Connected apps">
+ One block per Composio toolkit the principal has authorised, split into **Streams** (sources Alfred can read from) and **Actions** (operations Alfred can perform). Each entry shows its slug, a one-line description, and a deprecation marker when applicable *(ToolsPage2.tsx:212-237, 346-384)*.
+ </Card>
+ <Card title="Built-in">
+ Primitives the Hermes runtime ships with — file operations, shell, vault read/write — independent of any connected toolkit *(ToolsPage2.tsx:240-285)*.
+ </Card>
+ <Card title="MCP servers">
+ Every tool registered through one of Alfred's MCP servers (`alfred`, `sure`, `plane`, `vaultwarden`, `execute`, `hermes`, `alfred-ctrl`). Each row is `name · server · description` *(ToolsPage2.tsx:287-338)*.
+ </Card>
 </CardGroup>
 
 The header shows the running total of entries across all three sections — typically around **155 to 165 tools** on a freshly-connected tenant *(ToolsPage2.tsx:105-108)*.

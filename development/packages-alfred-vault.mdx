@@ -11,42 +11,42 @@ disk directly: ctrl-api shells into the container via `dockerExec` and
 parses the JSON it emits.
 
 <Warning>
-  The daemon's validator supports 20+ entity types, but in production
-  **ctrl-api enforces only the twelve canonical vault types** via
-  `assertCanonicalVaultPath()`. The wider type set is supported for legacy
-  data, migrations, and dev experiments — it does not extend the
-  production vault schema. See [Package — ctrl](/development/packages-ctrl)
-  for the promotion contract.
+ The daemon's validator supports 20+ entity types, but in production
+ **ctrl-api enforces only the twelve canonical vault types** via
+ `assertCanonicalVaultPath()`. The wider type set is supported for legacy
+ data, migrations, and dev experiments — it does not extend the
+ production vault schema. See [Package — ctrl](/development/packages-ctrl)
+ for the promotion contract.
 </Warning>
 
 ## Layout
 
 ```
 packages/alfred-vault/
-├── pyproject.toml             alfred-vault 1.0.0, MIT, Python ≥3.11
+├── pyproject.toml alfred-vault 1.0.0, MIT, Python ≥3.11
 ├── LICENSE
 ├── README.md
-├── CLAUDE.md                  scope + prompt-builder constraints
-├── config.yaml.example        config schema
+├── CLAUDE.md scope + prompt-builder constraints
+├── config.yaml.example config schema
 ├── src/alfred/
-│   ├── __main__.py            entrypoint: python -m alfred
-│   ├── cli.py                 top-level CLI dispatcher
-│   ├── daemon.py              long-running daemon mode
-│   ├── orchestrator.py        coordinator for the four workers
-│   ├── _bundled/scaffold/     bundled vault scaffold (_templates/, dirs)
-│   ├── vault/
-│   │   ├── cli.py             vault subcommand parser
-│   │   ├── ops.py             read / search / list / create / edit / move / delete
-│   │   ├── schema.py          KNOWN_TYPES + per-type status vocab
-│   │   ├── scope.py           curator | janitor | distiller | surveyor scopes
-│   │   └── mutation_log.py    JSONL session tracker
-│   ├── curator/               inbox processor + entity extractor
-│   ├── janitor/               structural repair + link fixer
-│   ├── distiller/             knowledge extraction
-│   ├── surveyor/              embedding + clustering pipeline
-│   └── tui/, dashboard.py     interactive UIs (dev)
+│ ├── __main__.py entrypoint: python -m alfred
+│ ├── cli.py top-level CLI dispatcher
+│ ├── daemon.py long-running daemon mode
+│ ├── orchestrator.py coordinator for the four workers
+│ ├── _bundled/scaffold/ bundled vault scaffold (_templates/, dirs)
+│ ├── vault/
+│ │ ├── cli.py vault subcommand parser
+│ │ ├── ops.py read / search / list / create / edit / move / delete
+│ │ ├── schema.py KNOWN_TYPES + per-type status vocab
+│ │ ├── scope.py curator | janitor | distiller | surveyor scopes
+│ │ └── mutation_log.py JSONL session tracker
+│ ├── curator/ inbox processor + entity extractor
+│ ├── janitor/ structural repair + link fixer
+│ ├── distiller/ knowledge extraction
+│ ├── surveyor/ embedding + clustering pipeline
+│ └── tui/, dashboard.py interactive UIs (dev)
 └── docs/
-    ├── Architecture.md, Vault-Schema.md, CLI-Commands.md, …
+ ├── Architecture.md, Vault-Schema.md, CLI-Commands.md, …
 ```
 
 ## Entity types — the daemon's wider vocabulary
@@ -55,10 +55,10 @@ The daemon's `KNOWN_TYPES` set covers ~20 entity types
 *(packages/alfred-vault/src/alfred/vault/schema.py)*:
 
 ```
-project    task        session     input        person
-org        location    note        decision     process
-run        event       account     asset        conversation
-assumption constraint  contradiction synthesis   note
+project task session input person
+org location note decision process
+run event account asset conversation
+assumption constraint contradiction synthesis note
 ```
 
 Of these, **twelve** are written to the vault in production — `matter`,
@@ -93,11 +93,11 @@ list-vs-scalar field raises a `VaultError` exception with a clear message
 the error and returns it as JSON to the caller.
 
 <Warning>
-  Watch the task `status` field carefully. The validator accepts only
-  `active | blocked | cancelled | done | todo`. Any other value — for
-  example `queued` — is **rejected with an HTTP 500**. Use `status: todo`
-  for "not yet started", and pair it with the matters-aggregator's
-  `state: pending`.
+ Watch the task `status` field carefully. The validator accepts only
+ `active | blocked | cancelled | done | todo`. Any other value — for
+ example `queued` — is **rejected with an HTTP 500**. Use `status: todo`
+ for "not yet started", and pair it with the matters-aggregator's
+ `state: pending`.
 </Warning>
 
 ## The CLI surface
@@ -162,37 +162,37 @@ slices.
 ## Build, run, test
 
 <Tabs>
-  <Tab title="Build">
-    ```sh
-    cd packages/alfred-vault
-    pip install -e ".[temporal,surveyor]"
-    ```
+ <Tab title="Build">
+ ```sh
+ cd packages/alfred-vault
+ pip install -e ".[temporal,surveyor]"
+ ```
 
-    The package builds as a standard hatchling wheel. The `[surveyor]`
-    extras pull in `pymilvus`, `scikit-learn`, `leidenalg`, `igraph`,
-    `numpy`, `openai` — only needed if you run the embedding + clustering
-    pipeline.
-  </Tab>
-  <Tab title="Run">
-    The container image bakes the package as an entrypoint:
-    ```sh
-    docker compose up -d alfred
-    docker compose exec alfred alfred vault read matter/inbox.md
-    ```
+ The package builds as a standard hatchling wheel. The `[surveyor]`
+ extras pull in `pymilvus`, `scikit-learn`, `leidenalg`, `igraph`,
+ `numpy`, `openai` — only needed if you run the embedding + clustering
+ pipeline.
+ </Tab>
+ <Tab title="Run">
+ The container image bakes the package as an entrypoint:
+ ```sh
+ docker compose up -d alfred
+ docker compose exec alfred alfred vault read matter/inbox.md
+ ```
 
-    Env vars consumed: `ALFRED_VAULT_PATH` (vault root),
-    `ALFRED_VAULT_SCOPE` (per-worker scope),
-    `ALFRED_VAULT_SESSION` (mutation log path).
-  </Tab>
-  <Tab title="Test">
-    ```sh
-    pytest packages/alfred-vault/tests
-    ```
+ Env vars consumed: `ALFRED_VAULT_PATH` (vault root),
+ `ALFRED_VAULT_SCOPE` (per-worker scope),
+ `ALFRED_VAULT_SESSION` (mutation log path).
+ </Tab>
+ <Tab title="Test">
+ ```sh
+ pytest packages/alfred-vault/tests
+ ```
 
-    Tests cover the validator (every entity type's required-field and
-    status-vocab rules), scope enforcement (curator can't delete, distiller
-    can't write `decision`, etc.), and the CLI's JSON output contract.
-  </Tab>
+ Tests cover the validator (every entity type's required-field and
+ status-vocab rules), scope enforcement (curator can't delete, distiller
+ can't write `decision`, etc.), and the CLI's JSON output contract.
+ </Tab>
 </Tabs>
 
 ## Where to look next

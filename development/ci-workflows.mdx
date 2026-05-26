@@ -47,18 +47,18 @@ QEMU on an `amd64` runner SIGILLs intermittently. The workflow works
 around this with a four-stage graph:
 
 1. **prepare** *(build-web.yml:49-128)* — runs `wasp build` once
-   (arch-agnostic), generates the Prisma baseline migration, builds
-   the SPA client. Uploads the server and client build contexts as
-   artifacts.
+ (arch-agnostic), generates the Prisma baseline migration, builds
+ the SPA client. Uploads the server and client build contexts as
+ artifacts.
 2. **build-server** *(build-web.yml:136-188)* — matrix `{amd64 on
-   ubuntu-latest, arm64 on ubuntu-24.04-arm}`. Each **native** runner
-   builds its own architecture and pushes **by digest**, no tag.
+ ubuntu-latest, arm64 on ubuntu-24.04-arm}`. Each **native** runner
+ builds its own architecture and pushes **by digest**, no tag.
 3. **merge-server** *(build-web.yml:195-223)* — `docker buildx
-   imagetools create` stitches the two per-arch digests into the
-   `:latest` multi-arch manifest at the registry level (no rebuild).
+ imagetools create` stitches the two per-arch digests into the
+ `:latest` multi-arch manifest at the registry level (no rebuild).
 4. **build-client** *(build-web.yml:230-264)* — standard multi-arch
-   buildx; the SPA image only packages static output, so QEMU is
-   safe here.
+ buildx; the SPA image only packages static output, so QEMU is
+ safe here.
 
 The cost of this complexity is build time. `build-learn.yml` ships
 in around 10 minutes; `build-web.yml` is closer to 15, but the
@@ -74,32 +74,32 @@ the per-image workflows' job. Instead, it runs four orthogonal checks
 in parallel *(ci-check.yml:24-98)*:
 
 <Tabs>
-  <Tab title="build-ctrl">
-    `npm ci` then `node build.mjs` in `packages/ctrl` — the real
-    esbuild bundle that the `alfred-ctrl-api` image ships. Bare `tsc
-    --noEmit` is intentionally skipped because `node:sqlite` is an
-    esbuild external with no tsc-resolvable types
-    *(ci-check.yml:35-40)*.
-  </Tab>
-  <Tab title="pytest-learn">
-    Python 3.12, `pip install -r requirements.txt` + pytest, then
-    `pytest tests/ -v -m "not slow"` *(ci-check.yml:42-56)*. The
-    `not slow` marker skips Temporal replay tests that would
-    otherwise dominate runtime.
-  </Tab>
-  <Tab title="compose-lint">
-    Synthesises a dummy `.env` (real values are unnecessary for
-    `compose config`) and runs `docker compose config --quiet` for
-    both the default profile and `--profile vexa`
-    *(ci-check.yml:58-91)*. This is what catches a syntactically
-    broken compose file or an unresolvable `${VAR}` interpolation
-    before a deploy.
-  </Tab>
-  <Tab title="bootstrap-lint">
-    `shellcheck scripts/bootstrap.sh` *(ci-check.yml:93-98)*. The
-    bootstrap script is the host-side prerequisite for every fresh
-    deploy; a shellcheck regression there is operator-visible.
-  </Tab>
+ <Tab title="build-ctrl">
+ `npm ci` then `node build.mjs` in `packages/ctrl` — the real
+ esbuild bundle that the `alfred-ctrl-api` image ships. Bare `tsc
+ --noEmit` is intentionally skipped because `node:sqlite` is an
+ esbuild external with no tsc-resolvable types
+ *(ci-check.yml:35-40)*.
+ </Tab>
+ <Tab title="pytest-learn">
+ Python 3.12, `pip install -r requirements.txt` + pytest, then
+ `pytest tests/ -v -m "not slow"` *(ci-check.yml:42-56)*. The
+ `not slow` marker skips Temporal replay tests that would
+ otherwise dominate runtime.
+ </Tab>
+ <Tab title="compose-lint">
+ Synthesises a dummy `.env` (real values are unnecessary for
+ `compose config`) and runs `docker compose config --quiet` for
+ both the default profile and `--profile vexa`
+ *(ci-check.yml:58-91)*. This is what catches a syntactically
+ broken compose file or an unresolvable `${VAR}` interpolation
+ before a deploy.
+ </Tab>
+ <Tab title="bootstrap-lint">
+ `shellcheck scripts/bootstrap.sh` *(ci-check.yml:93-98)*. The
+ bootstrap script is the host-side prerequisite for every fresh
+ deploy; a shellcheck regression there is operator-visible.
+ </Tab>
 </Tabs>
 
 The Wasp web app is **not** type-checked here. `wasp build` is the only
@@ -112,13 +112,13 @@ stage instead *(ci-check.yml:7-11)*.
 Two more workflows complete the set:
 
 - **`gitleaks.yml`** scans every commit for accidentally-committed
-  secrets (API keys, tokens, private keys). It fails loud on any
-  match.
+ secrets (API keys, tokens, private keys). It fails loud on any
+ match.
 - **`release-alfred-vault.yml`** is triggered by tags matching
-  `alfred-vault-v*` and publishes the standalone `alfred-vault`
-  Python package to PyPI. The package is `pip install`-able on its
-  own — it has a release lifecycle independent of Alfred Black's
-  Docker images.
+ `alfred-vault-v*` and publishes the standalone `alfred-vault`
+ Python package to PyPI. The package is `pip install`-able on its
+ own — it has a release lifecycle independent of Alfred Black's
+ Docker images.
 
 ## How `:latest` reaches the VM
 
@@ -126,9 +126,9 @@ There is **no** auto-deploy from CI to a tenant. The flow is:
 
 1. CI builds and pushes `ssdavidai00/<name>:latest` to Docker Hub.
 2. An operator runs `docker compose pull && docker compose up -d`
-   on the VM. The compose file references each image by `:latest`,
-   so the pull surfaces the new manifest and `up -d` recreates only
-   the containers whose image digest changed.
+ on the VM. The compose file references each image by `:latest`,
+ so the pull surfaces the new manifest and `up -d` recreates only
+ the containers whose image digest changed.
 
 Caddyfile and `docker-compose.yaml` changes are **not** in any image —
 they ship via `rsync` (or `git pull` in `/opt/alfred`) before the
@@ -138,10 +138,10 @@ when to reload the proxy.
 ## What to read next
 
 <CardGroup cols={2}>
-  <Card title="The commit gate" href="/development/commit-gate">
-    What happens to your commit before it ever reaches CI.
-  </Card>
-  <Card title="The lane protocol" href="/development/lane-protocol">
-    The five lanes and the C1–C19 frozen contracts that keep CI happy.
-  </Card>
+ <Card title="The commit gate" href="/development/commit-gate">
+ What happens to your commit before it ever reaches CI.
+ </Card>
+ <Card title="The lane protocol" href="/development/lane-protocol">
+ The five lanes and the C1–C19 frozen contracts that keep CI happy.
+ </Card>
 </CardGroup>

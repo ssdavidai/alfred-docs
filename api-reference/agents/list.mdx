@@ -1,0 +1,77 @@
+---
+title: "List agents"
+description: "Show every agent on this instance with its label and description."
+api: "GET /api/v1/admin/agents"
+---
+
+Returns a lightweight summary of every agent on your Alfred instance, plus the surveyor pipeline configuration. This is the cheap, no-`docker exec` endpoint that the dashboard polls to render the Agents page.
+
+For per-agent model resolution, fallbacks, and provider auth status, drill into a specific agent with [`GET /api/v1/admin/agents/{agentId}`](/api-reference/agents/get-agent).
+
+## Response
+
+<ResponseField name="agents" type="array">
+ Every Hermes agent on the instance.
+
+ <Expandable title="Agent fields">
+ <ResponseField name="id" type="string">
+ Stable identifier — one of `main`, `learn-clerk`, `vault-curator`, `vault-janitor`, `vault-distiller`.
+ </ResponseField>
+ <ResponseField name="label" type="string">
+ Human-readable name (e.g. `"Alfred"`, `"Curator"`).
+ </ResponseField>
+ <ResponseField name="description" type="string">
+ One-line description of the agent's role.
+ </ResponseField>
+ </Expandable>
+</ResponseField>
+
+<ResponseField name="surveyor" type="object">
+ Surveyor pipeline configuration, read from `config.yaml`.
+
+ <Expandable title="Surveyor fields">
+ <ResponseField name="labeler_model" type="string">
+ Model used for cluster labelling. Defaults to `x-ai/grok-4.1-fast`.
+ </ResponseField>
+ <ResponseField name="embedder_model" type="string">
+ Embedding model. Defaults to `nomic-embed-text`.
+ </ResponseField>
+ <ResponseField name="embedder_source" type="string">
+ Where embeddings come from — `ollama` (local) or `openrouter` (remote).
+ </ResponseField>
+ </Expandable>
+</ResponseField>
+
+<RequestExample>
+
+```bash cURL
+curl -X GET https://alfred.black/api/v1/admin/agents \
+ -H "Authorization: Bearer alf_your_key_here"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+ "agents": [
+ { "id": "main", "label": "Alfred", "description": "Default agent for device interactions" },
+ { "id": "learn-clerk", "label": "Clerk", "description": "Stateless LLM worker for learning workflows" },
+ { "id": "vault-curator", "label": "Curator", "description": "Processes inbox into structured vault records" },
+ { "id": "vault-janitor", "label": "Janitor", "description": "Fixes structural vault issues" },
+ { "id": "vault-distiller", "label": "Distiller", "description": "Extracts latent knowledge from records" }
+ ],
+ "surveyor": {
+ "labeler_model": "x-ai/grok-4.1-fast",
+ "embedder_model": "nomic-embed-text",
+ "embedder_source": "ollama"
+ }
+}
+```
+
+</ResponseExample>
+
+<Note>
+ This endpoint is intentionally lightweight — no `docker exec` involved. To check whether an agent's configured model has working credentials, call the per-agent endpoint.
+</Note>

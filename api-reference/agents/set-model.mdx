@@ -1,0 +1,115 @@
+---
+title: "Set agent model"
+description: "Change the LLM model an agent uses."
+api: "PATCH /api/v1/admin/agents/{agentId}/model"
+---
+
+Updates the model for a specific agent. For Hermes agents the change is written to the active Hermes profile config (both the per-agent entry and the global default), the previous config is backed up alongside it, and the Hermes container is restarted so the new model takes effect. For `surveyor`, the model is written to the surveyor block in `config.yaml`.
+
+## Path parameters
+
+<ParamField path="agentId" type="string" required>
+ One of `main`, `learn-clerk`, `vault-curator`, `vault-janitor`, `vault-distiller`, `surveyor`.
+</ParamField>
+
+## Body parameters
+
+<ParamField body="model" type="string" required>
+ Model identifier (e.g. `xai/grok-4`, `anthropic/claude-sonnet-4`, `google/gemini-2.5-pro`, `x-ai/grok-4.1-fast`). Must be non-empty.
+</ParamField>
+
+<ParamField body="field" type="string">
+ Surveyor only. Set to `embedder_model` to update the embedding model; omit to update the labeler model.
+</ParamField>
+
+## Response
+
+<ResponseField name="message" type="string">Confirmation message naming the agent and the new model.</ResponseField>
+<ResponseField name="agent" type="object">
+ For Hermes agents: the same shape as `GET /api/v1/admin/agents/{agentId}` for the updated agent.
+</ResponseField>
+<ResponseField name="surveyor" type="object">
+ For surveyor: the updated surveyor block (`labeler_model`, `embedder_model`, `embedder_source`).
+</ResponseField>
+
+<RequestExample>
+
+```bash cURL — Hermes agent
+curl -X PATCH https://alfred.black/api/v1/admin/agents/vault-curator/model \
+ -H "Authorization: Bearer alf_your_key_here" \
+ -H "Content-Type: application/json" \
+ -d '{"model": "xai/grok-4-1-fast-reasoning"}'
+```
+
+```bash cURL — Surveyor labeler
+curl -X PATCH https://alfred.black/api/v1/admin/agents/surveyor/model \
+ -H "Authorization: Bearer alf_your_key_here" \
+ -H "Content-Type: application/json" \
+ -d '{"model": "x-ai/grok-4.1-fast"}'
+```
+
+```bash cURL — Surveyor embedder
+curl -X PATCH https://alfred.black/api/v1/admin/agents/surveyor/model \
+ -H "Authorization: Bearer alf_your_key_here" \
+ -H "Content-Type: application/json" \
+ -d '{"model": "nomic-embed-text", "field": "embedder_model"}'
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK — Hermes agent
+{
+ "message": "Model for Curator updated to xai/grok-4-1-fast-reasoning",
+ "agent": {
+ "id": "vault-curator",
+ "label": "Curator",
+ "description": "Processes inbox into structured vault records",
+ "defaultModel": "xai/grok-4-1-fast-reasoning",
+ "resolvedDefault": "xai/grok-4-1-fast-reasoning",
+ "fallbacks": [],
+ "providers": [],
+ "missingProviders": []
+ }
+}
+```
+
+```json 200 OK — Surveyor
+{
+ "message": "Surveyor labeler model updated to x-ai/grok-4.1-fast",
+ "surveyor": {
+ "labeler_model": "x-ai/grok-4.1-fast",
+ "embedder_model": "nomic-embed-text",
+ "embedder_source": "ollama"
+ }
+}
+```
+
+```json 400 Missing model
+{
+ "error": {
+ "code": "VALIDATION_ERROR",
+ "message": "Request body must include a non-empty 'model' string"
+ }
+}
+```
+
+```json 400 Unknown agent
+{
+ "error": {
+ "code": "VALIDATION_ERROR",
+ "message": "Unknown agent: foo. Known agents: main, learn-clerk, vault-curator, vault-janitor, vault-distiller, surveyor"
+ }
+}
+```
+
+</ResponseExample>
+
+<Warning>
+ Setting a model also updates `agents.defaults.model.primary` so newly spawned sessions pick the same model. The Hermes container is then restarted on a best-effort basis, which interrupts any in-flight session. Avoid switching models during active onboarding or chore-generation runs.
+</Warning>
+
+<Note>
+ The previous Hermes profile config is preserved as a `.bak` file on the VM in case you want to roll back manually.
+</Note>

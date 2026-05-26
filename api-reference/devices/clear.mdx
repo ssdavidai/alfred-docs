@@ -1,0 +1,36 @@
+---
+title: "Clear pending pairing codes"
+description: "Drop all pending Hermes pairing codes."
+api: "POST /api/v1/devices/clear-pending"
+---
+
+Drops every pending pairing code from the Hermes pairing queue. Approved users are unaffected. Use this when stale codes accumulate from abandoned pairing attempts *(packages/ctrl/src/api/routes/devices.ts:85-91)*.
+
+## Response
+
+<ResponseField name="message" type="string">
+ Confirmation string from the Hermes CLI (e.g. `"Pending codes cleared"`).
+</ResponseField>
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://alfred.black/api/v1/devices/clear-pending \
+ -H "Authorization: Bearer alf_your_key_here"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+ "message": "Pending codes cleared"
+}
+```
+
+</ResponseExample>
+
+<Note>
+ This only clears **pending** codes. Approved users are not affected. To revoke an approved user, use [`POST /api/v1/devices/revoke`](/api-reference/devices/revoke).
+</Note>

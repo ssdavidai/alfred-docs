@@ -16,15 +16,15 @@ The Alfred Black design language frames the system as a household: a butler ("Al
 Under the metaphor, every "specialist" is a named agent bound to a Hermes profile. The roster is enumerated at [Settings → Agent Configuration](/surfaces/study) via `getAgentConfig`, with three top-level profiles *(packages/web/src/dashboard/StudyPage.tsx:222-241)*:
 
 <CardGroup cols={3}>
-  <Card title="Alfred (main)">
-    The principal's conversational counterpart on every channel — Slack, Telegram, SMS, the web app, email replies. Carries persistent memory across turns; reads SOUL.md / USER.md / RULES.md at every prompt. Hermes profile: **`main`** (port 18789).
-  </Card>
-  <Card title="The Workers">
-    The high-volume, cheap end of the household. **Clerk** classifies and extracts signals, drafts reflections; **chore execution** runs the principal's recurring workflows; **surveyor** labels and embeds new vault records for the semantic index. Hermes profile: **`workers`** (port 18790).
-  </Card>
-  <Card title="Heavy reasoning">
-    Reserved for slow, expensive work: onboarding fact extraction, pattern discovery, the heavy-reasoning beats inside chores that need a frontier model. Used sparingly to keep the bill down. Hermes profile: **`heavy`** (port 18791).
-  </Card>
+ <Card title="Alfred (main)">
+ The principal's conversational counterpart on every channel — Slack, Telegram, SMS, the web app, email replies. Carries persistent memory across turns; reads SOUL.md / USER.md / RULES.md at every prompt. Hermes profile: **`main`** (port 18789).
+ </Card>
+ <Card title="The Workers">
+ The high-volume, cheap end of the household. **Clerk** classifies and extracts signals, drafts reflections; **chore execution** runs the principal's recurring workflows; **surveyor** labels and embeds new vault records for the semantic index. Hermes profile: **`workers`** (port 18790).
+ </Card>
+ <Card title="Heavy reasoning">
+ Reserved for slow, expensive work: onboarding fact extraction, pattern discovery, the heavy-reasoning beats inside chores that need a frontier model. Used sparingly to keep the bill down. Hermes profile: **`heavy`** (port 18791).
+ </Card>
 </CardGroup>
 
 ## Why the principal sees one face

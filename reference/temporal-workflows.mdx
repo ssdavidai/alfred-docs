@@ -67,18 +67,18 @@ The end-to-end loop: stream events → signals → routed action or `needs_atten
 
 ```mermaid
 flowchart TD
-  A[ingest.db stream_event] -->|every 5 min| B[SignalExtractWorkflow]
-  B --> C[(state.db signal<br/>status=unrouted)]
-  C -->|every 2 min| D[SignalRouterWorkflow]
-  D -->|effect=mutation| E[apply_signal_mutation]
-  D -->|effect=action HIGH| F[dispatch_action_to_agent]
-  D -->|effect=action HUMAN| G[needs_attention card]
-  G -->|principal clicks /desk| H[decision/<ts>.md state=open]
-  H -->|every 60s| I[DecisionRouterWorkflow]
-  I --> J[extract_observation_from_decision]
-  J --> K[(state.db observation)]
-  K -->|daily 02:00| L[ReflectionWorkflow]
-  L --> M[apply_instinct_change]
+ A[ingest.db stream_event] -->|every 5 min| B[SignalExtractWorkflow]
+ B --> C[(state.db signal<br/>status=unrouted)]
+ C -->|every 2 min| D[SignalRouterWorkflow]
+ D -->|effect=mutation| E[apply_signal_mutation]
+ D -->|effect=action HIGH| F[dispatch_action_to_agent]
+ D -->|effect=action HUMAN| G[needs_attention card]
+ G -->|principal clicks /desk| H[decision/<ts>.md state=open]
+ H -->|every 60s| I[DecisionRouterWorkflow]
+ I --> J[extract_observation_from_decision]
+ J --> K[(state.db observation)]
+ K -->|daily 02:00| L[ReflectionWorkflow]
+ L --> M[apply_instinct_change]
 ```
 
 <Accordion title="SignalExtractWorkflow">
@@ -92,11 +92,11 @@ flowchart TD
 
 1. `list_unprocessed_stream_events` — return up to 100 stream-event paths with `signal_extracted_at` null AND source_type in the Phase 6 allowlist.
 2. For each event:
-   - `extract_signal_from_event` — pre-filter noise (short body, blocklist domains, age >14d), LLM-extract `{target_path, effect, mutation_proposal}` via `clerk_extract`, resolve target.
-   - If non-None: `write_signal_record` persists `signal/<ts>-<hash>.md`. Slug is deterministic on event path + raw quote so Temporal retries are idempotent.
-   - `extract_observation_from_signal` (patched gate `signal_extract_obs_v1`) — match instinct via `instinct_match.best_instinct_path`, write observation.
-   - `mark_stream_event_processed` — patch `signal_extracted_at = now`, including for noise events (so we don't re-LLM them).
-   - When target=None AND effect ∈ {action, mutation} AND mode=live: `create_task_from_signal` *(packages/learn/src/activities/task_creation.py)*.
+ - `extract_signal_from_event` — pre-filter noise (short body, blocklist domains, age >14d), LLM-extract `{target_path, effect, mutation_proposal}` via `clerk_extract`, resolve target.
+ - If non-None: `write_signal_record` persists `signal/<ts>-<hash>.md`. Slug is deterministic on event path + raw quote so Temporal retries are idempotent.
+ - `extract_observation_from_signal` (patched gate `signal_extract_obs_v1`) — match instinct via `instinct_match.best_instinct_path`, write observation.
+ - `mark_stream_event_processed` — patch `signal_extracted_at = now`, including for noise events (so we don't re-LLM them).
+ - When target=None AND effect ∈ {action, mutation} AND mode=live: `create_task_from_signal` *(packages/learn/src/activities/task_creation.py)*.
 
 Per-event try/except — one bad event increments an error counter but doesn't sink the batch.
 </Accordion>
@@ -110,11 +110,11 @@ Per-event try/except — one bad event increments an error counter but doesn't s
 
 1. `list_unrouted_signals` — `signal/*` records with `status: unrouted`.
 2. Per signal:
-   - **effect=mutation** → `apply_signal_mutation` (via Steward's `apply_state_change`).
-   - **effect=action** → `route_signal_action`: instinct matcher + per-instinct discretion gate (default 0.95). Combined confidence = `min(target_confidence, effect_confidence)`.
-     - HIGH path (combined ≥ threshold + mode=live): `dispatch_action_to_agent` on workers profile (`:18790`); follow-up logged as a new signal `status=routed_agent` (terminal — won't be re-routed).
-     - HUMAN path: `write_needs_attention_record` → card lands on `/desk`.
-   - **effect=none** → `mark_signal_status(skipped)`.
+ - **effect=mutation** → `apply_signal_mutation` (via Steward's `apply_state_change`).
+ - **effect=action** → `route_signal_action`: instinct matcher + per-instinct discretion gate (default 0.95). Combined confidence = `min(target_confidence, effect_confidence)`.
+ - HIGH path (combined ≥ threshold + mode=live): `dispatch_action_to_agent` on workers profile (`:18790`); follow-up logged as a new signal `status=routed_agent` (terminal — won't be re-routed).
+ - HUMAN path: `write_needs_attention_record` → card lands on `/desk`.
+ - **effect=none** → `mark_signal_status(skipped)`.
 
 Mode flags read by the activities (not the workflow): `STEWARD_SIGNAL_ACTION_LIVE_MODE` (default `live`), `STEWARD_SIGNAL_AUTOCREATE_TASKS` (default `live`).
 </Accordion>
@@ -125,11 +125,11 @@ Mode flags read by the activities (not the workflow): `STEWARD_SIGNAL_ACTION_LIV
 **Per-tick** *(packages/learn/src/workflows/decision_router.py, packages/learn/src/activities/decision_router.py)*:
 
 1. **Pass 1 — process open decisions**:
-   - `list_decisions_by_state("open")` → for each: `route_decision(decision_dict)`.
-     - `route_decision` runs side effects gated on **6 `synchronous_flip` guards**: `target_is_needs_attention`, `is_alive_needs_attention`, `source_signal_is_intact`, `source_signal_still_unrouted`, `target_task_still_open`, `matching_outcome_not_already_on_task`. If `body.decision_origin` set OR `side_effects.synchronous_flip=true`, the source-record flip already happened — skip it.
-     - Intent=delegate: `dispatch_action_to_agent` directly (mark-before-dispatch idempotency via `state=dispatching` → `executing`).
-     - Intent=done/defer/noise/take_mine: flip source `needs_attention.status`.
-   - **`extract_observation_from_decision`** — fires **unconditionally** (no `synchronous_flip` guard) so every click feeds the learning loop. Writes `observation/<ts>.md` with instinct backreference.
+ - `list_decisions_by_state("open")` → for each: `route_decision(decision_dict)`.
+ - `route_decision` runs side effects gated on **6 `synchronous_flip` guards**: `target_is_needs_attention`, `is_alive_needs_attention`, `source_signal_is_intact`, `source_signal_still_unrouted`, `target_task_still_open`, `matching_outcome_not_already_on_task`. If `body.decision_origin` set OR `side_effects.synchronous_flip=true`, the source-record flip already happened — skip it.
+ - Intent=delegate: `dispatch_action_to_agent` directly (mark-before-dispatch idempotency via `state=dispatching` → `executing`).
+ - Intent=done/defer/noise/take_mine: flip source `needs_attention.status`.
+ - **`extract_observation_from_decision`** — fires **unconditionally** (no `synchronous_flip` guard) so every click feeds the learning loop. Writes `observation/<ts>.md` with instinct backreference.
 2. **Pass 1.5** — `recover_stuck_dispatching`: sweep `state=dispatching` older than 10 min back to `executing` (if dispatched) or `open` (if not).
 3. **Pass 2** — `list_decisions_by_state("reversed")` → `reverse_decision` per record (inverse side-effects).
 4. **Pass 3** — `list_decisions_by_state("executing")` → `check_decision_outcomes` per record (poll source signal, PATCH to `completed` when matched).
@@ -447,10 +447,10 @@ A one-shot pipeline that runs once per tenant signup to materialise the principa
 3. **Pattern discovery** — `discover_patterns_opus` proposes instinct templates from the extracted facts.
 4. **Personalization** — `personalize_opus` writes `vault/USER.md` (~1375 char cap; sentence-boundary truncate), `vault/SOUL.md`, `vault/RULES.md`, `hermes-state/memories/MEMORY.md` (~2200 chars), `hermes-state/memories/USER.md` (~1375 chars).
 5. **Pack materialization** — three parallel Opus calls:
-   - `generate_matter_pack_opus` — N matters with rich bodies.
-   - `generate_errand_pack_opus` — N tasks linked via `_resolve_parent_matter_path` 4-tier fallback (exact slug → fuzzy related_matter → fuzzy task name → `matter/inbox.md` fallback).
-   - `generate_instinct_pack_opus` — N intuition templates.
-   - `materialize_matter_entities` — write org + person records referenced by matters.
+ - `generate_matter_pack_opus` — N matters with rich bodies.
+ - `generate_errand_pack_opus` — N tasks linked via `_resolve_parent_matter_path` 4-tier fallback (exact slug → fuzzy related_matter → fuzzy task name → `matter/inbox.md` fallback).
+ - `generate_instinct_pack_opus` — N intuition templates.
+ - `materialize_matter_entities` — write org + person records referenced by matters.
 6. **Briefing** — `write_brief_opus` composes the first brief.
 7. **Chore assignment** — `assign_initial_chores` registers `chore-<slug>` Temporal schedules.
 8. **Desk seeding** — `seed_day_one_desk_cards` picks time-anchored matters + activity_score for the principal's first `/desk` landing.
@@ -509,25 +509,25 @@ Every matter/task field change goes through `apply_state_change_v2` *(packages/l
 ```python
 @dataclass(frozen=True)
 class ProposedMutation:
-    fields: dict[str, Any]           # only declared state fields
-    reason: str                       # why this mutation
-    confidence: float                 # 0.0–1.0; 1.0 = deterministic
-    fan_out: tuple[str, ...] = ()    # downstream effects
+ fields: dict[str, Any] # only declared state fields
+ reason: str # why this mutation
+ confidence: float # 0.0–1.0; 1.0 = deterministic
+ fan_out: tuple[str, ...] = () # downstream effects
 
 @dataclass(frozen=True)
 class MutationResult:
-    target_path: str
-    source: str                       # writer identifier
-    applied: bool
-    mode: Literal["shadow", "live"]
-    effective_mode: Literal["shadow", "live"]
-    audit_record_path: str | None
-    timeline_entry_id: str | None
-    prior_as_of: str | None
-    new_as_of: str | None
-    pending_confirmation: bool
-    retried_count: int
-    fan_out_triggered: list[str]
+ target_path: str
+ source: str # writer identifier
+ applied: bool
+ mode: Literal["shadow", "live"]
+ effective_mode: Literal["shadow", "live"]
+ audit_record_path: str | None
+ timeline_entry_id: str | None
+ prior_as_of: str | None
+ new_as_of: str | None
+ pending_confirmation: bool
+ retried_count: int
+ fan_out_triggered: list[str]
 ```
 
 **Three artefacts** per atomic write *(packages/learn/src/activities/state_mutator.py:11)*:

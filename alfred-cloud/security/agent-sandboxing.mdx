@@ -16,13 +16,13 @@ Alfred runs on the **Hermes Agent runtime** — one Docker image, three supervis
 - **`workers`** (port `:18790`) — background subagents (clerk, curator, janitor, distiller, ephemeral runs). Concurrency-capped.
 - **`heavy`** (port `:18791`) — Opus-class reasoning for onboarding and Reflection.
 
-Every profile speaks the OpenAI Responses API natively (`POST /v1/responses`, `POST /v1/runs`) authenticated by the gateway token (`HERMES_API_SERVER_KEY`). Each profile registers the same **six MCP servers** in its `config.yaml`. *(`/Users/ssd/dev/alfred/packages/hermes/docker/supervisor.sh:7–9`)*
+Every profile speaks the OpenAI Responses API natively (`POST /v1/responses`, `POST /v1/runs`) authenticated by the gateway token (`HERMES_API_SERVER_KEY`). Each profile registers the same **six MCP servers** in its `config.yaml`. *(`packages/hermes/docker/supervisor.sh:7–9`)*
 
 ## The seven layers
 
 ### 1. The gateway tool allowlist
 
-Each Hermes profile's `config.yaml` declares **`gateway.tools.allow`** explicitly. The MCP servers a profile registers (`alfred-ctrl`, `alfred`, `sure`, `plane`, `vaultwarden`, `execute`) are configured per-profile. *(`/Users/ssd/dev/alfred/packages/hermes/hermes-config.yaml.njk`)*
+Each Hermes profile's `config.yaml` declares **`gateway.tools.allow`** explicitly. The MCP servers a profile registers (`alfred-ctrl`, `alfred`, `sure`, `plane`, `vaultwarden`, `execute`) are configured per-profile. *(`packages/hermes/hermes-config.yaml.njk`)*
 
 - Nothing is implicit. A new MCP tool is invisible to the agent until it's added to the config and Hermes is reloaded.
 - The `workers` profile registers a deliberately narrower set than `main` (no chat-channel MCP).
@@ -30,7 +30,7 @@ Each Hermes profile's `config.yaml` declares **`gateway.tools.allow`** explicitl
 
 ### 2. MCP `self` is one endpoint, not 41 prefixed tools
 
-The agent's primary `ctrl-api` access is **one MCP tool** (`alfred-ctrl`, an HTTP MCP wrapper of `ctrl-api` at `:3100`), not 41 separately-named tools. The endpoint catalogue is documented in the workspace `TOOLS.md`. *(`/Users/ssd/dev/alfred/packages/hermes/workspace-template/docs/TOOLS.md`)*
+The agent's primary `ctrl-api` access is **one MCP tool** (`alfred-ctrl`, an HTTP MCP wrapper of `ctrl-api` at `:3100`), not 41 separately-named tools. The endpoint catalogue is documented in the workspace `TOOLS.md`. *(`packages/hermes/workspace-template/docs/TOOLS.md`)*
 
 Why this matters:
 
@@ -40,7 +40,7 @@ Why this matters:
 
 ### 3. The Composio gateway for third-party access
 
-Every third-party action (read Gmail, send Slack, create Notion page, charge Stripe) goes through the **`execute` MCP server**, which proxies into Composio with the tenant's `COMPOSIO_USER_ID`. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:3098`)*
+Every third-party action (read Gmail, send Slack, create Notion page, charge Stripe) goes through the **`execute` MCP server**, which proxies into Composio with the tenant's `COMPOSIO_USER_ID`. *(`packages/ctrl/src/api/routes/integrations.ts:3098`)*
 
 - Composio holds the OAuth tokens server-side.
 - The tenant only holds connection IDs — never the underlying access/refresh tokens.
@@ -63,12 +63,12 @@ This means a prompt injection that lands in a Slack message body cannot use the 
 The Hermes workspace exposes `bash`, `read`, `write`, `edit`, `find`, and friends — but they're scoped to a workspace directory inside the Hermes container, not the host root filesystem.
 
 - The agent cannot `cat /etc/passwd`. The shell tool refuses to leave the workspace root.
-- The workspace is at `/home/node/.hermes/workspace/` inside the container — itself inside an unprivileged Docker container with `cap_drop: ALL` and `no-new-privileges: true`. *(`/Users/ssd/dev/alfred/docker-compose.yaml:310–311`)*
+- The workspace is at `/home/node/.hermes/workspace/` inside the container — itself inside an unprivileged Docker container with `cap_drop: ALL` and `no-new-privileges: true`. *(`docker-compose.yaml:310–311`)*
 - The vault is bind-mounted into the container at a specific path; the agent's vault reads/writes go through `ctrl-api` (which enforces the promotion contract), not raw filesystem operations.
 
 ### 6. The self-restart guardrail
 
-Restarting `hermes` or `ctrl-api` from inside the agent requires an `X-Confirm-Self-Restart: yes` header. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/admin.ts:299–302`)*
+Restarting `hermes` or `ctrl-api` from inside the agent requires an `X-Confirm-Self-Restart: yes` header. *(`packages/ctrl/src/api/routes/admin.ts:299–302`)*
 
 ```ts
 const confirmHeader = req.headers["x-confirm-self-restart"];
@@ -76,9 +76,9 @@ const confirmHeader = req.headers["x-confirm-self-restart"];
 // killing its own session.
 ```
 
-Without the header, the route returns an error: "Refusing to restart `<service>` without X-Confirm-Self-Restart:yes header — this kills the running session or API connection". *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/admin.ts:302`)*
+Without the header, the route returns an error: "Refusing to restart `<service>` without X-Confirm-Self-Restart:yes header — this kills the running session or API connection". *(`packages/ctrl/src/api/routes/admin.ts:302`)*
 
-The same guard applies to `/api/v1/admin/credentials` mutations that affect the running container. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/credentials.ts:343`)*
+The same guard applies to `/api/v1/admin/credentials` mutations that affect the running container. *(`packages/ctrl/src/api/routes/credentials.ts:343`)*
 
 ### 7. Confirm-before-destruct on destructive operations
 
@@ -89,7 +89,7 @@ The workspace skills explicitly require the principal's confirmation before:
 - **Cancel** operations on scheduled actions.
 - **Live-chore-trigger** — running a chore outside its schedule.
 
-The destructive-ops policy lives in the `alfred-destructive-ops` skill (`/Users/ssd/dev/alfred/packages/hermes/workspace-template/skills/alfred-destructive-ops/SKILL.md`), which is loaded by every relevant Hermes profile and instructs the model to surface a confirmation prompt.
+The destructive-ops policy lives in the `alfred-destructive-ops` skill (`packages/hermes/workspace-template/skills/alfred-destructive-ops/SKILL.md`), which is loaded by every relevant Hermes profile and instructs the model to surface a confirmation prompt.
 
 This is the most "social" layer — it depends on the model following the skill. The other six layers above are enforced in code regardless of model behaviour.
 
@@ -119,16 +119,16 @@ Honest scope of what's still possible:
 The system is a **trust-but-audit** model on top of a **trust-but-scope** tool surface. The agent can do useful work; the audit trail catches everything it did; the scopes mean it can't do most catastrophic things even if it tried.
 
 <CardGroup cols={2}>
-  <Card title="Audit and logging" icon="clipboard-list" href="/alfred-cloud/security/audit-and-logging">
-    The audit trail that catches what the layers don't prevent.
-  </Card>
-  <Card title="Per-tenant isolation" icon="users" href="/alfred-cloud/security/per-tenant-isolation">
-    The Composio enforcement layer behind the `execute` MCP.
-  </Card>
-  <Card title="Authentication" icon="key" href="/alfred-cloud/security/authentication">
-    What the bearer token gates the agent's `ctrl-api` calls behind.
-  </Card>
-  <Card title="Network model" icon="network" href="/alfred-cloud/security/network-model">
-    Why exfil via raw network is structurally blocked.
-  </Card>
+ <Card title="Audit and logging" icon="clipboard-list" href="/alfred-cloud/security/audit-and-logging">
+ The audit trail that catches what the layers don't prevent.
+ </Card>
+ <Card title="Per-tenant isolation" icon="users" href="/alfred-cloud/security/per-tenant-isolation">
+ The Composio enforcement layer behind the `execute` MCP.
+ </Card>
+ <Card title="Authentication" icon="key" href="/alfred-cloud/security/authentication">
+ What the bearer token gates the agent's `ctrl-api` calls behind.
+ </Card>
+ <Card title="Network model" icon="network" href="/alfred-cloud/security/network-model">
+ Why exfil via raw network is structurally blocked.
+ </Card>
 </CardGroup>

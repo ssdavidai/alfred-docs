@@ -1,0 +1,114 @@
+---
+title: "hermes"
+description: "Runtime orchestration — background runs, cron scheduling, model selection. Profile-aware. 7 MCP tools."
+---
+
+The `hermes` app exposes the Hermes runtime itself — scheduling, run delegation, model selection — as MCP tools. It is the orchestration layer the voice agent uses to delegate long-form work to a text-tuned worker model and to schedule reminders at named times *(packages/mcp-server/src/tools/hermes.ts:1-27)*.
+
+**Backend.** Two transports under the hood, transparent to the caller *(packages/mcp-server/src/tools/hermes.ts:11-15)*:
+
+- **HTTP** — runs, models, health. ctrl-api fetches `hermes:18789` (main profile) or `hermes:18790` (workers profile) with the per-profile API key.
+- **`docker exec`** — cron. Hermes' HTTP API does not expose cron; the `hermes cron {list,create,remove}` CLI is the contract.
+
+<Note>
+The `hermes` app ships in the MCP server bundle *(packages/mcp-server/src/tools/hermes.ts)* and is reachable through the HTTP MCP server at `mcp.{$DOMAIN}/hermes/mcp`. The Hermes profile template currently registers the other five stdio apps (`alfred`, `sure`, `plane`, `vaultwarden`, `execute`) plus `alfred-ctrl`; extending the template to register `hermes` is the wiring step.
+</Note>
+
+## Profile model
+
+Every tool accepts an optional `profile: "main" | "workers"` argument *(packages/mcp-server/src/tools/hermes.ts:36-41)*. The two profiles bind to separate API ports and have separate cron stores, so a tool call always targets one. Sensible defaults mean agents normally do not specify it:
+
+| Tool family | Default profile | Reason |
+|---|---|---|
+| `run`, `stop_run` | `workers` | Background work — do not compete with the principal's live chat sessions on `main`. |
+| `schedule_prompt`, `list_scheduled`, `cancel_scheduled` | `main` | Fires into a user-facing channel (Telegram, Slack, voice, email). |
+| `health`, `list_models` | `main` | Workers is symmetric; main is the canonical surface. |
+
+## The 7 tools
+
+<AccordionGroup>
+
+<Accordion title="Run delegation (2 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `run` | Spawn a Hermes run with a prompt and optional return-channel. Returns immediately with a `run_id`; the run executes asynchronously and (if `return_via` is set) posts its result back via the named channel on completion. | `prompt`, `profile?`, `model?`, `return_via?` (`{channel, chat_id?}`), `session_id?` |
+| `stop_run` | Stop a Hermes run by id. Idempotent — returns 200 even if the run had already completed. | `run_id`, `profile?` |
+
+`return_via.channel` is one of `telegram` / `slack` / `email` / `voice`; `chat_id` is optional and defaults to the principal's primary on that channel.
+
+The spawned run has **no shared context** with the caller — the prompt must be self-contained *(packages/mcp-server/src/tools/hermes.ts:54-56)*. Include all relevant facts (deadlines, recipients, formats) in the prompt itself.
+
+</Accordion>
+
+<Accordion title="Cron scheduling (3 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `schedule_prompt` | Schedule a prompt to fire later — one-shot (ISO-8601 timestamp) or recurring (5-field cron expression). Returns the new `job_id`. | `prompt`, `when`, `channel?`, `chat_id?`, `profile?` |
+| `list_scheduled` | List currently-scheduled prompts for a profile — id, prompt, when (cron spec or next-fire ISO), channel. | `profile?` |
+| `cancel_scheduled` | Cancel a scheduled prompt by `job_id`. Idempotent. | `job_id`, `profile?` |
+
+<Warning>
+**Always include the timezone offset on ISO-8601 timestamps** *(packages/mcp-server/src/tools/hermes.ts:154-156)*. A naked timestamp without offset is interpreted as UTC and fires at the wrong wall-clock time. The principal's timezone applies — pick the offset accordingly.
+</Warning>
+
+The `prompt` is what the agent is asked to do when the schedule fires — write it as the principal would read it ("Here is your morning reminder about X"), not as a system instruction. `voice` channel is reserved for time-critical reminders the principal explicitly requested by phone; routine notifications should default to `telegram`.
+
+</Accordion>
+
+<Accordion title="Diagnostics (2 tools)">
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `health` | Liveness probe for a Hermes profile. Returns `{status, platform}`. | `profile?` |
+| `list_models` | List the models Hermes' profile-as-model registry exposes (OpenAI-API shape — each profile is presented as a `model`). | `profile?` |
+
+Use `health` sparingly — for routine status, just try the operation; a 502 or 503 from any other tool already signals Hermes is down. `list_models` is the right pre-check before passing a specific `model` override to `run`.
+
+</Accordion>
+
+</AccordionGroup>
+
+## Voice-agent delegation pattern
+
+The realtime voice runtime is time-bound and voice-tuned. When the principal asks for research, long-form composition, or a multi-step tool chain, the voice agent delegates to the text-tuned worker model rather than doing the work inline:
+
+<Steps>
+ <Step title="Delegate the work">
+ `run({prompt: 'Research X and email me a summary...', return_via: {channel: 'email'}})`. The call returns immediately with `run_id`.
+ </Step>
+ <Step title="Acknowledge to the principal">
+ The voice agent says "I'll get that to you by email" and ends the turn. The principal hangs up.
+ </Step>
+ <Step title="Worker completes asynchronously">
+ The spawned `workers`-profile run executes with full tool access, then posts its result to the principal's primary email when complete.
+ </Step>
+</Steps>
+
+## Reminder pattern
+
+The principal says "remind me at 6 a.m. tomorrow to prep the Makerspace session". The agent:
+
+<Steps>
+ <Step title="Schedule the prompt">
+ `schedule_prompt({prompt: 'Here is your morning reminder to prep the Makerspace session.', when: '2026-05-27T06:00:00+02:00', channel: 'telegram'})`.
+ </Step>
+ <Step title="Confirm with the principal">
+ Quote the scheduled time back, then end the turn.
+ </Step>
+ <Step title="The cron fires on time">
+ The scheduled prompt fires at the wall-clock time, Hermes runs the agent with the prompt, and the result lands on the named channel.
+ </Step>
+</Steps>
+
+## Related
+
+<CardGroup cols={2}>
+ <Card title="alfred" href="/mcp-reference/alfred">
+ Static agent catalogue, ephemeral exec subagents, and the `spawn_alfred_task` shortcut for the most common delegation case.
+ </Card>
+ <Card title="MCP overview" href="/mcp-reference/overview">
+ Where `hermes` sits relative to the other five apps and how the bundle is structured.
+ </Card>
+</CardGroup>

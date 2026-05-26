@@ -1,0 +1,105 @@
+---
+title: "Delete Record"
+description: "Delete a vault record. Idempotent — already-missing paths return 404, not 500."
+api: "DELETE /api/v1/vault/records/{path}"
+---
+
+## When to use
+
+Remove a record from the vault. The endpoint serializes with any in-flight edits to the same path (per-path mutex) so a delete cannot race a concurrent PATCH. If Obsidian is running on the tenant host, the delete is performed via the Obsidian CLI which respects the user's configured trash behaviour (system trash, Obsidian trash, or permanent). Otherwise the file is `unlink`ed directly.
+
+## Path Parameters
+
+<ParamField path="path" type="string" required>
+ Vault-relative path to the record (e.g., `task/rebuild-docs.md`). Must end in `.md`.
+</ParamField>
+
+## Response
+
+On success, the response is whatever the alfred CLI's `vault delete` returns, JSON-passed through:
+
+<ResponseField name="path" type="string">
+ Vault-relative path of the deleted record.
+</ResponseField>
+
+<ResponseField name="deleted" type="boolean">
+ Always `true` on success.
+</ResponseField>
+
+If the alfred CLI produces non-JSON output, the response is wrapped as `{ "raw": "<stdout>" }`.
+
+## Request Example
+
+<RequestExample>
+
+```bash cURL
+curl -X DELETE \
+ "https://alfred.black/api/v1/vault/records/task/rebuild-docs.md" \
+ -H "Authorization: Bearer $AAS_API_KEY"
+```
+
+```javascript JavaScript
+const response = await fetch(
+ 'https://alfred.black/api/v1/vault/records/task/rebuild-docs.md',
+ {
+ method: 'DELETE',
+ headers: { 'Authorization': `Bearer ${process.env.AAS_API_KEY}` },
+ },
+);
+if (response.status === 404) {
+ console.log('Already gone — treating as success');
+} else if (response.ok) {
+ console.log('Deleted');
+}
+```
+
+</RequestExample>
+
+## Response Example
+
+<ResponseExample>
+
+```json 200 OK
+{
+ "path": "task/rebuild-docs.md",
+ "deleted": true
+}
+```
+
+```json 404 Not Found (already deleted)
+{
+ "error": {
+ "code": "NOT_FOUND",
+ "message": "Record not found: task/rebuild-docs.md"
+ }
+}
+```
+
+```json 401 Unauthorized
+{ "error": { "code": "UNAUTHORIZED", "message": "Invalid API key" } }
+```
+
+```json 500 Internal Server Error (real exec failure)
+{
+ "error": {
+ "code": "EXEC_ERROR",
+ "message": "alfred failed (1): permission denied"
+ }
+}
+```
+
+</ResponseExample>
+
+## Tips
+
+<Note>
+**Delete is idempotent.** When the alfred CLI exits non-zero with a "File not found" message — i.e., the record is already gone — the endpoint downgrades the failure to a clean `404 NOT_FOUND` response. Re-running deletes (rematerializers, retries, etc.) does not produce false-positive errors. Real exec failures (permissions, malformed paths, docker-side issues) still surface as `500 EXEC_ERROR`.
+</Note>
+
+<Note>
+For `matter/*` and `task/*` paths, a successful delete fires a Plane forward-sync nudge in the background — Plane's archived-record reconciliation will pick the removal up on its next pass.
+</Note>
+
+<Warning>
+There is no soft-delete or trash-API. Deletion is final unless Obsidian is configured to use the system trash on this tenant.
+</Warning>

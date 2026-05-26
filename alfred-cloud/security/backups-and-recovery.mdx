@@ -10,30 +10,30 @@ Backups happen once a day, encrypted twice (LUKS volume + restic password), and 
 
 ## The daily backup
 
-A daily `restic` job runs at **03:00 host-local** via the `alfred-backup.timer` systemd unit installed by cloud-init. *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:127`)*
+A daily `restic` job runs at **03:00 host-local** via the `alfred-backup.timer` systemd unit installed by cloud-init.
 
 <Steps>
-  <Step title="Quiesce the writers">
-    The job stops three containers that hold open SQLite write handles or in-flight workflow state:
-    - **`alfred`** — the vault specialists daemon (Curator, Janitor, Distiller, Surveyor)
-    - **`hermes`** — the runtime container (all three profiles share one container)
-    - **`temporal`** — the workflow engine
+ <Step title="Quiesce the writers">
+ The job stops three containers that hold open SQLite write handles or in-flight workflow state:
+ - **`alfred`** — the vault specialists daemon (Curator, Janitor, Distiller, Surveyor)
+ - **`hermes`** — the runtime container (all three profiles share one container)
+ - **`temporal`** — the workflow engine
 
-    Quiescing avoids SQLite write-mid-snapshot inconsistency (WAL-checkpoint races) and prevents Temporal from running a workflow tick that mutates state between snapshot of one file and the next.
-  </Step>
-  <Step title="Snapshot `/mnt/encrypted`">
-    `restic backup /mnt/encrypted --exclude=/mnt/encrypted/temporal` runs the actual snapshot.
+ Quiescing avoids SQLite write-mid-snapshot inconsistency (WAL-checkpoint races) and prevents Temporal from running a workflow tick that mutates state between snapshot of one file and the next.
+ </Step>
+ <Step title="Snapshot `/mnt/encrypted`">
+ `restic backup /mnt/encrypted --exclude=/mnt/encrypted/temporal` runs the actual snapshot.
 
-    Temporal state is excluded because (a) it's recoverable — workflows resume from their last completed step — and (b) it churns rapidly and would bloat the dedup index.
+ Temporal state is excluded because (a) it's recoverable — workflows resume from their last completed step — and (b) it churns rapidly and would bloat the dedup index.
 
-    Restic deduplicates blocks against the previous snapshot, so the day-over-day cost is small.
-  </Step>
-  <Step title="Restart the writers">
-    The three stopped containers restart. Quiesce window is typically **30–90 seconds**.
-  </Step>
-  <Step title="Prune to retention policy">
-    `restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune` enforces retention. Older snapshots have their blocks released and the repository is compacted.
-  </Step>
+ Restic deduplicates blocks against the previous snapshot, so the day-over-day cost is small.
+ </Step>
+ <Step title="Restart the writers">
+ The three stopped containers restart. Quiesce window is typically **30–90 seconds**.
+ </Step>
+ <Step title="Prune to retention policy">
+ `restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune` enforces retention. Older snapshots have their blocks released and the repository is compacted.
+ </Step>
 </Steps>
 
 ## Retention
@@ -48,7 +48,7 @@ Worst-case recovery point: **24 hours** (if the daily ran successfully). After 6
 
 ## Where backups live
 
-**Destination**: Hetzner Object Storage (S3-compatible), EU region — same residency as the tenant. *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:127`)*
+**Destination**: Hetzner Object Storage (S3-compatible), EU region — same residency as the tenant.
 
 **Encryption**: restic encrypts every block client-side with a per-tenant restic password (AES-256-CTR + Poly1305). Hetzner Object Storage sees only opaque ciphertext.
 
@@ -79,7 +79,7 @@ The restic password is **never** stored at the SaaS host, never at Hetzner, and 
 
 ## The LUKS keyfile backup
 
-The LUKS passphrase is the **other** thing you need to recover. It's backed up **once**, at provision time, to the operator's machine at `data/ssh_keys/<instance-id>/luks.key`. *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:51`)*
+The LUKS passphrase is the **other** thing you need to recover. It's backed up **once**, at provision time, to the operator's machine at `data/ssh_keys/<instance-id>/luks.key`.
 
 This is deliberate: the keyfile doesn't change over the lifetime of the volume, so re-backing it up daily would add risk without benefit. One backup, one copy, one location.
 
@@ -97,51 +97,51 @@ Without the keyfile, the restored snapshot is a wall of ciphertext.
 The operator-side restore workflow, abbreviated:
 
 <Tabs>
-  <Tab title="Same-VM restore (lost a file)">
-    ```bash
-    # Operator SSHs in, restic is configured
-    restic snapshots
-    restic mount /mnt/restore
-    cp /mnt/restore/snapshots/latest/mnt/encrypted/vault/<path> \
-       /mnt/encrypted/vault/<path>
-    umount /mnt/restore
-    ```
-    Quiesce is not required for individual-file restore as long as the path being restored isn't being written.
-  </Tab>
-  <Tab title="Same-VM full restore (corruption)">
-    ```bash
-    # 1. Stop the stack
-    docker compose down
+ <Tab title="Same-VM restore (lost a file)">
+ ```bash
+ # Operator SSHs in, restic is configured
+ restic snapshots
+ restic mount /mnt/restore
+ cp /mnt/restore/snapshots/latest/mnt/encrypted/vault/<path> \
+ /mnt/encrypted/vault/<path>
+ umount /mnt/restore
+ ```
+ Quiesce is not required for individual-file restore as long as the path being restored isn't being written.
+ </Tab>
+ <Tab title="Same-VM full restore (corruption)">
+ ```bash
+ # 1. Stop the stack
+ docker compose down
 
-    # 2. Wipe /mnt/encrypted (the LUKS volume remains, just empty it)
-    rm -rf /mnt/encrypted/*
+ # 2. Wipe /mnt/encrypted (the LUKS volume remains, just empty it)
+ rm -rf /mnt/encrypted/*
 
-    # 3. Restore
-    restic restore latest --target /mnt/encrypted
+ # 3. Restore
+ restic restore latest --target /mnt/encrypted
 
-    # 4. Bring it back up
-    docker compose up -d
-    ```
-  </Tab>
-  <Tab title="New-VM restore (Hetzner lost the disk)">
-    ```bash
-    # On the operator's machine
-    # 1. Provision a fresh VM + volume (operator CLI)
-    alfred-ctrl instance create --slug <same-slug> --restore-from <old-id>
+ # 4. Bring it back up
+ docker compose up -d
+ ```
+ </Tab>
+ <Tab title="New-VM restore (Hetzner lost the disk)">
+ ```bash
+ # On the operator's machine
+ # 1. Provision a fresh VM + volume (operator CLI)
+ alfred-ctrl instance create --slug <same-slug> --restore-from <old-id>
 
-    # 2. SSH in, mount the empty LUKS volume with the backed-up keyfile
-    scp data/ssh_keys/<old-id>/luks.key root@<new-ip>:/opt/alfred/luks.key
-    ssh root@<new-ip> 'systemctl start alfred-luks.service'
+ # 2. SSH in, mount the empty LUKS volume with the backed-up keyfile
+ scp data/ssh_keys/<old-id>/luks.key root@<new-ip>:/opt/alfred/luks.key
+ ssh root@<new-ip> 'systemctl start alfred-luks.service'
 
-    # 3. Restore restic snapshot
-    ssh root@<new-ip> 'RESTIC_PASSWORD_FILE=/opt/alfred/restic.env \
-        restic -r s3:... restore latest --target /mnt/encrypted'
+ # 3. Restore restic snapshot
+ ssh root@<new-ip> 'RESTIC_PASSWORD_FILE=/opt/alfred/restic.env \
+ restic -r s3:... restore latest --target /mnt/encrypted'
 
-    # 4. Bring stack up
-    ssh root@<new-ip> 'cd /opt/alfred && docker compose up -d'
-    ```
-    The new tenant gets a new Hetzner IP. Tailscale re-handshakes automatically; Cloudflare DNS is updated by the operator CLI as part of the create step.
-  </Tab>
+ # 4. Bring stack up
+ ssh root@<new-ip> 'cd /opt/alfred && docker compose up -d'
+ ```
+ The new tenant gets a new Hetzner IP. Tailscale re-handshakes automatically; Cloudflare DNS is updated by the operator CLI as part of the create step.
+ </Tab>
 </Tabs>
 
 End-to-end new-VM restore from a same-day snapshot is **roughly 15–25 minutes**, dominated by the restic download from Hetzner Object Storage. The longer pole on a fresh VM (no golden snapshot) is the LLM image pull plus the Ollama embedding model download — both happen in parallel with the restore.
@@ -167,13 +167,13 @@ End-to-end new-VM restore from a same-day snapshot is **roughly 15–25 minutes*
 Restoring is the only way to know a backup is good. The operator-side runbook includes a quarterly **restore-rehearsal** on a fresh VM — restore the latest snapshot, bring the stack up, run a smoke test, destroy the rehearsal VM. The rehearsal is intentionally manual; an automated rehearsal that always passes is no rehearsal at all.
 
 <CardGroup cols={2}>
-  <Card title="Encryption at rest" icon="hard-drive" href="/alfred-cloud/security/encryption-at-rest">
-    The LUKS layer that the keyfile unlocks during recovery.
-  </Card>
-  <Card title="Data residency" icon="globe" href="/alfred-cloud/security/data-residency">
-    The 30-day grace period after cancellation, and what happens to backups.
-  </Card>
-  <Card title="Infrastructure isolation" icon="server" href="/alfred-cloud/security/infrastructure-isolation">
-    The dedicated-VM model recovery rebuilds onto.
-  </Card>
+ <Card title="Encryption at rest" icon="hard-drive" href="/alfred-cloud/security/encryption-at-rest">
+ The LUKS layer that the keyfile unlocks during recovery.
+ </Card>
+ <Card title="Data residency" icon="globe" href="/alfred-cloud/security/data-residency">
+ The 30-day grace period after cancellation, and what happens to backups.
+ </Card>
+ <Card title="Infrastructure isolation" icon="server" href="/alfred-cloud/security/infrastructure-isolation">
+ The dedicated-VM model recovery rebuilds onto.
+ </Card>
 </CardGroup>

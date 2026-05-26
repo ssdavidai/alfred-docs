@@ -1,0 +1,57 @@
+---
+title: "Approve a pairing code"
+description: "Approve a pending DM-pairing code from a messaging channel."
+api: "POST /api/v1/devices/approve"
+---
+
+Approves a pending Hermes pairing code so the originating messaging-channel user can DM your Alfred. The pairing flow is Hermes-native: when an unknown account DMs the gateway, Hermes issues a one-hour pairing code; the owner approves that code here.
+
+## Body parameters
+
+<ParamField body="platform" type="string" required>
+ The messaging platform the pairing code came from (e.g. `telegram`, `slack`).
+</ParamField>
+
+<ParamField body="code" type="string" required>
+ The 8-character pairing code displayed in the DM.
+</ParamField>
+
+## Response
+
+<ResponseField name="message" type="string">
+ Confirmation string from the Hermes CLI (e.g. `"Pairing approved"`).
+</ResponseField>
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://alfred.black/api/v1/devices/approve \
+ -H "Authorization: Bearer alf_your_key_here" \
+ -H "Content-Type: application/json" \
+ -d '{"platform": "telegram", "code": "AB12CD34"}'
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+ "message": "Pairing approved"
+}
+```
+
+```json 400 Validation error
+{
+ "error": {
+ "code": "VALIDATION_ERROR",
+ "message": "platform is required (e.g. telegram, slack)"
+ }
+}
+```
+
+</ResponseExample>
+
+<Warning>
+ Approval grants the platform user full DM access to your Alfred. Only approve codes you initiated. If you later change your mind, use [`POST /api/v1/devices/revoke`](/api-reference/devices/revoke).
+</Warning>

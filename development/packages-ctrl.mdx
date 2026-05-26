@@ -13,27 +13,27 @@ else writes `alfred-state.db` or `ingest.db` directly.
 
 ```
 packages/ctrl/
-├── build.mjs                 esbuild config → dist/api.mjs
-├── package.json              Node 22, zero runtime dependencies
+├── build.mjs esbuild config → dist/api.mjs
+├── package.json Node 22, zero runtime dependencies
 ├── tsconfig.json
-├── CONTRACT.md               provides / requires
+├── CONTRACT.md provides / requires
 ├── docs/
-│   └── STORAGE-ARCHITECTURE.md   the four-store reference
+│ └── STORAGE-ARCHITECTURE.md the four-store reference
 └── src/
-    ├── api/
-    │   ├── standalone.ts     server entrypoint
-    │   ├── server.ts         route registration
-    │   ├── helpers.ts        dockerExec, JSON helpers
-    │   ├── middleware/       auth, CORS, error handling
-    │   └── routes/           ~50 route modules
-    ├── db/
-    │   ├── schema.sql        alfred-state.db tables
-    │   ├── ingest-schema.sql ingest.db tables
-    │   ├── migrate.ts        PRAGMA user_version migration runner
-    │   ├── migrations/       0001_fix_pack.sql, 0002_alfred_journal.sql
-    │   └── promotionContract.ts  the canonical-12 enforcement
-    ├── templates/            vault-seed _templates/
-    └── tests/                node:test suite
+ ├── api/
+ │ ├── standalone.ts server entrypoint
+ │ ├── server.ts route registration
+ │ ├── helpers.ts dockerExec, JSON helpers
+ │ ├── middleware/ auth, CORS, error handling
+ │ └── routes/ ~50 route modules
+ ├── db/
+ │ ├── schema.sql alfred-state.db tables
+ │ ├── ingest-schema.sql ingest.db tables
+ │ ├── migrate.ts PRAGMA user_version migration runner
+ │ ├── migrations/ 0001_fix_pack.sql, 0002_alfred_journal.sql
+ │ └── promotionContract.ts the canonical-12 enforcement
+ ├── templates/ vault-seed _templates/
+ └── tests/ node:test suite
 ```
 
 ## The four-store layer
@@ -61,7 +61,7 @@ A single function — `assertCanonicalVaultPath()` — guards every vault write
 twelve canonical record types:
 
 ```
-matter  task  note  person  org  place  asset  chore  instinct  decision  briefing  daybook
+matter task note person org place asset chore instinct decision briefing daybook
 ```
 
 Demoted types route to SQLite instead, and the error response tells the
@@ -115,62 +115,62 @@ The three autonomy flags resolve with a three-level precedence
 | `auto_task_create_mode` | `STEWARD_SIGNAL_AUTOCREATE_TASKS` | `live` |
 
 <Note>
-  Activities in `packages/learn/` carry their own per-activity defaults that
-  occasionally differ from ctrl-api's registered defaults — see
-  [Package — learn](/development/packages-learn) for the actual mode-gate
-  behaviour observed by the Temporal worker.
+ Activities in `packages/learn/` carry their own per-activity defaults that
+ occasionally differ from ctrl-api's registered defaults — see
+ [Package — learn](/development/packages-learn) for the actual mode-gate
+ behaviour observed by the Temporal worker.
 </Note>
 
 ## Build, run, test
 
 <Tabs>
-  <Tab title="Build">
-    ```sh
-    cd packages/ctrl
-    npm ci              # first time + after every dep bump
-    npm run build       # → dist/api.mjs
-    ```
+ <Tab title="Build">
+ ```sh
+ cd packages/ctrl
+ npm ci # first time + after every dep bump
+ npm run build # → dist/api.mjs
+ ```
 
-    `build.mjs` runs esbuild with Node 22 as the target, bundles everything
-    into one ESM file, marks `node:sqlite` and all Node builtins external,
-    and loads `.sql`, `.njk`, `.md`, `.yaml` files as text strings *(packages/ctrl/build.mjs:1-59)*.
+ `build.mjs` runs esbuild with Node 22 as the target, bundles everything
+ into one ESM file, marks `node:sqlite` and all Node builtins external,
+ and loads `.sql`, `.njk`, `.md`, `.yaml` files as text strings *(packages/ctrl/build.mjs:1-59)*.
 
-    The output `dist/api.mjs` is what `ssdavidai00/alfred-ctrl-api:latest`
-    ships — a single file Docker COPYs and runs.
-  </Tab>
-  <Tab title="Run">
-    ```sh
-    AAS_API_KEY=$(openssl rand -hex 32) \
-    STATE_DB_PATH=./data/alfred-state.db \
-    INGEST_DB_PATH=./data/ingest.db \
-    COLD_DB_PATH=./data/cold.db \
-    VAULT_PATH=./vault \
-    ALFRED_DATA_DIR=./alfred-data \
-    node dist/api.mjs
-    ```
+ The output `dist/api.mjs` is what `ssdavidai00/alfred-ctrl-api:latest`
+ ships — a single file Docker COPYs and runs.
+ </Tab>
+ <Tab title="Run">
+ ```sh
+ AAS_API_KEY=$(openssl rand -hex 32) \
+ STATE_DB_PATH=./data/alfred-state.db \
+ INGEST_DB_PATH=./data/ingest.db \
+ COLD_DB_PATH=./data/cold.db \
+ VAULT_PATH=./vault \
+ ALFRED_DATA_DIR=./alfred-data \
+ node dist/api.mjs
+ ```
 
-    Listens on `AAS_HOST:AAS_PORT` (default `127.0.0.1:3100`)
-    *(packages/ctrl/src/api/standalone.ts:14-30)*. The server exits 1 if
-    `AAS_API_KEY` is missing — there is no anonymous mode.
+ Listens on `AAS_HOST:AAS_PORT` (default `127.0.0.1:3100`)
+ *(packages/ctrl/src/api/standalone.ts:14-30)*. The server exits 1 if
+ `AAS_API_KEY` is missing — there is no anonymous mode.
 
-    Graceful shutdown on SIGTERM/SIGINT closes all four databases cleanly
-    *(packages/ctrl/src/api/standalone.ts:83-93)*.
-  </Tab>
-  <Tab title="Test">
-    ```sh
-    npm test
-    ```
+ Graceful shutdown on SIGTERM/SIGINT closes all four databases cleanly
+ *(packages/ctrl/src/api/standalone.ts:83-93)*.
+ </Tab>
+ <Tab title="Test">
+ ```sh
+ npm test
+ ```
 
-    Runs ~440 node:test files covering vault CRUD, promotion contract
-    enforcement, the four-store boot sequence, settings precedence, the
-    decision mirror recursion guard, and the matters aggregator. The lane
-    gate's VERIFY hook runs this command before allowing a commit
-    *(scripts/hooks/check_lane.py)*.
-  </Tab>
+ Runs ~440 node:test files covering vault CRUD, promotion contract
+ enforcement, the four-store boot sequence, settings precedence, the
+ decision mirror recursion guard, and the matters aggregator. The lane
+ gate's VERIFY hook runs this command before allowing a commit
+ *(scripts/hooks/check_lane.py)*.
+ </Tab>
 </Tabs>
 
 ## Where to look next
 
 - The full four-store reference: `packages/ctrl/docs/STORAGE-ARCHITECTURE.md`
-- Frozen cross-package contracts ctrl participates in: `docs/FIX-CONTRACTS.md` (C1, C2, C5, C7, C11, C12, C18, C19)
+- Frozen cross-package contracts ctrl participates in: `docs/FIX-CONTRACTS.md`
 - The per-package contract surface: `packages/ctrl/CONTRACT.md`

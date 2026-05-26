@@ -26,9 +26,9 @@ Optional keys for special cases:
 
 ```json
 {
-  "lane": "II",
-  "verify": "cd packages/learn && python -m pytest tests/test_signals.py -q",
-  "scope_limit": 350
+ "lane": "II",
+ "verify": "cd packages/learn && python -m pytest tests/test_signals.py -q",
+ "scope_limit": 350
 }
 ```
 
@@ -78,7 +78,7 @@ serialized through the orchestrator *(scripts/hooks/lanes.json, `forbidden_zone`
 1. **Lane-jumping** — a staged file isn't matched by the lane's allowed globs.
 2. **Forbidden zone** — a staged file matches the global forbidden list.
 3. **Scope overflow** — net changed LOC exceeds the lane's `scope_limit`
-   (default **200**). A task that needs more should be split, not waived.
+ (default **200**). A task that needs more should be split, not waived.
 4. **Verify failure** — the lane's regression command exits non-zero.
 
 ## Installation

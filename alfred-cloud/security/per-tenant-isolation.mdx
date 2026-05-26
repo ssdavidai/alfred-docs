@@ -16,7 +16,7 @@ This is the most security-critical shared dependency in the entire system, becau
 
 ### The isolation primitive: `COMPOSIO_USER_ID`
 
-Every tenant has a unique `COMPOSIO_USER_ID`, typically `alfred-<slug>-<instance-id>` — namespaced and unguessable. It is set in the tenant's `.env` and re-checked from the file fallback at `/mnt/encrypted/alfred/.composio-user-id` if the env var is missing. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:123,131`)*
+Every tenant has a unique `COMPOSIO_USER_ID`, typically `alfred-<slug>-<instance-id>` — namespaced and unguessable. It is set in the tenant's `.env` and re-checked from the file fallback at `/mnt/encrypted/alfred/.composio-user-id` if the env var is missing. *(`packages/ctrl/src/api/routes/integrations.ts:123,131`)*
 
 ### Server-side enforcement
 
@@ -24,10 +24,10 @@ Every tenant has a unique `COMPOSIO_USER_ID`, typically `alfred-<slug>-<instance
 
 | Layer | Enforcement | Where |
 |---|---|---|
-| **1. Refuse to start with no user_id** | `ctrl-api` exits at boot if `COMPOSIO_USER_ID` is unset or `"default"`. The fallback file is checked first — a tenant that has never had the env var injected can still recover from the file. | *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:109,139`)* |
-| **2. Every call passes `user_id`** | Every Composio API call passes `user_id` to filter results server-side. This is the primary isolation — Composio's index is `(user_id, connection_id)`. | *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:3098,3104`)* |
-| **3. Re-verify ownership on every read by ID** | When `ctrl-api` looks up a connection by ID, it **re-verifies** that Composio's returned record actually belongs to this tenant's `COMPOSIO_USER_ID`. The local re-check is the defence-in-depth backstop to Composio's server-side filter — every connection lookup must pass both. | *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:257,1965,3251`)* |
-| **4. 404 on ownership mismatch, not 403** | A connection ID that doesn't belong to the tenant returns **404** (not 403, not 401) so enumeration cannot distinguish "doesn't exist" from "exists but belongs to someone else". | *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:284`)* |
+| **1. Refuse to start with no user_id** | `ctrl-api` exits at boot if `COMPOSIO_USER_ID` is unset or `"default"`. The fallback file is checked first — a tenant that has never had the env var injected can still recover from the file. | *(`packages/ctrl/src/api/routes/integrations.ts:109,139`)* |
+| **2. Every call passes `user_id`** | Every Composio API call passes `user_id` to filter results server-side. This is the primary isolation — Composio's index is `(user_id, connection_id)`. | *(`packages/ctrl/src/api/routes/integrations.ts:3098,3104`)* |
+| **3. Re-verify ownership on every read by ID** | When `ctrl-api` looks up a connection by ID, it **re-verifies** that Composio's returned record actually belongs to this tenant's `COMPOSIO_USER_ID`. The local re-check is the defence-in-depth backstop to Composio's server-side filter — every connection lookup must pass both. | *(`packages/ctrl/src/api/routes/integrations.ts:257,1965,3251`)* |
+| **4. 404 on ownership mismatch, not 403** | A connection ID that doesn't belong to the tenant returns **404** (not 403, not 401) so enumeration cannot distinguish "doesn't exist" from "exists but belongs to someone else". | *(`packages/ctrl/src/api/routes/integrations.ts:284`)* |
 
 In code, layer 3 looks like:
 
@@ -36,7 +36,7 @@ In code, layer 3 looks like:
 // mismatch as 404 (not 403) so enumeration can't distinguish
 // "doesn't exist" from "exists but belongs to someone else".
 ```
-*(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:1965`)*
+*(`packages/ctrl/src/api/routes/integrations.ts:1965`)*
 
 ### What never leaves Composio
 
@@ -66,7 +66,7 @@ At tenant-provision time, the master is used to mint a per-tenant **inbox-scoped
 - **Cannot enumerate** any other inbox.
 - **Cannot read or modify** any other tenant's inbox.
 
-The tenant stores its scoped key at `/mnt/encrypted/alfred/.agentmail-credentials.json` and in the tenant `.env`. Both locations are on the LUKS volume. *(`/tmp/alfred-doc-old/guides/security.mdx:121`)*
+The tenant stores its scoped key at `/mnt/encrypted/alfred/.agentmail-credentials.json` and in the tenant `.env`. Both locations are on the LUKS volume.
 
 ### Inbound webhook signing
 
@@ -95,7 +95,7 @@ Every tenant runs:
 - A `vault-init` one-shot — fetches `.env` from the vault, writes it to the shared scratch directory, exits.
 - A `vault-cli` long-running side-container — runs `bw serve` so the MCP `vaultwarden` server can proxy CLI operations.
 
-All three are in the same compose file behind a `vaultwarden_enabled` flag (on by default for new tenants). *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:95`)*
+All three are in the same compose file behind a `vaultwarden_enabled` flag (on by default for new tenants).
 
 ### The two-layer encryption
 
@@ -110,7 +110,7 @@ Even if an attacker obtained the LUKS master key, the Bitwarden vault on top sti
 
 ### Where the master password lives
 
-The Vaultwarden master password is `BW_PASSWORD` in the tenant `.env` — it is also a **service credential** used internally by the `vault-init` sidecar to unlock the CLI on boot. It's surfaced in the dashboard at **Settings → Claude Setup → Vault Login** with click-to-reveal. The principal copies it to their personal password manager once and never again. *(`/tmp/alfred-doc-old/guides/security.mdx:58`)*
+The Vaultwarden master password is `BW_PASSWORD` in the tenant `.env` — it is also a **service credential** used internally by the `vault-init` sidecar to unlock the CLI on boot. It's surfaced in the dashboard at **Settings → Claude Setup → Vault Login** with click-to-reveal. The principal copies it to their personal password manager once and never again.
 
 <Warning>
 **Do not rotate the Vaultwarden master via the "Change Master Password" dialog in the Vaultwarden web UI.** That changes the Bitwarden-side key derivation without updating the `BW_PASSWORD` service credential, and the next `vault-init` boot will fail to unlock. To rotate properly, update both sides in coordination — see the operator runbook.
@@ -128,7 +128,7 @@ The tenant's vault data is per-tenant in the same hard sense as the rest of the 
 
 ### When the main agent reads a credential
 
-When the principal asks Hermes to do something that needs a stored credential — "log into the broker and pull this month's statement", "rotate the Stripe webhook secret" — the main agent reads from Vaultwarden through the `ctrl-api` routes at `/api/v1/vaultwarden/*` (list, search, get, create, update, delete on login items; folders read/write; collections and orgs read-only). Reads return passwords and TOTPs in the response envelope; writes go through the same authenticated bearer surface as the rest of the admin API. *(`/tmp/alfred-doc-old/guides/security.mdx:60`)*
+When the principal asks Hermes to do something that needs a stored credential — "log into the broker and pull this month's statement", "rotate the Stripe webhook secret" — the main agent reads from Vaultwarden through the `ctrl-api` routes at `/api/v1/vaultwarden/*` (list, search, get, create, update, delete on login items; folders read/write; collections and orgs read-only). Reads return passwords and TOTPs in the response envelope; writes go through the same authenticated bearer surface as the rest of the admin API.
 
 The Hermes agent's access to Vaultwarden is gated through the `vaultwarden` MCP server, which itself goes through `ctrl-api` — so the bearer auth + activity log apply to every credential read. See [Agent sandboxing](/alfred-cloud/security/agent-sandboxing) for the broader tool-scoping model.
 
@@ -141,16 +141,16 @@ The Hermes agent's access to Vaultwarden is gated through the `vaultwarden` MCP 
 | Vaultwarden | Not shared — per-tenant container + per-tenant LUKS | Not applicable | N/A — there is no shared Vaultwarden to break |
 
 <CardGroup cols={2}>
-  <Card title="Encryption at rest" icon="hard-drive" href="/alfred-cloud/security/encryption-at-rest">
-    The LUKS layer underneath Vaultwarden's own encryption.
-  </Card>
-  <Card title="Authentication" icon="key" href="/alfred-cloud/security/authentication">
-    The `AAS_API_KEY` that gates the `/api/v1/vaultwarden/*` routes.
-  </Card>
-  <Card title="Agent sandboxing" icon="lock" href="/alfred-cloud/security/agent-sandboxing">
-    What the Hermes agent can and cannot do with these credentials.
-  </Card>
-  <Card title="Audit and logging" icon="clipboard-list" href="/alfred-cloud/security/audit-and-logging">
-    Every Vaultwarden read shows up in the activity log.
-  </Card>
+ <Card title="Encryption at rest" icon="hard-drive" href="/alfred-cloud/security/encryption-at-rest">
+ The LUKS layer underneath Vaultwarden's own encryption.
+ </Card>
+ <Card title="Authentication" icon="key" href="/alfred-cloud/security/authentication">
+ The `AAS_API_KEY` that gates the `/api/v1/vaultwarden/*` routes.
+ </Card>
+ <Card title="Agent sandboxing" icon="lock" href="/alfred-cloud/security/agent-sandboxing">
+ What the Hermes agent can and cannot do with these credentials.
+ </Card>
+ <Card title="Audit and logging" icon="clipboard-list" href="/alfred-cloud/security/audit-and-logging">
+ Every Vaultwarden read shows up in the activity log.
+ </Card>
 </CardGroup>

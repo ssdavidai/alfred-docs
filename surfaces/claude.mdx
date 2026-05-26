@@ -12,25 +12,25 @@ description: "MCP setup from Claude Desktop and Claude Code, stacked under Setti
 The `ClaudeSetupSections` block renders five sub-sections, each only visible when its data is present *(packages/web/src/dashboard/ClaudePage.tsx:319-341)*:
 
 <Steps>
-  <Step title="MCP servers">
-    One row per enabled app, with its OAuth-protected MCP endpoint URL (`apps[].mcp_url`). The principal copies each URL into Claude.ai → Settings → Connectors (or `claude_desktop_config.json` for Claude Desktop / `~/.config/claude-code/mcp.json` for Claude Code). Each app has a CopyReveal block so the value stays hidden until needed *(ClaudePage.tsx:366-400)*.
-  </Step>
+ <Step title="MCP servers">
+ One row per enabled app, with its OAuth-protected MCP endpoint URL (`apps[].mcp_url`). The principal copies each URL into Claude.ai → Settings → Connectors (or `claude_desktop_config.json` for Claude Desktop / `~/.config/claude-code/mcp.json` for Claude Code). Each app has a CopyReveal block so the value stays hidden until needed *(ClaudePage.tsx:366-400)*.
+ </Step>
 
-  <Step title="Approval secret">
-    `MCP_APPROVAL_SECRET` is the bearer token Claude exchanges at the MCP server's `/authorize` form to mint an OAuth token. The page **never echoes** the secret on a load — it surfaces only the `approval_secret_set: true` flag and a `last_rotated_at` timestamp. The fresh value is returned exactly once by the rotate action *(ClaudePage.tsx:61-69, 402-410)*.
-  </Step>
+ <Step title="Approval secret">
+ `MCP_APPROVAL_SECRET` is the bearer token Claude exchanges at the MCP server's `/authorize` form to mint an OAuth token. The page **never echoes** the secret on a load — it surfaces only the `approval_secret_set: true` flag and a `last_rotated_at` timestamp. The fresh value is returned exactly once by the rotate action *(ClaudePage.tsx:61-69, 402-410)*.
+ </Step>
 
-  <Step title="Skill (custom instructions)">
-    Two file downloads: `custom_instructions.md` (paste into the claude.ai profile's Personalisation field) and one per-app skill markdown (a primer Claude reads at the start of every turn that uses that MCP server) *(ClaudePage.tsx:412-456)*.
-  </Step>
+ <Step title="Skill (custom instructions)">
+ Two file downloads: `custom_instructions.md` (paste into the claude.ai profile's Personalisation field) and one per-app skill markdown (a primer Claude reads at the start of every turn that uses that MCP server) *(ClaudePage.tsx:412-456)*.
+ </Step>
 
-  <Step title="Composio skills">
-    One markdown file per connected toolkit. Each contains the tenant-specific connection id and is regenerated when the principal reconnects the toolkit. The page downloads them as Blob URLs — they never live on the SaaS static asset path *(ClaudePage.tsx:458-489)*.
-  </Step>
+ <Step title="Composio skills">
+ One markdown file per connected toolkit. Each contains the tenant-specific connection id and is regenerated when the principal reconnects the toolkit. The page downloads them as Blob URLs — they never live on the SaaS static asset path *(ClaudePage.tsx:458-489)*.
+ </Step>
 
-  <Step title="Vault login">
-    The Vaultwarden web URL, the email Alfred provisioned for the principal, and the status of the master password. The password itself is only echoed once at provisioning time and not stored in plaintext on any subsequent load *(ClaudePage.tsx:52-59, 491-518)*.
-  </Step>
+ <Step title="Vault login">
+ The Vaultwarden web URL, the email Alfred provisioned for the principal, and the status of the master password. The password itself is only echoed once at provisioning time and not stored in plaintext on any subsequent load *(ClaudePage.tsx:52-59, 491-518)*.
+ </Step>
 </Steps>
 
 ## MCP servers — how many

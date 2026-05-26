@@ -7,11 +7,11 @@ The discipline: **write a red repro test before you write the fix.** No
 exceptions, no "I'll add the test in a follow-up." Two reasons:
 
 1. **It proves you understand the bug.** If you can't write a test that
-   fails the way the bug fails, you haven't isolated the bug yet — you're
-   guessing.
+ fails the way the bug fails, you haven't isolated the bug yet — you're
+ guessing.
 2. **It proves the fix is the fix.** A test that's green before and green
-   after tells you nothing. A test that's red before, green after, and stays
-   green under refactor tells you everything.
+ after tells you nothing. A test that's red before, green after, and stays
+ green under refactor tells you everything.
 
 This is non-negotiable in Alfred Black because the system has many silent
 failure modes — observation counts stuck at zero, signals routing to nothing,
@@ -23,42 +23,42 @@ for the catalogue. Without a red test up front, "silent" stays silent.
 ## The procedure
 
 <Steps>
-  <Step title="Reproduce the symptom">
-    Get the bug to fire reliably. SSH onto the live VM if needed (read-only
-    — see [Bug-fixing protocol → Mode A](/contributing/bug-fixing-protocol#mode-a--investigation-fan-out-read-only)).
-    Note the *exact* shape of the failure: HTTP status, log message, store
-    contents.
-  </Step>
+ <Step title="Reproduce the symptom">
+ Get the bug to fire reliably. SSH onto the live VM if needed (read-only
+ — see [Bug-fixing protocol → Mode A](/contributing/bug-fixing-protocol#mode-a--investigation-fan-out-read-only)).
+ Note the *exact* shape of the failure: HTTP status, log message, store
+ contents.
+ </Step>
 
-  <Step title="Write a test that reproduces it">
-    Use the lane's existing test infrastructure — `node:test` for ctrl-api
-    (`packages/ctrl/tests/`), `pytest` for learn (`packages/learn/tests/`)
-    and alfred-vault (`packages/alfred-vault/tests/`), `vitest` for web
-    (`packages/web/tests/`). The test asserts the *correct* behaviour, so
-    that on the broken system it fails — that's the red test.
-  </Step>
+ <Step title="Write a test that reproduces it">
+ Use the lane's existing test infrastructure — `node:test` for ctrl-api
+ (`packages/ctrl/tests/`), `pytest` for learn (`packages/learn/tests/`)
+ and alfred-vault (`packages/alfred-vault/tests/`), `vitest` for web
+ (`packages/web/tests/`). The test asserts the *correct* behaviour, so
+ that on the broken system it fails — that's the red test.
+ </Step>
 
-  <Step title="Run it and watch it fail">
-    Confirm the failure shape matches the live symptom. If the test passes
-    on the broken system, your test isn't testing what you think it is.
-    Iterate.
-  </Step>
+ <Step title="Run it and watch it fail">
+ Confirm the failure shape matches the live symptom. If the test passes
+ on the broken system, your test isn't testing what you think it is.
+ Iterate.
+ </Step>
 
-  <Step title="Fix the code">
-    Stay narrow. The fix and the test live in the same PR, the same commit
-    if possible.
-  </Step>
+ <Step title="Fix the code">
+ Stay narrow. The fix and the test live in the same PR, the same commit
+ if possible.
+ </Step>
 
-  <Step title="Run the test and watch it pass">
-    Then run the lane's full VERIFY (`npm run build`, `pytest -q`,
-    `tsc --noEmit`, etc.) to confirm nothing else regressed.
-  </Step>
+ <Step title="Run the test and watch it pass">
+ Then run the lane's full VERIFY (`npm run build`, `pytest -q`,
+ `tsc --noEmit`, etc.) to confirm nothing else regressed.
+ </Step>
 
-  <Step title="Commit">
-    The lane gate's VERIFY step re-runs the same command before the commit
-    lands; a red test in the suite blocks the commit. See
-    [The lane gate](/contributing/lane-gate).
-  </Step>
+ <Step title="Commit">
+ The lane gate's VERIFY step re-runs the same command before the commit
+ lands; a red test in the suite blocks the commit. See
+ [The lane gate](/contributing/lane-gate).
+ </Step>
 </Steps>
 
 ## Tests broken by a contract change
@@ -86,15 +86,15 @@ workflow whose non-determinism makes a direct unit test brittle. Options, in
 order of preference:
 
 1. **Factor out the deterministic core.** Most workflow bugs are in the
-   activity logic, not the workflow scheduling. Activities are normal Python
-   functions, normal to test.
+ activity logic, not the workflow scheduling. Activities are normal Python
+ functions, normal to test.
 2. **Use a golden fixture.** The `learn` lane has a fixture-based test suite
-   that runs the onboarding pipeline against a frozen email corpus and
-   asserts the produced vault matches a golden snapshot
-   *(packages/learn/tests/, "golden fixture" suite)*.
+ that runs the onboarding pipeline against a frozen email corpus and
+ asserts the produced vault matches a golden snapshot
+ *(packages/learn/tests/, "golden fixture" suite)*.
 3. **As a last resort, write an integration test** that stands up a real
-   Temporal worker against a sqlite-backed Temporal server and runs the
-   workflow end-to-end. These are slow; reserve them for workflow-shape bugs.
+ Temporal worker against a sqlite-backed Temporal server and runs the
+ workflow end-to-end. These are slow; reserve them for workflow-shape bugs.
 
 If none of the above is tractable in a reasonable scope, **stop and report**
 — a bug whose fix has no test is a regression waiting to happen.

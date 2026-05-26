@@ -1,0 +1,42 @@
+---
+title: "List pairings"
+description: "Show all pending pairing codes and approved messaging-channel users."
+api: "GET /api/v1/devices"
+---
+
+Returns the current state of Hermes DM pairing — pending pairing codes (issued when an unknown messaging account DMs the gateway) and approved users (already cleared to talk to your Alfred).
+
+## How it works
+
+ctrl-API shells into the Hermes container and runs `hermes -p main pairing list` against the user-facing `main` profile. The native CLI emits human-readable text rather than JSON, so the response is the raw stdout as the `raw` field *(packages/ctrl/src/api/routes/devices.ts:41-44)*.
+
+## Response
+
+<ResponseField name="raw" type="string">
+ The raw text output from `hermes pairing list`. The dashboard renders this as a read-only status surface.
+</ResponseField>
+
+<RequestExample>
+
+```bash cURL
+curl -X GET https://alfred.black/api/v1/devices \
+ -H "Authorization: Bearer alf_your_key_here"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+ "raw": "Pending pairing codes:\n telegram AB12CD34 issued 12m ago\nApproved users:\n telegram @alice approved 2026-04-25\n"
+}
+```
+
+</ResponseExample>
+
+## When to use
+
+- Auditing which messaging-channel users currently hold DM access to your Alfred.
+- Discovering pending pairing codes ready to approve.
+- Spotting stale approvals before revoking them.

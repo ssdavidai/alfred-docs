@@ -15,10 +15,10 @@ If self-hosting Alfred Black is "I want to own the box," Alfred Cloud is "I want
 
 ## The shape of the offering
 
-- **One tenant, one dedicated VPS.** Not a shared cluster, not a multi-tenant database. Your Alfred runs on a dedicated Hetzner Cloud machine — typically a `cx53` — with an encrypted volume attached. Nothing of yours touches anyone else's compute. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:17)*
-- **Private Tailscale mesh.** No public route into your services. The dashboard reaches your `ctrl-api` over a WireGuard mesh; the Hetzner firewall denies everything except SSH, ICMP, and the Tailscale handshake port. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:19)*
-- **LUKS2 full-disk encryption.** AES-256-XTS with a per-instance key generated at provision time. Even if Hetzner loses the disk, the operator can re-mount from raw bytes plus the backed-up keyfile. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:18)*
-- **Daily restic backups** to Hetzner Object Storage. Retention: 7 daily, 4 weekly, 6 monthly. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:127)*
+- **One tenant, one dedicated VPS.** Not a shared cluster, not a multi-tenant database. Your Alfred runs on a dedicated Hetzner Cloud machine — typically a `cx53` — with an encrypted volume attached. Nothing of yours touches anyone else's compute.
+- **Private Tailscale mesh.** No public route into your services. The dashboard reaches your `ctrl-api` over a WireGuard mesh; the Hetzner firewall denies everything except SSH, ICMP, and the Tailscale handshake port.
+- **LUKS2 full-disk encryption.** AES-256-XTS with a per-instance key generated at provision time. Even if Hetzner loses the disk, the operator can re-mount from raw bytes plus the backed-up keyfile.
+- **Daily restic backups** to Hetzner Object Storage. Retention: 7 daily, 4 weekly, 6 monthly.
 - **Same source tree.** Every Cloud tenant runs the same image tags that ship from `main` in [ssdavidai/alfred](https://github.com/ssdavidai/alfred). Nothing is forked. If you outgrow Cloud, you can [migrate to self-hosted](/alfred-cloud/migration) with your vault and machine state intact.
 
 ## What you get vs. what you give up
@@ -53,24 +53,24 @@ The honest summary: **Cloud trades sovereignty for time**. If you want to inspec
 ## The rest of this section
 
 <CardGroup cols={2}>
-  <Card title="Private beta status" icon="user-lock" href="/alfred-cloud/private-beta">
-    What invite-only means right now, how to request access, what onboarding looks like.
-  </Card>
-  <Card title="Architecture" icon="server" href="/alfred-cloud/architecture">
-    The dedicated VPS, the encrypted volume, the Tailscale mesh, the Docker stack — how Cloud assembles the same software.
-  </Card>
-  <Card title="Provisioning" icon="play" href="/alfred-cloud/provisioning">
-    The eight-step flow from "you sign up" to "your Alfred answers the door."
-  </Card>
-  <Card title="Migration" icon="arrow-right-arrow-left" href="/alfred-cloud/migration">
-    Moving between Cloud and self-hosted in both directions. Honest about what's manual.
-  </Card>
-  <Card title="Billing" icon="credit-card" href="/alfred-cloud/billing">
-    Private-beta pricing, the 30-day cancellation grace period, what suspension preserves.
-  </Card>
-  <Card title="Alfred Prime federation" icon="users-line" href="/alfred-cloud/federation">
-    Cloud-only: one tenant reaching across the tailnet to consult another tenant's Alfred.
-  </Card>
+ <Card title="Private beta status" icon="user-lock" href="/alfred-cloud/private-beta">
+ What invite-only means right now, how to request access, what onboarding looks like.
+ </Card>
+ <Card title="Architecture" icon="server" href="/alfred-cloud/architecture">
+ The dedicated VPS, the encrypted volume, the Tailscale mesh, the Docker stack — how Cloud assembles the same software.
+ </Card>
+ <Card title="Provisioning" icon="play" href="/alfred-cloud/provisioning">
+ The eight-step flow from "you sign up" to "your Alfred answers the door."
+ </Card>
+ <Card title="Migration" icon="arrow-right-arrow-left" href="/alfred-cloud/migration">
+ Moving between Cloud and self-hosted in both directions. Honest about what's manual.
+ </Card>
+ <Card title="Billing" icon="credit-card" href="/alfred-cloud/billing">
+ Private-beta pricing, the 30-day cancellation grace period, what suspension preserves.
+ </Card>
+ <Card title="Alfred Prime federation" icon="users-line" href="/alfred-cloud/federation">
+ Cloud-only: one tenant reaching across the tailnet to consult another tenant's Alfred.
+ </Card>
 </CardGroup>
 
 <Tip>

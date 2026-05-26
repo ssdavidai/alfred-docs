@@ -1,0 +1,61 @@
+---
+title: "Revoke a paired user"
+description: "Revoke an approved messaging-channel user's DM access."
+api: "POST /api/v1/devices/revoke"
+---
+
+Revokes an approved user's DM access to your Alfred on a given messaging platform. The user record is removed from Hermes' approved list and subsequent DMs from that user will fall back to the unpaired flow *(packages/ctrl/src/api/routes/devices.ts:67-82)*.
+
+## Body parameters
+
+<ParamField body="platform" type="string" required>
+ The messaging platform (e.g. `telegram`, `slack`).
+</ParamField>
+
+<ParamField body="userId" type="string" required>
+ The platform-specific user id of the approved user to revoke.
+</ParamField>
+
+## Response
+
+<ResponseField name="message" type="string">
+ Confirmation string from the Hermes CLI (e.g. `"Access revoked"`).
+</ResponseField>
+
+## Errors
+
+`400 Bad Request` — returned when `platform` or `userId` is missing or not a string.
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://alfred.black/api/v1/devices/revoke \
+ -H "Authorization: Bearer alf_your_key_here" \
+ -H "Content-Type: application/json" \
+ -d '{"platform": "telegram", "userId": "12345678"}'
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+ "message": "Access revoked"
+}
+```
+
+```json 400 Validation error
+{
+ "error": {
+ "code": "VALIDATION_ERROR",
+ "message": "userId is required (the platform user id)"
+ }
+}
+```
+
+</ResponseExample>
+
+<Note>
+ Revocation is per-platform-per-user. Other platforms / other users remain unaffected. A revoked user can DM again and trigger a fresh pairing code.
+</Note>

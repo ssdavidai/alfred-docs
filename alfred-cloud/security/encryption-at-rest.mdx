@@ -10,14 +10,14 @@ Every byte that matters lives on `/mnt/encrypted`. Nothing of consequence — va
 
 ## What we encrypt
 
-The data volume on every tenant is encrypted with **LUKS2** (Linux Unified Key Setup, version 2) using **AES-256-XTS**. The passphrase is generated per-instance at provisioning time and never reused. The Hetzner Cloud volume is attached, formatted with LUKS2, then mounted as `/mnt/encrypted` — every directory below is on that one encrypted volume. *(`/Users/ssd/dev/alfred/packages/ctrl/src/templates/cloud-init.yaml.njk`)*
+The data volume on every tenant is encrypted with **LUKS2** (Linux Unified Key Setup, version 2) using **AES-256-XTS**. The passphrase is generated per-instance at provisioning time and never reused. The Hetzner Cloud volume is attached, formatted with LUKS2, then mounted as `/mnt/encrypted` — every directory below is on that one encrypted volume. *(`packages/ctrl/src/templates/cloud-init.yaml.njk`)*
 
 | Path | What it holds |
 |---|---|
 | `/mnt/encrypted/vault` | The principal's Markdown vault. Bind-mounted into every container that needs it. |
 | `/mnt/encrypted/alfred` | Tenant secrets file (`.gateway-token`), authorised phone numbers, onboarding state, Composio user id, stream JSONLs. |
 | `/mnt/encrypted/alfred/.agentmail-credentials.json` | The inbox-scoped AgentMail key. |
-| `/mnt/encrypted/alfred/.composio-user-id` | Composio user id fallback when env-injection failed. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:123`)* |
+| `/mnt/encrypted/alfred/.composio-user-id` | Composio user id fallback when env-injection failed. *(`packages/ctrl/src/api/routes/integrations.ts:123`)* |
 | `/mnt/encrypted/alfred/.authorized-phone-numbers.json` | Allowlist for inbound SMS / voice. |
 | `/mnt/encrypted/alfred/streams` | Stream events and configs (the raw inbound event log). |
 | `/mnt/encrypted/hermes` | Hermes runtime config + per-profile state. |
@@ -33,7 +33,7 @@ The data volume on every tenant is encrypted with **LUKS2** (Linux Unified Key S
 | `/mnt/encrypted/sure` | Sure personal-finance stack volumes (`pgdata/`, `redis/`) — when `sure_enabled` is on. |
 | `/mnt/encrypted/vexa` | Vexa transcript-bot stack data (Postgres, Redis, MinIO) — when `vexa_enabled` is on. |
 
-The `/mnt/encrypted/{plane,sure,vexa,mcp-server,vaultwarden}` directories are created **unconditionally** at provision time. The cost of an empty directory is zero, and creating them lazily would mean flipping a sidecar feature flag (e.g. `vexa_enabled`) would also need re-running cloud-init before the corresponding stack could start. *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:39`)*
+The `/mnt/encrypted/{plane,sure,vexa,mcp-server,vaultwarden}` directories are created **unconditionally** at provision time. The cost of an empty directory is zero, and creating them lazily would mean flipping a sidecar feature flag (e.g. `vexa_enabled`) would also need re-running cloud-init before the corresponding stack could start.
 
 At rest, the volume content is **unreadable without the LUKS passphrase**. Even Hetzner staff with physical access to the disk see only ciphertext.
 
@@ -55,24 +55,24 @@ XTS is the standard AES mode for storage-at-rest — it provides confidentiality
 This is the trickiest part to get right, and the part most cloud LUKS deployments get wrong. **The passphrase is never written anywhere a Hetzner metadata API could see it.**
 
 <Steps>
-  <Step title="Generated post-boot via SSH">
-    Cloud-init formats the disk with LUKS2 but uses a **temporary** keyfile. After cloud-init finishes, the provisioner SSHs into the box, generates the per-instance passphrase, adds it as a LUKS keyslot, then removes the temporary keyfile. *(`/tmp/alfred-doc-old/guides/security.mdx:50`)*
+ <Step title="Generated post-boot via SSH">
+ Cloud-init formats the disk with LUKS2 but uses a **temporary** keyfile. After cloud-init finishes, the provisioner SSHs into the box, generates the per-instance passphrase, adds it as a LUKS keyslot, then removes the temporary keyfile.
 
-    Why this and not cloud-init `user_data`? Because Hetzner's metadata API at `169.254.169.254` is readable by anything on the VM — any compromised container could read its own `user_data` block. Putting the passphrase there would leak it on first compromise.
-  </Step>
-  <Step title="Stored on disk only at `/opt/alfred/luks.key`">
-    The keyfile lives at `/opt/alfred/luks.key` on the host — readable only by root (`chmod 0400`), used by the `alfred-luks.service` systemd unit to auto-unlock the volume on boot. *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:75`)*
+ Why this and not cloud-init `user_data`? Because Hetzner's metadata API at `169.254.169.254` is readable by anything on the VM — any compromised container could read its own `user_data` block. Putting the passphrase there would leak it on first compromise.
+ </Step>
+ <Step title="Stored on disk only at `/opt/alfred/luks.key`">
+ The keyfile lives at `/opt/alfred/luks.key` on the host — readable only by root (`chmod 0400`), used by the `alfred-luks.service` systemd unit to auto-unlock the volume on boot.
 
-    The host's root filesystem is **not** encrypted (it's a stock Hetzner image with the bootloader and kernel). Compromising root on the host trivially reads this keyfile — encryption-at-rest protects against disk-level theft, not against root compromise of a running tenant. See [Network model](/alfred-cloud/security/network-model) for what reduces the chance of root compromise (hardened SSH, fail2ban, UFW, no public service ports).
-  </Step>
-  <Step title="Held in memory by systemd for the volume's lifetime">
-    Once the volume is unlocked at boot, the LUKS master key lives in the kernel's keyring. Userspace processes never see the passphrase again — they just read and write through the mounted `/mnt/encrypted` filesystem like any other ext4 mount.
-  </Step>
-  <Step title="Backed up to operator-side storage">
-    The keyfile is downloaded into `data/ssh_keys/<instance-id>/luks.key` on the operator's machine at provision time. *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:51`)*
+ The host's root filesystem is **not** encrypted (it's a stock Hetzner image with the bootloader and kernel). Compromising root on the host trivially reads this keyfile — encryption-at-rest protects against disk-level theft, not against root compromise of a running tenant. See [Network model](/alfred-cloud/security/network-model) for what reduces the chance of root compromise (hardened SSH, fail2ban, UFW, no public service ports).
+ </Step>
+ <Step title="Held in memory by systemd for the volume's lifetime">
+ Once the volume is unlocked at boot, the LUKS master key lives in the kernel's keyring. Userspace processes never see the passphrase again — they just read and write through the mounted `/mnt/encrypted` filesystem like any other ext4 mount.
+ </Step>
+ <Step title="Backed up to operator-side storage">
+ The keyfile is downloaded into `data/ssh_keys/<instance-id>/luks.key` on the operator's machine at provision time.
 
-    This is the **disaster-recovery escape hatch** — if Hetzner loses the disk, the operator can re-mount the encrypted volume from its raw bytes plus this backed-up keyfile.
-  </Step>
+ This is the **disaster-recovery escape hatch** — if Hetzner loses the disk, the operator can re-mount the encrypted volume from its raw bytes plus this backed-up keyfile.
+ </Step>
 </Steps>
 
 ## Defence in depth
@@ -82,7 +82,7 @@ Encryption at rest is one layer. The full chain is:
 | Layer | What it defends against |
 |---|---|
 | LUKS2 on `/mnt/encrypted` | Disk theft, raw-disk forensics by hosting-provider staff |
-| Container `cap_drop: ALL` + `no-new-privileges: true` | Container escape into the host root filesystem *(`/Users/ssd/dev/alfred/docker-compose.yaml:211,310`)* |
+| Container `cap_drop: ALL` + `no-new-privileges: true` | Container escape into the host root filesystem *(`docker-compose.yaml:211,310`)* |
 | `127.0.0.1` bindings on every Alfred port | Network-level disk-content exfiltration (you'd have to be on the box) |
 | Per-tenant Vaultwarden master password (AES-256 on top of LUKS) | A compromised LUKS keyfile still doesn't reveal Vaultwarden contents |
 | Tenant `.env` placed on `/mnt/encrypted` only after the host is provisioned | A pre-boot disk image grab gets you nothing useful |
@@ -94,13 +94,13 @@ LUKS protects data **at rest**. While the tenant is running, `/mnt/encrypted` is
 </Warning>
 
 <CardGroup cols={2}>
-  <Card title="Backups and recovery" icon="archive" href="/alfred-cloud/security/backups-and-recovery">
-    How the LUKS keyfile and the encrypted volume are backed up.
-  </Card>
-  <Card title="Per-tenant isolation" icon="users" href="/alfred-cloud/security/per-tenant-isolation">
-    The Vaultwarden layer on top of LUKS.
-  </Card>
-  <Card title="Network model" icon="network" href="/alfred-cloud/security/network-model">
-    Why an attacker would need root on the box to read decrypted bytes.
-  </Card>
+ <Card title="Backups and recovery" icon="archive" href="/alfred-cloud/security/backups-and-recovery">
+ How the LUKS keyfile and the encrypted volume are backed up.
+ </Card>
+ <Card title="Per-tenant isolation" icon="users" href="/alfred-cloud/security/per-tenant-isolation">
+ The Vaultwarden layer on top of LUKS.
+ </Card>
+ <Card title="Network model" icon="network" href="/alfred-cloud/security/network-model">
+ Why an attacker would need root on the box to read decrypted bytes.
+ </Card>
 </CardGroup>

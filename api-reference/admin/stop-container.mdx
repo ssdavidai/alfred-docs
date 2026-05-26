@@ -1,0 +1,44 @@
+---
+title: "Stop container"
+description: "Stop a running container in the tenant Docker stack."
+api: "POST /api/v1/admin/containers/{service}/stop"
+---
+
+Stops the named compose service via `docker compose stop <service>`. The container stays stopped until you call the start endpoint — Docker Compose's restart policy is suppressed for stopped containers.
+
+## Path parameters
+
+<ParamField path="service" type="string" required>
+ Compose service id. Must match `[a-zA-Z0-9_-]+`. Common values: `ctrl-api`, `hermes`, `alfred-learn`, `temporal`, `caddy`, `web`, `web-client`.
+</ParamField>
+
+## Response
+
+<ResponseField name="message" type="string">Confirmation that the stop was issued.</ResponseField>
+
+## Errors
+
+`400 Bad Request` — `service` contains invalid characters.
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://alfred.black/api/v1/admin/containers/hermes/stop \
+ -H "Authorization: Bearer alf_your_key_here"
+```
+
+</RequestExample>
+
+<ResponseExample>
+
+```json 200 OK
+{
+ "message": "Container \"hermes\" stopped"
+}
+```
+
+</ResponseExample>
+
+<Warning>
+ Stopping `hermes` takes Alfred himself offline. Stopping `alfred-learn` interrupts every in-flight Temporal activity. Stopping `temporal` halts every scheduled workflow including chores. Reach for stop only when you know you'll start the container again shortly — for everything else, `restart` is safer.
+</Warning>

@@ -18,22 +18,22 @@ the headline is ambiguous.
 Sample headlines from the live log (verifiable with `git log --oneline -30`):
 
 ```
-feat(hermes-mcp): 6th MCP server — runtime delegation + scheduling (#56)
-fix(matters): list counts.tasks ≠ detail tasks.length (#229) (#54)
-feat(voice): 5 MCP servers + corresponding skills (post-rebase of #55) (#57)
-fix(ctrl,hermes): consolidate skills on Hermes-canonical path (#53)
-fix(integrations): Composio skill generator hits dead v2 /actions → v3 /tools (#52)
-fix(compose): voice-bridge missing MCP + VOICE_* + TWILIO_AUTH_TOKEN env (#51)
+feat(hermes-mcp): 6th MCP server — runtime delegation + scheduling
+fix(matters): list counts.tasks ≠ detail tasks.length
+feat(voice): 5 MCP servers + corresponding skills (post-rebase of #55)
+fix(ctrl,hermes): consolidate skills on Hermes-canonical path
+fix(integrations): Composio skill generator hits dead v2 /actions → v3 /tools
+fix(compose): voice-bridge missing MCP + VOICE_* + TWILIO_AUTH_TOKEN env
 ```
 
 Conventions visible from those:
 
 - **Type vocabulary**: `feat`, `fix`, `merge`, `orchestrator`. `chore`,
-  `refactor`, `style`, `docs` are not used as top-level types — they go under
-  `fix` or `feat` with an explanatory scope.
+ `refactor`, `style`, `docs` are not used as top-level types — they go under
+ `fix` or `feat` with an explanatory scope.
 - **Scope** is the package or surface: `ctrl`, `learn`, `web`, `hermes`,
-  `mcp-server`, `voice`, `voice-bridge`, `compose`, `matters`, `integrations`.
-  Multi-scope is comma-separated (`fix(ctrl,hermes): …`).
+ `mcp-server`, `voice`, `voice-bridge`, `compose`, `matters`, `integrations`.
+ Multi-scope is comma-separated (`fix(ctrl,hermes): …`).
 - **Summary** is short imperative, lower-case, no trailing period.
 - **PR number** in trailing parens (`(#229)`).
 - **Em-dashes** are used freely in summaries — readability over rigidity.
@@ -59,7 +59,7 @@ that:
 2. Names the root cause (`file:line` where useful).
 3. Says what the fix does.
 4. References the related contract clause (`C-OB1`, `C14`, etc.) or issue
-   number.
+ number.
 
 The standing prompt for new agents reinforces this: *"focus on the why, not
 the what — the diff is the what"*. The CHANGELOG borrows liberally from
@@ -90,7 +90,7 @@ it.
 - [ ] Green test passes after the fix
 - [ ] Lane VERIFY passes locally
 - [ ] (If contract change) tests that asserted the old contract are updated
-      in this PR
+ in this PR
 ```
 
 The "red test reproduces the bug" line is non-negotiable for fix PRs — see
@@ -103,7 +103,7 @@ Every PR must pass `ci-check.yml` before merge. That workflow runs:
 - `build-ctrl`: `npm ci` + esbuild bundle of `dist/api.mjs`.
 - `pytest-learn`: `pytest` on `packages/learn/tests/` excluding slow tests.
 - `compose-lint`: synthesize a dummy `.env`, run `docker compose config`
-  (default and `--profile vexa`).
+ (default and `--profile vexa`).
 - `bootstrap-lint`: `shellcheck scripts/bootstrap.sh`.
 - `gitleaks`: secret scanning.
 
@@ -139,8 +139,8 @@ contributions visible.
 ## After merge
 
 - **One PR per logical change → CI builds `:latest` → deploy → smoke → next PR.**
-  Never clobber a production `:latest` without verifying on a throwaway tag first.
+ Never clobber a production `:latest` without verifying on a throwaway tag first.
 - **Watch the deploy** — `docker compose logs -f <svc>` for two minutes after
-  `docker compose up -d`. Most regressions surface in the first 90 seconds.
+ `docker compose up -d`. Most regressions surface in the first 90 seconds.
 - **Watch the four stores** — query `state.db` and `ingest.db` after the
-  deploy lands. See [Debugging guide → Common diagnostic recipes](/troubleshooting/debugging-guide#common-diagnostic-recipes).
+ deploy lands. See [Debugging guide → Common diagnostic recipes](/troubleshooting/debugging-guide#common-diagnostic-recipes).
