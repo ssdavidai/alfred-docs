@@ -1,10 +1,10 @@
 ---
 title: "Gotchas"
-description: "Concrete pitfalls you will hit, drawn from the team's incident log."
+description: "Concrete pitfalls operators hit in practice, with fixes."
 ---
 
 This page is the list of *"oh, I lost an hour to that one"* pitfalls. Every
-item below has bitten someone in production. Each is one short paragraph and
+item below is a known sharp edge in production. Each is one short paragraph and
 a fix.
 
 ## Vault PATCH body shape
@@ -41,8 +41,7 @@ must set both, and the validator will hard-fail otherwise *(CLAUDE.md §6.2)*.
 <Warning>
 `status: queued` looks plausible but is rejected with HTTP 500 by the daemon
 validator. For a new task, use `status: todo` (canonical "not yet started") +
-`state: pending`. A red-test in `packages/ctrl/tests/` guards this — see
-incident 2026-05-24.
+`state: pending`. A red-test in `packages/ctrl/tests/` guards this.
 </Warning>
 
 ## The decision-mirror recursion
@@ -91,8 +90,9 @@ follow. The fix is a four-tier resolver *(packages/learn/src/activities/packs_op
 
 <Warning>
 If you skip the validation step and trust the LLM's slug, fresh deploys produce
-orphan tasks that the `/matters` page silently drops. The bug shipped once and
-left 32 orphaned tasks on a live tenant — see incident 2026-05-24.
+orphan tasks that the `/matters` page silently drops. This failure mode has
+left dozens of orphaned tasks on a live tenant in the past — keep the resolver
+intact.
 </Warning>
 
 ## The Hermes web dashboard is not usable
@@ -100,8 +100,8 @@ left 32 orphaned tasks on a live tenant — see incident 2026-05-24.
 The upstream `hermes-agent` pip wheel ships **neither** the React source nor a
 prebuilt `web_dist/`. The dashboard backend boots fine and responds at the
 configured port, but every request returns `{"error":"Frontend not built"}`.
-We wired up `hermes.{$DOMAIN}` once, hit the empty 200, and reverted it
-*(CLAUDE.md §15.6, commit `ce6c177`)*.
+Do not expose `hermes.{$DOMAIN}` — there is nothing for it to serve
+*(CLAUDE.md §15.6)*.
 
 <Tip>
 For Hermes inspection, exec into the container and use the CLI:
@@ -117,7 +117,8 @@ docker compose exec hermes hermes auth status
 
 The chore generator emits human-readable cron strings like
 `0 7 * * Mon,Tue,Wed,Thu,Fri`. Some validators reject the named-weekday form
-and want `0 7 * * 1-5`. We autocorrect rather than ask the LLM to be precise
+and want `0 7 * * 1-5`. The generator autocorrects rather than relying on the
+LLM to be precise
 *(packages/learn/src/activities/chore_generation.py, `_autocorrect_cron_dow_for_description`)*.
 
 <Note>
@@ -129,17 +130,18 @@ expression in the logs) before debugging the validator.
 ## The instinct scorer tokenizer bug
 
 The signal-to-instinct matcher tokenises both the signal and the instinct
-pattern. The historical bug: `_score_keyword_overlap` did set intersection
-between **single-word** signal tokens and **multi-word** pattern phrases
-(`"reply to invoice"` never matches `["reply","to","invoice"]` as a set).
-Result: every live instinct scored 0.0 for every signal. No discretion
-threshold could rescue it *(CLAUDE.md §15.8)*.
+pattern. A subtle failure mode: if `_score_keyword_overlap` does set
+intersection between **single-word** signal tokens and **multi-word** pattern
+phrases (`"reply to invoice"` never matches `["reply","to","invoice"]` as a
+set), every live instinct scores 0.0 for every signal and no discretion
+threshold can rescue it *(CLAUDE.md §15.8)*.
 
 <Warning>
-The fix combines three matchers — substring of full text, all-pattern-tokens-in-keyword-set,
-and the legacy single-word overlap — at `MATCH_THRESHOLD = 0.05`. If you touch
-the scorer, **verify the tokenizers on both sides produce comparable units**.
-A test fixture in `packages/learn/tests/` covers this.
+The current scorer combines three matchers — substring of full text,
+all-pattern-tokens-in-keyword-set, and a single-word overlap — at
+`MATCH_THRESHOLD = 0.05`. If you touch the scorer, **verify the tokenizers on
+both sides produce comparable units**. A test fixture in `packages/learn/tests/`
+covers this.
 </Warning>
 
 ## SSH into the box with 1Password agent running
@@ -194,8 +196,8 @@ rebuild *(CLAUDE.md §15.10)*.
 ## Mode flags — defaults
 
 Three settings flags control how aggressively Alfred acts. All three default
-to `"live"` (act) — the resolver checks env var, then `/alfred-data/settings.json`,
-then falls through to live *(CLAUDE.md §8)*.
+to `"live"` (act). The resolver checks the env var first, then
+`/alfred-data/settings.json`, then falls through to live *(CLAUDE.md §8)*.
 
 <Note>
 If you're debugging "Alfred isn't doing anything", check these *first* — a

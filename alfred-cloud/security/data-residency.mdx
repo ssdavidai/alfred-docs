@@ -48,11 +48,11 @@ Third-party services that Composio brokers to are out of scope — your data ins
 
 The **Twilio account** that powers AgentPhone is US-located but operates as a **passthrough** — voice and SMS content flows through Twilio briefly (Media Stream WebSocket, signed SMS webhook) before reaching the tenant. Twilio does not durably store call content; SMS body durability is per Twilio's policy. See [Network model → The voice channel exception](/alfred-cloud/security/network-model#the-voice-channel-exception).
 
-If EU-only voice / SMS routing matters for your use case, AgentPhone is currently the wrong fit — speak to the operator about alternatives.
+If EU-only voice / SMS routing matters for your use case, AgentPhone is not a fit — speak to the operator about alternatives.
 
 ## GDPR rights
 
-The principal has the standard GDPR rights, surfaced through the operator (no automated dashboard flows yet):
+The principal has the standard GDPR rights, surfaced through the operator:
 
 | Right | How to exercise |
 |---|---|

@@ -3,11 +3,11 @@ title: "Temporal workflows and activities"
 description: "Every Temporal workflow + activity in alfred-learn — 36 workflow classes, ~70 activity modules, organised by domain."
 ---
 
-`alfred-learn` is Alfred Black's **intelligence layer** *(packages/learn/src/worker.py)*. It runs as a single Temporal worker on task queue `alfred-learn` *(packages/learn/src/config.py:13)*, hosts every scheduled workflow that turns inbound streams into Desk cards and observations into instinct upgrades, and coordinates onboarding, briefing, and Plane two-way sync.
+`alfred-learn` is Alfred's **intelligence layer** *(packages/learn/src/worker.py)*. It runs as a single Temporal worker on task queue `alfred-learn` *(packages/learn/src/config.py:13)*, hosts every scheduled workflow that turns inbound streams into Desk cards and observations into instinct upgrades, and coordinates onboarding, briefing, and Plane two-way sync.
 
 There are **36 workflow classes** registered at boot *(packages/learn/src/worker.py)* and ~70 activity modules under `packages/learn/src/activities/`. Schedules are created by `scripts/register_schedules.py` on container first boot.
 
-<Note>The package's `SPEC.md` and CLAUDE.md describe six canonical workflows. The live worker registers 36 — the original six (event processor, session tracker, briefing, learning, reflection, judgment) plus everything that has been added since (signal pipeline, decision routing, narrative composition, Plane two-way sync, Vexa meeting capture, Omi audio, chore promotion, decay watcher, reversal calibration, stream sweep, …).</Note>
+<Note>The package's `SPEC.md` and CLAUDE.md describe six canonical workflows (event processor, session tracker, briefing, learning, reflection, judgment). The live worker registers 36 — those six plus the signal pipeline, decision routing, narrative composition, Plane two-way sync, Vexa meeting capture, Omi audio, chore promotion, decay watcher, reversal calibration, stream sweep, and more.</Note>
 
 ## Schedule taxonomy
 
@@ -55,7 +55,7 @@ Schedules are declared in three places *(packages/learn/scripts/register_schedul
 | OnboardingPipelineWorkflow | — | ad-hoc (one per tenant signup) | — |
 | MediaIngestionWorkflow | — | dispatched by EventProcessor | — |
 | StreamPullerWorkflow | — | dispatched by StreamSweep | — |
-| StewardWorkflow | — | per-matter (deprecated; tombstone) | — |
+| StewardWorkflow | — | per-matter (tombstone-registered for replay only) | — |
 
 The four registration-time gates (`STEWARD_SIGNAL_EXTRACT_ENABLED`, `STEWARD_SIGNAL_ROUTER_ENABLED`, `STEWARD_REVERSAL_CALIBRATION_ENABLED`, `STEWARD_STREAM_EVENT_PURGE_ENABLED`) skip schedule creation entirely when false — the workflow never runs, no Temporal history accumulates *(packages/learn/scripts/register_schedules.py:117-157)*.
 
@@ -94,7 +94,7 @@ flowchart TD
 2. For each event:
    - `extract_signal_from_event` — pre-filter noise (short body, blocklist domains, age >14d), LLM-extract `{target_path, effect, mutation_proposal}` via `clerk_extract`, resolve target.
    - If non-None: `write_signal_record` persists `signal/<ts>-<hash>.md`. Slug is deterministic on event path + raw quote so Temporal retries are idempotent.
-   - `extract_observation_from_signal` (OBS-2, patched gate `signal_extract_obs_v1`) — match instinct via `instinct_match.best_instinct_path`, write observation.
+   - `extract_observation_from_signal` (patched gate `signal_extract_obs_v1`) — match instinct via `instinct_match.best_instinct_path`, write observation.
    - `mark_stream_event_processed` — patch `signal_extracted_at = now`, including for noise events (so we don't re-LLM them).
    - When target=None AND effect ∈ {action, mutation} AND mode=live: `create_task_from_signal` *(packages/learn/src/activities/task_creation.py)*.
 
@@ -110,7 +110,7 @@ Per-event try/except — one bad event increments an error counter but doesn't s
 
 1. `list_unrouted_signals` — `signal/*` records with `status: unrouted`.
 2. Per signal:
-   - **effect=mutation** → `apply_signal_mutation` (legacy v1 path via Steward's `apply_state_change`).
+   - **effect=mutation** → `apply_signal_mutation` (via Steward's `apply_state_change`).
    - **effect=action** → `route_signal_action`: instinct matcher + per-instinct discretion gate (default 0.95). Combined confidence = `min(target_confidence, effect_confidence)`.
      - HIGH path (combined ≥ threshold + mode=live): `dispatch_action_to_agent` on workers profile (`:18790`); follow-up logged as a new signal `status=routed_agent` (terminal — won't be re-routed).
      - HUMAN path: `write_needs_attention_record` → card lands on `/desk`.
@@ -219,14 +219,12 @@ How the daily letterpress brief is written and how matter `current_state` paragr
 3. Per matter: `briefing_visit_matter` — runs state-mutator (`apply_state_change_v2`) to refresh `current_state`.
 4. `compose_and_write_briefing` — Opus-class call composes the body from the freshly-written `current_state` paragraphs + signals + decisions in the window. Writes to `briefing/<YYYY-MM-DD>-<slot>.md`.
 5. `record_chore_run` — log run-history line.
-
-The brief replaces the old `DailyDigestWorkflow` / `DailyMorningBriefingWorkflow` / `DailyEveningDigestWorkflow` trio (commit f20556d).
 </Accordion>
 
 <Accordion title="NightlyNarrativeWorkflow">
 **Schedule**: daily 02:00 local (`al-nightly-narrative`) *(packages/learn/scripts/register_schedules.py:327-332)*.
 
-RFC #884 Living Narratives. Walks every active matter and asks the clerk to draft a fresh 2–4 sentence `current_state` paragraph from the last 24h of signals + task transitions, stamping `as_of: <ISO timestamp>`. Matters with zero activity in the window are skipped without invoking the clerk.
+The Living Narratives pass. Walks every active matter and asks the clerk to draft a fresh 2–4 sentence `current_state` paragraph from the last 24h of signals + task transitions, stamping `as_of: <ISO timestamp>`. Matters with zero activity in the window are skipped without invoking the clerk.
 
 **Activities**: `list_active_matters_for_narrative`, `read_matter_summary`, `load_matter_signals_24h`, `load_task_transitions_24h`, `generate_matter_narrative` (clerk call), `patch_matter_narrative_v2`.
 </Accordion>
@@ -263,7 +261,7 @@ The loop that closes from observations to instinct upgrades.
 <Accordion title="LearningWorkflow">
 **Schedule**: every 15 min (`al-learning`) *(packages/learn/scripts/register_schedules.py:178-180)*.
 
-Workflow 4 of the canonical six. Processes the observation queue and `alfred_instructions` (manual training nudges from the principal) into observation records.
+Processes the observation queue and `alfred_instructions` (manual training nudges from the principal) into observation records.
 
 **Activities**: `fetch_pending_observations`, `process_observation_queue`, `apply_alfred_instruction`.
 </Accordion>
@@ -271,7 +269,7 @@ Workflow 4 of the canonical six. Processes the observation queue and `alfred_ins
 <Accordion title="JudgmentWorkflow">
 **Schedule**: every 15 min (`al-judgment`) *(packages/learn/scripts/register_schedules.py:182-184)*.
 
-Workflow 6. Per-input routing decisions — when a new input arrives, decides whether it's noise, an observation candidate, or signal-worthy. Augments the deterministic signal extractor for novel input types where pattern-matching is too brittle.
+Per-input routing decisions — when a new input arrives, decides whether it's noise, an observation candidate, or signal-worthy. Augments the deterministic signal extractor for novel input types where pattern-matching is too brittle.
 
 **Activities**: `judge_input`, `assess_input_routing`.
 </Accordion>
@@ -279,7 +277,7 @@ Workflow 6. Per-input routing decisions — when a new input arrives, decides wh
 <Accordion title="PatternDetectionWorkflow">
 **Schedule**: hourly (`al-pattern-detection`, overlap=SKIP) *(packages/learn/scripts/register_schedules.py:203-205)*.
 
-OBS-4. Hourly deterministic scan of the unified observation pool. Clusters by `(sender, intent)` and writes `pattern_proposal` records for surviving clusters. Cheap (one ctrl-api list call + in-memory work).
+Hourly deterministic scan of the unified observation pool. Clusters by `(sender, intent)` and writes `pattern_proposal` records for surviving clusters. Cheap (one ctrl-api list call + in-memory work).
 
 **Activity**: `detect_pattern_proposals`.
 </Accordion>
@@ -293,18 +291,18 @@ How inbound events from Composio, OMI wearables, webhooks, and meeting bots beco
 <Accordion title="EventProcessorWorkflow">
 **Schedule**: every 15 min (`al-event-processor`) *(packages/learn/scripts/register_schedules.py:167-169)*.
 
-Workflow 1 of the canonical six — zero-LLM stream event routing. Reads pending events from `ingest.db`, dispatches:
+Zero-LLM stream event routing. Reads pending events from `ingest.db`, dispatches:
 - `stream_type == "media"` → child `MediaIngestionWorkflow`.
 - Everything else → `drop_raw_event_to_inbox` (file under `vault/inbox/`).
 - Mark processed regardless.
 
-The curator (vault-curator agent) does the actual classification — Workflow 1 is just a dispatcher.
+The curator (vault-curator agent) does the actual classification — `EventProcessorWorkflow` is just a dispatcher.
 
 **Activities**: `fetch_unprocessed_events`, `drop_raw_event_to_inbox`, `mark_event_processed`.
 </Accordion>
 
 <Accordion title="StreamSweepWorkflow + StreamPullerWorkflow">
-**Schedule**: `al-stream-sweep` every 2 min *(packages/learn/scripts/register_schedules.py:100-102)*. The sweep reads each stream's persisted `schedule_interval_seconds` / `last_pull_at` and dispatches `StreamPullerWorkflow` for any stream due. Replaces the legacy per-stream `al-stream-pull-<id>` schedules.
+**Schedule**: `al-stream-sweep` every 2 min *(packages/learn/scripts/register_schedules.py:100-102)*. The sweep reads each stream's persisted `schedule_interval_seconds` / `last_pull_at` and dispatches `StreamPullerWorkflow` for any stream due.
 
 A stream's effective cadence is `max(schedule_interval_seconds, 2 min)`.
 
@@ -338,7 +336,7 @@ Single batched LLM call to enrich stream events with derived fields (sender reso
 <Accordion title="SessionTrackerWorkflow">
 **Schedule**: every 15 min (`al-session-tracker`) *(packages/learn/scripts/register_schedules.py:172-174)*.
 
-Workflow 2. Rolling state machine for the principal's "sessions" — conversational threads that span multiple inputs. Promotes accumulated session content to vault notes when a session closes.
+Rolling state machine for the principal's "sessions" — conversational threads that span multiple inputs. Promotes accumulated session content to vault notes when a session closes.
 
 **Activities**: `list_active_sessions`, `assess_session_close`, `promote_session_to_note`.
 </Accordion>
@@ -354,7 +352,7 @@ Bidirectional mirror between the canonical vault matter/task records and the Pla
 
 **Gate**: `PLANE_SYNC_ENABLED=true` at both registration AND runtime.
 
-One-way vault → Plane sync (#536 B4). Reads the tenant's vault, projects matters as Plane projects and tasks as Plane issues. Per-batch cursor advancement; 5-minute execution timeout per run.
+One-way vault → Plane sync. Reads the tenant's vault, projects matters as Plane projects and tasks as Plane issues. Per-batch cursor advancement; 5-minute execution timeout per run.
 
 **Activities**: `fetch_changed_matters`, `fetch_changed_tasks`, `upsert_plane_project`, `upsert_plane_issue`.
 </Accordion>
@@ -440,9 +438,9 @@ Picks up queued vault tasks (`task/<slug>.md` with `state: pending`, `runner_cla
 A one-shot pipeline that runs once per tenant signup to materialise the principal's vault from scratch.
 
 <Accordion title="OnboardingPipelineWorkflow">
-**Schedule**: ad-hoc (one invocation per signup). Started by ctrl-api when Sir completes the `/composing → /preparing` ritual.
+**Schedule**: ad-hoc (one invocation per signup). Started by ctrl-api when the principal completes the `/composing → /preparing` ritual.
 
-**Pipeline** *(packages/learn/src/workflows/onboarding_pipeline.py)* — replaces the 101-sequential-Clerk-call v2 with 4 direct Opus 4.6 calls in ~5 minutes:
+**Pipeline** *(packages/learn/src/workflows/onboarding_pipeline.py)* — runs 4 direct Opus 4.6 calls in ~5 minutes:
 
 1. **Composio pull** — `composio_pull` pulls ~100 days of email (chunked + paginated to stay under Temporal's 4MB gRPC limit).
 2. **Facts extraction** — `extract_facts_opus` (chunked: threshold 500, size 400 to avoid Hermes' "max compression attempts" overflow).
@@ -462,20 +460,20 @@ The principal can signal `corrections_received` mid-flow if they want to edit `U
 
 ---
 
-## Domain 10 — Steward (legacy & sweep)
+## Domain 10 — Steward sweep
 
-The Steward perception-and-action loop, collapsed from N per-matter schedules to a single sweep.
+The Steward perception-and-action loop runs as a single sweep across every active matter.
 
 <Accordion title="StewardSweepWorkflow">
 **Schedule**: every 30 min (`al-steward-sweep`) *(packages/learn/scripts/register_schedules.py:85)*.
 
-Walks every active matter once per sweep, runs the Steward evaluation loop (gather signals → evaluate state → propose mutation → apply via state-mutator). Replaces the per-matter `al-steward-<slug>` schedules that #52 collapsed.
+Walks every active matter once per sweep, runs the Steward evaluation loop (gather signals → evaluate state → propose mutation → apply via state-mutator).
 
 **Activities**: `list_active_matters`, `gather_signals_for_matter`, `evaluate_matter_state`, `apply_state_change_v2`.
 </Accordion>
 
-<Accordion title="StewardWorkflow (deprecated)">
-The original per-matter Steward workflow. Tombstone-registered so in-flight runs from before #52 can replay deterministically; new schedules are not created.
+<Accordion title="StewardWorkflow">
+A per-matter Steward workflow class registered as a tombstone so any in-flight runs can replay deterministically; new schedules are not created.
 </Accordion>
 
 ---
@@ -497,7 +495,7 @@ Daily wrong-tenant stream contamination check. Scans `composio-*.jsonl` for ever
 <Accordion title="ComposioReconnectCleanupWorkflow">
 **Schedule**: every 15 min (`al-composio-reconnect-cleanup`) *(packages/learn/scripts/register_schedules.py:223-225)*.
 
-#645 safety-net reaper for the persistent Composio reconnect ledger written by ctrl-api after PR #646. Ctrl-api has an in-process `setTimeout` fast path; this Temporal schedule guarantees cleanup eventually fires even if ctrl-api restarts before the in-process timer (1h grace) elapses.
+Safety-net reaper for the persistent Composio reconnect ledger written by ctrl-api. Ctrl-api has an in-process `setTimeout` fast path; this Temporal schedule guarantees cleanup eventually fires even if ctrl-api restarts before the in-process timer (1h grace) elapses.
 
 **Activity**: `reap_composio_reconnect_ledger`.
 </Accordion>
@@ -540,7 +538,7 @@ class MutationResult:
 
 **Mode gating** *(packages/learn/src/activities/state_mutator.py:183-220)*:
 - `STEWARD_LIVE_MODE` env, or `state_mutator_mode` key in `/alfred-data/settings.json`.
-- Default `"shadow"` — read-only audit emit, no mutation applied. *(Note: CLAUDE.md §8 documents default `"live"`; live code defaults `"shadow"`.)*
+- Default `"shadow"` — read-only audit emit, no mutation applied.
 - `"live_high_confidence_only"` — gate to `confidence ≥ STEWARD_HIGH_CONFIDENCE_THRESHOLD` (default 0.85).
 
 **Propose function registry** *(packages/learn/src/activities/state_mutator.py:147-180)*:

@@ -1,6 +1,6 @@
 ---
 title: "The bug-fixing protocol"
-description: "Two modes — investigate read-only, then fix gate-protected. How the team fans bugs out across parallel agents without conflicts."
+description: "Two modes — investigate read-only, then fix gate-protected. How to fan bugs out across parallel agents without conflicts."
 ---
 
 Alfred Black uses a deliberate two-mode workflow for handling bugs at scale.
@@ -31,8 +31,8 @@ surfaces (e.g. a sweep over a live tenant after a release).
 
 **Synthesis.** When the reports come in, group them by **cross-cutting root
 cause**, not by surface. Most symptoms collapse into a small number of seams
-— the 2026-05-24 campaign reduced ~85 findings to twelve fixes by clustering
-them this way *(see [Incident history](/troubleshooting/incident-history))*.
+— one past campaign reduced ~85 findings to twelve fixes by clustering them
+this way *(see [Incident history](/troubleshooting/incident-history))*.
 
 **Live access.** SSH is read-only. Inline the SSH options on every invocation
 (a shell variable won't word-split under zsh):
@@ -146,7 +146,7 @@ without verifying on a throwaway tag first.
 
 ## Hard-won rules
 
-These bit us. Don't relearn them.
+These are known sharp edges. Don't relearn them.
 
 <Warning>
 **`isolation: worktree` does not guarantee isolation.** Agents have shared

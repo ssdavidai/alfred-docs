@@ -9,9 +9,9 @@ Alfred Cloud is in **private beta**. There is no self-serve checkout. The signup
 
 ## Where things stand
 
-Currently **fewer than 50 invited tenants** are running on Alfred Cloud. The cohort is intentionally small — every new tenant gets the operator's direct attention during the first week, and that doesn't scale to hundreds. Inviting tenants slowly is how we keep the bar high while the software is still moving fast.
+The cohort is intentionally small — every new tenant gets the operator's direct attention during the first week, and that doesn't scale to hundreds. Inviting tenants in small batches is how we keep the bar high while the software keeps shipping.
 
-The beta exists to find the failure modes a self-hosted README can never surface — Composio quirks, model-provider rate limits, the long tail of "what does Alfred do when the principal asks something we never imagined?" Every tenant in the cohort is, in effect, helping shape the v1 surface.
+The beta exists to find the failure modes a self-hosted README can never surface — Composio quirks, model-provider rate limits, the long tail of "what does Alfred do when the principal asks something we never imagined?" Every tenant in the cohort is, in effect, helping shape the product surface.
 
 ## How to request access
 
@@ -43,8 +43,8 @@ We're honest about (3). Alfred is opinionated software. If your use case is fund
 **Expect:**
 
 - An operator who actually responds during the first week. This is not a ticketing system.
-- Bugs. The software is changing fast — see the [incident history](/troubleshooting/incident-history) for the kind of issues we've shipped through. We'll tell you when a fix is in flight.
-- Honesty about what Alfred can't do yet. There's a backlog and the operator will name it.
+- Bugs. The software ships frequently — see the [incident history](/troubleshooting/incident-history) for the kind of issues we've shipped through. We'll tell you when a fix is in flight.
+- Honesty about scope. There's a backlog and the operator will name what's in and out.
 - Real onboarding ritual. Alfred has a sequential `/awaken → /reading-the-room → /verify → /soul → /composing → /preparing → /first-brief → /desk` flow that personalises the agent to you. *(/Users/ssd/dev/alfred/CLAUDE.md:section 14)*
 
 **Don't expect:**
@@ -52,11 +52,11 @@ We're honest about (3). Alfred is opinionated software. If your use case is fund
 - A polished SaaS dashboard with usage analytics. The dashboard is the principal's surface — Desk, Brief, Matters, Vault — not an admin console.
 - Marketplace integrations beyond Composio's catalogue. If your stack is unusual, ask before you sign up.
 - An SLA. Beta tenants run on a single VPS with daily backups. We aim for uptime, but if Hetzner has a regional outage, you're down.
-- An invoice you can hand to procurement. We don't have public pricing yet — see [Billing](/alfred-cloud/billing).
+- A published price list. Pricing is negotiated with each subscriber during the private beta — see [Billing](/alfred-cloud/billing).
 
 ## When does private beta end?
 
-When the software stops surprising us. Concretely: when a new tenant's first 30 days produces zero incidents the operator hasn't already seen. That's not a calendar date — it's a quality bar. Public-launch pricing, SLAs, and a real signup flow will follow that.
+When the software stops surprising us. Concretely: when a new tenant's first 30 days produces zero incidents the operator hasn't already seen. That's a quality bar, not a calendar date. Published pricing, SLAs, and a self-serve signup flow follow when the bar is met.
 
 <Note>
 If you're reading this and wondering whether you'd qualify — the rough heuristic is: do you have a job where information from email, calendar, and a few apps lands on you faster than you can triage it? If yes, [send the email](mailto:hello@alfred.black).

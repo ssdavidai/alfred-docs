@@ -40,10 +40,6 @@ The response is filterable by:
 
 The `system-hermes-sessions` stream captures every main-agent session — every chat thread, every voice call, every email reply, every SMS, every channel interaction — with its summary, channel, and tool calls. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/streams.ts:119`)*
 
-<Note>
-The stream identifier today in the live `alfred-black` codebase is `system-openclaw-sessions` (legacy name from before the OpenClaw → Hermes rename). New writers should write to `system-hermes-sessions`; readers should accept either. This is a transition state — see the contradictions note at the bottom of this section.
-</Note>
-
 Each session record contains:
 
 | Field | What it holds |
@@ -118,7 +114,7 @@ curl "https://alfred.black/api/v1/audit?kind=desk-action&since=$(date -u -v-1d +
 |---|---|
 | `activity_log` (HTTP audit) | 90 days on tenant, then archived |
 | `system-hermes-sessions` stream | Indefinite (rolled into archived stream after 90 days) |
-| `alfred-state.db.audit` | Indefinite (queryable from disk; cold-archive Phase 3 will lift >90d into DuckDB/Parquet) |
+| `alfred-state.db.audit` | Indefinite (queryable from disk) |
 | Hermes profile SessionStore | Pruned per the `session_reset` block in each profile's `config.yaml` |
 | `ingest.db.stream_event` | **7 days** (raw stream events have a TTL; promoted records persist) |
 

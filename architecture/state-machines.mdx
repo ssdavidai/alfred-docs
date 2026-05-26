@@ -41,7 +41,7 @@ A **task** is one concrete step toward a matter's resolution, at `vault/task/<sl
 | **`state`** | `pending \| in_progress \| done \| archived` | The matters aggregator (`normalizeTaskState`, *packages/ctrl/src/api/routes/matters.ts:454*) |
 | `current_state` + `as_of` | narrative paragraph | The Brief composer, the dashboard detail view |
 
-**Writers must set both `status` and `state`.** The validator-compatible default for a fresh task is `status: todo, state: pending`. A historic comment referenced `status: queued`, which the validator rejects with HTTP 500 — don't propagate it.
+**Writers must set both `status` and `state`.** The validator-compatible default for a fresh task is `status: todo, state: pending`. Any other value (notably `status: queued`) is rejected by the validator with HTTP 500.
 
 ```mermaid
 stateDiagram-v2
@@ -93,10 +93,10 @@ stateDiagram-v2
 **Three write paths**, all of which mint `state=open` so DecisionRouter runs `extract_observation_from_decision` (the learning-loop closer):
 
 1. **`POST /api/v1/decisions`** (the modern Desk path). Synchronously flips the source card and sets `side_effects.synchronous_flip: true`.
-2. **`POST /api/v1/admin/needs-attention/:id/{done,dispatch,skip}`** (legacy). Performs the flip plus the legacy `needs_attention_action` audit, and mints a mirror decision via `mintDecisionMirror` *unless* the body carries `decision_origin` (which only DecisionRouter sets — preventing recursion).
+2. **`POST /api/v1/admin/needs-attention/:id/{done,dispatch,skip}`** (the secondary admin surface). Performs the flip plus the `needs_attention_action` audit, and mints a mirror decision via `mintDecisionMirror` *unless* the body carries `decision_origin` (which only DecisionRouter sets — preventing recursion).
 3. **Signal-router autonomous fire** with `principal: alfred` and `decision_origin: instinct_fire`.
 
-Delegate has a fourth concern: after the 2026-05-24 work that severed signal-router's `principal_delegate_override`, DecisionRouter now calls `dispatch_action_to_agent` directly when `intent=delegate`. Three idempotency layers — state guard, `dispatching` mark, `side_effects.agent_dispatched` — prevent double-firing.
+Delegate has a fourth concern: DecisionRouter calls `dispatch_action_to_agent` directly when `intent=delegate`. Three idempotency layers — state guard, `dispatching` mark, `side_effects.agent_dispatched` — prevent double-firing.
 
 ## 4. Signal
 

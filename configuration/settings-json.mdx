@@ -12,7 +12,7 @@ The file lives on the shared `alfred_data` Docker volume *(`docker-compose.yaml:
 ## Who writes, who reads
 
 <Note>
-`ctrl-api` is the **only** writer. `alfred-learn` and other consumers read the file directly but never patch it. This avoids the multi-process write contention that bit earlier builds.
+`ctrl-api` is the **only** writer. `alfred-learn` and other consumers read the file directly but never patch it. This avoids multi-process write contention.
 </Note>
 
 - **Writer:** `ctrl-api` *(`packages/ctrl/src/api/routes/settings.ts`)*. Every write goes through one of the endpoints below; there is no other code path that touches the file.

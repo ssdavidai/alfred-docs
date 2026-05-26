@@ -12,22 +12,22 @@ description: "Every inbound door — email, phone, SMS, voice, Telegram, Slack, 
     `/chat` and `/desk`. Always on; no provisioning *(ChannelsPage.tsx:263-277)*.
   </Card>
   <Card title="Email" icon="envelope">
-    AgentMail-backed inbox at a tenant-scoped address. Forward anything; Alfred reads attachments and PDFs *(ChannelsPage.tsx:280-330, F57/C14)*.
+    AgentMail-backed inbox at a tenant-scoped address. Forward anything; Alfred reads attachments and PDFs *(ChannelsPage.tsx:280-330)*.
   </Card>
   <Card title="Phone (SMS + Voice)" icon="phone">
-    A two-section card: SMS via Twilio (Lane III, 2026-05-25), Voice via the `voice-bridge` compose service reusing the same Twilio credentials *(ChannelsPage.tsx:338-355)*.
+    A two-section card: SMS via Twilio, Voice via the `voice-bridge` compose service reusing the same Twilio credentials *(ChannelsPage.tsx:338-355)*.
   </Card>
   <Card title="Meeting bot" icon="video">
     Vexa auto-join for Zoom / Meet / Teams. Gated on `--profile vexa` being up *(ChannelsPage.tsx:357-374)*.
   </Card>
   <Card title="OMI" icon="microphone">
-    Wearable audio stream (Phase-6b, Lane III). Four states: unconfigured / needs Groq key / configured / error *(ChannelsPage.tsx:377-382)*.
+    Wearable audio stream. Four states: unconfigured / needs Groq key / configured / error *(ChannelsPage.tsx:377-382)*.
   </Card>
   <Card title="Slack" icon="slack">
-    DMs and mentions inside the household's workspace. New in 2026-05-25 *(ChannelsPage.tsx:384-388)*.
+    DMs and mentions inside the household's workspace *(ChannelsPage.tsx:384-388)*.
   </Card>
   <Card title="Telegram" icon="telegram">
-    For when the principal is abroad. New in 2026-05-25 *(ChannelsPage.tsx:389-392)*.
+    For when the principal is abroad *(ChannelsPage.tsx:389-392)*.
   </Card>
   <Card title="Terminal" icon="terminal">
     SSH straight into the VM, then `docker exec` into Hermes for the lowest-latency door *(ChannelsPage.tsx:394-396)*.
@@ -88,8 +88,8 @@ SMS and Voice carry an **Open / Allowlist** radio that controls who can reach Al
 
 Slack and Telegram have their own per-chat or per-user revoke flows on the live card. Email has no allowlist — any forwarded message lands.
 
-## Hardening notes
+## Implementation notes
 
-- The Phone card's old `twilio_number` / `authorized_numbers` keys never matched what ctrl-api returned, so the card stayed "Not yet provisioned" even after wiring (F58/C15 fix) *(ChannelsPage.tsx:85-89)*.
+- The Phone card reads `twilio_phone_number` / `allowed_users` keys from ctrl-api so the card reflects the actual provisioning state on disk *(ChannelsPage.tsx:85-89)*.
 - Email status reads `inbox_address`, which is only present once `configured: true` *(ChannelsPage.tsx:77-80)*.
 - The Terminal `hermes_exec` command is composed by ctrl-api — never reconstructed client-side — so it stays correct when container names change *(packages/web/src/dashboard/terminalCardCore.ts)*.

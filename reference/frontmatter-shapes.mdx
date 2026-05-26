@@ -8,7 +8,7 @@ Every file in Alfred's vault is a Markdown record with a YAML frontmatter block.
 This page documents the **12 canonical record types** ctrl-api enforces *(packages/ctrl/src/db/promotionContract.ts:29-42)* — every other "type" is demoted to `alfred-state.db` or `ingest.db`. The actual seed templates live in `packages/ctrl/src/templates/vault-seed/_templates/`; the validator vocabulary lives in `packages/alfred-vault/src/alfred/vault/schema.py`.
 
 <Info>
-**Twelve in production, 20+ in the daemon.** The standalone `alfred-vault` Python daemon supports 20+ entity types (`project`, `process`, `run`, `event`, `input`, `session`, `conversation`, `assumption`, `constraint`, `contradiction`, `synthesis`, `location`, `account`) *(packages/alfred-vault/src/alfred/vault/schema.py:7-12)*. ctrl-api enforces only **12 canonical types** for the principal-facing vault. The remaining types are reserved for legacy/dev use and are not written by any production code path.
+**Twelve in production, 20+ in the daemon.** The standalone `alfred-vault` Python daemon supports 20+ entity types (`project`, `process`, `run`, `event`, `input`, `session`, `conversation`, `assumption`, `constraint`, `contradiction`, `synthesis`, `location`, `account`) *(packages/alfred-vault/src/alfred/vault/schema.py:7-12)*. ctrl-api enforces only **12 canonical types** for the principal-facing vault. The remaining types are reserved for internal / development use and are not written by any production code path.
 
 Demoted types like `signal`, `observation`, `pattern_proposal`, `synthesis`, `contradiction`, `assumption`, `constraint`, `signal-action`, `steward-action`, `desk-action`, `state-change`, `event`, `stream_event` live in `alfred-state.db` / `ingest.db`, not the vault *(promotionContract.ts:75-99)*. A `POST` / `PATCH` to a demoted path returns `422 PROMOTION_CONTRACT_VIOLATION` with a `destination` field pointing at the correct endpoint.
 </Info>
@@ -98,7 +98,7 @@ Long-running matter notes here...
 - **`status`** is the `alfred-vault` validator vocab: `active | blocked | cancelled | done | todo` *(packages/alfred-vault/src/alfred/vault/schema.py:31)*.
 - **`state`** is the matters-aggregator vocab: `pending | in_progress | done | archived` *(matters.ts:454, `normalizeTaskState`)*.
 
-**Writers must set BOTH.** The validator rejects any other value for `status` with HTTP 500. The seed template at `packages/ctrl/src/templates/vault-seed/_templates/task.md` still shows `status: queued` as default — **this value is rejected by the live validator**. Fresh tasks should default to `status: todo, state: pending` (CLAUDE.md §15.2, fix in commit `eed3799`).
+**Writers must set BOTH.** The validator rejects any other value for `status` with HTTP 500. The seed template at `packages/ctrl/src/templates/vault-seed/_templates/task.md` still shows `status: queued` as default — **this value is rejected by the live validator**. Fresh tasks should default to `status: todo, state: pending`.
 </Warning>
 
 **Frontmatter.**
@@ -200,10 +200,10 @@ Filled in on completion.
 | `executing_at`, `completed_at`, `reversed_at` | optional | ISO-8601 | Lifecycle anchors. |
 | `execute_at`, `scheduled_at`, `scheduled_reasoning` | optional | ISO-8601, string | For `state=scheduled`. |
 | `side_effects` | optional | object | E.g. `{synchronous_flip: true, agent_dispatched: true}`. |
-| `decision_origin` | optional | string | Set by DecisionRouter to suppress mirror recursion (CLAUDE.md §15.3). |
+| `decision_origin` | optional | string | Set by DecisionRouter to suppress mirror recursion. |
 
 <Warning>
-**Always mint `state: open`.** Every write path — Desk click `POST /api/v1/decisions`, legacy `POST /api/v1/admin/needs-attention/:id/{done,dispatch,skip}`, and SignalRouter autonomous fire — mints `state: open` so DecisionRouter runs `extract_observation_from_decision`. The earlier `state=completed` shortcut on done/noise/take_mine broke the learning loop (fixed in commit `31fa11f`, 2026-05-24).
+**Always mint `state: open`.** Every write path — Desk click `POST /api/v1/decisions`, `POST /api/v1/admin/needs-attention/:id/{done,dispatch,skip}`, and SignalRouter autonomous fire — mints `state: open` so DecisionRouter runs `extract_observation_from_decision`. Minting `state=completed` directly breaks the learning loop.
 </Warning>
 
 **Sample**
@@ -248,7 +248,7 @@ Principal clicked Delegate on the Desk at 09:20.
 | `created` | ✓ | ISO-8601 | |
 | `name` | ✓ | string | |
 | `tier` | ✓ | `asking \| confirming \| acting` | Promoted by `apply_instinct_change`. |
-| `status` | ✓ | `unconfirmed \| active \| deprecated` (vault template uses `active \| paused \| retired`) | **Do not filter the matcher on `status=active`** — accept all non-deprecated *(CLAUDE.md §6.6, packages/learn/src/activities/signal_actions.py)*. |
+| `status` | ✓ | `unconfirmed \| active \| deprecated` (vault template uses `active \| paused \| retired`) | **Do not filter the matcher on `status=active`** — accept all non-deprecated *(packages/learn/src/activities/signal_actions.py)*. |
 | `trigger` | recommended | string | Pattern the instinct fires on. |
 | `action` | recommended | string | What Alfred does when it fires. |
 | `discretion_threshold` | optional | float `[0,1]` | Default `0.7`. |
@@ -393,7 +393,7 @@ tags: [brief]
 
 # Morning Brief — 2026-05-26
 
-Good morning, Sir. ...
+Good morning. ...
 ```
 
 </Tab>
@@ -625,7 +625,7 @@ name: "Tesla Model Y"
 status: active
 category: vehicle
 value: 42000
-owner: "[[person/Sir]]"
+owner: "[[person/Principal]]"
 created: "2024-04-18T10:00:00Z"
 tags: [vehicle]
 related:
@@ -668,7 +668,7 @@ These vault-relative directories accept writes without the canonical-12 check *(
 | `inbox/` | Inbound items waiting curator processing | inbound handlers |
 | `needs_attention/` | Desk decision queue — **ctrl-api-managed, not principal-authored** | signal router, ctrl-api |
 
-The `needs_attention/` directory holds the Desk queue. The long-term plan moves these to `alfred-state.db` as routed signals (storage epic cutover #28), but until that lands, the entire `/desk` read path is built around vault markdown, so writes here must be allowed *(promotionContract.ts:55-69)*.
+The `needs_attention/` directory holds the Desk queue. The entire `/desk` read path is built around vault markdown, so writes here must be allowed *(promotionContract.ts:55-69)*.
 
 ---
 

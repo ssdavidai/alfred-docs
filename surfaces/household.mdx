@@ -38,7 +38,7 @@ The editor splits rules into **four canonical sections** *(packages/web/src/onbo
 Each section renders its own bullet list with inline edit, an Add input, and a Remove control. Save serialises all four sections back to `vault/RULES.md` via `createVaultRecord` *(HouseholdPage.tsx:142-165)*. Frontmatter from the existing record is preserved verbatim — only the body is replaced.
 
 <Note>
-RULES.md is a **principal-facing vault note** (`type: note, subtype: standing_rules`), not the agent-facing AGENTS.md sentinel block. An earlier version of this page read from `/api/v1/admin/workspace/RULES.md`, which 404'd and left `/household` stuck on "still composing" — the routing was corrected in C-OB2 *(HouseholdPage.tsx:1-9)*.
+RULES.md is a **principal-facing vault note** (`type: note, subtype: standing_rules`), not the agent-facing AGENTS.md sentinel block. The page reads it through the vault routes so the same record powers both the onboarding-step view and the standing-page view *(HouseholdPage.tsx:1-9)*.
 </Note>
 
 ## The "still composing" state

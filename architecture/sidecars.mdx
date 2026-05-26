@@ -3,7 +3,7 @@ title: "Sidecars"
 description: "Plane, Sure, Vaultwarden, the MCP server — and the optional Vexa transcript stack."
 ---
 
-When CLAUDE.md says "5 sidecars" it's using principal-facing UI shorthand. The real compose graph runs ~35 services across ~24 named volumes — most of which are sub-containers of the sidecars themselves. This page documents both lenses: the **sidecars** the principal sees as separate surfaces, and the **core services** that make Alfred Black itself work.
+"Sidecars" is principal-facing UI shorthand for the four user-visible integrated apps. The real compose graph runs ~35 services across ~24 named volumes — most of which are sub-containers of the sidecars themselves. This page documents both lenses: the **sidecars** the principal sees as separate surfaces, and the **core services** that make Alfred Black itself work.
 
 ## Two categories
 
@@ -78,7 +78,7 @@ Eleven containers: `plane-db` (Postgres 15.7), `plane-redis` (Valkey 7.2), `plan
 
 The internal `plane-proxy` runs without TLS — alfred-black's outer Caddy terminates TLS and routes `plane.{$DOMAIN}` to it. `plane-init` uses Django ORM directly to bootstrap the owner User and InstanceAdmin because Plane's HTTP signup is CSRF-locked. Idempotent — no-op if `is_setup_done` is already true.
 
-Memory ceilings: `plane-api` 2 GB, `plane-worker` 2 GB (raised from 1 GB after OOMs), the smaller services 128–512 MB.
+Memory ceilings: `plane-api` 2 GB, `plane-worker` 2 GB, the smaller services 128–512 MB.
 
 ## Sure (personal finance)
 

@@ -4,21 +4,21 @@ description: "Notable changes to Alfred Black, grouped by release date."
 ---
 
 This page mirrors the in-repo `CHANGELOG.md`. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the platform itself
-uses date-based releases, while the `alfred-vault` package follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the platform uses
+date-based releases, while the `alfred-vault` package follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 <Update label="2026-05-25" description="One Alfred — continuity across channels and sessions">
 
-Alfred Black becomes **one Alfred**. Before this release, a "delegate" from
-the Desk and a Telegram DM and the morning Brief were three different
-sessions in three different worlds — when the principal replied to a
-reminder, the agent that received the reply had no memory of having sent it.
-This release lands the **One-Alfred continuity layer**: an append-only
-`alfred_journal` in `state.db`, a unified outbound endpoint that delivers
-every Alfred-spoken message through the same butler-voiced writer, and a
-Hermes plugin that injects recent journal entries as authoritative context on
-the next inbound turn.
+Alfred Black becomes **one Alfred**. Prior to this release, a "delegate" from
+the Desk, a Telegram DM, and the morning Brief were three different sessions
+in three different worlds — when the principal replied to a reminder, the
+agent that received the reply had no memory of having sent it. This release
+lands the **One-Alfred continuity layer**: an append-only `alfred_journal` in
+`state.db`, a unified outbound endpoint that delivers every Alfred-spoken
+message through the same butler-voiced writer, and a Hermes plugin that
+injects recent journal entries as authoritative context on the next inbound
+turn.
 
 **Added**
 
@@ -52,9 +52,9 @@ the next inbound turn.
 **Changed**
 
 - Instinct scorer matches **multi-word patterns**; `MATCH_THRESHOLD` drops
-  from 0.15 → 0.10 → 0.05 across two rounds. The loop actually finds matches
-  now. See [Incident history](/troubleshooting/incident-history) Gap 5b.
-- Unconfirmed instincts are included in the matcher load (Gap 3).
+  from 0.15 → 0.10 → 0.05 across two rounds. The matcher reliably finds
+  matches. See [Incident history](/troubleshooting/incident-history).
+- Unconfirmed instincts are included in the matcher load.
 - The signal→instinct loop persists `matched_instinct` end-to-end.
 - Chore-run observations now route to `state.db` (not the vault).
 - `/api/v1/notifications` is a thin forwarder to `/api/v1/alfred-deliver`.
@@ -110,10 +110,10 @@ so a bug on one side cannot pollute the principal's surface. The result is a
 first Brief composed against thousands of real emails, a vault the principal
 can actually read, and a Desk that has cards on day one.
 
-This is also the first release under the post-`0522` fix-campaign protocol:
-~85 findings landed as gate-protected, contract-frozen lane fan-outs
-(`F1–F84`, `C12–C19`, `B1–B12`, `C-OB1–C-OB4`) with a golden-fixture quality
-test suite guarding regressions. See [Bug-fixing protocol](/contributing/bug-fixing-protocol).
+This is also the first release shipped under the current fix-campaign
+protocol: ~85 findings landed as gate-protected, contract-frozen lane
+fan-outs (`F1–F84`, `C12–C19`, `B1–B12`, `C-OB1–C-OB4`) with a golden-fixture
+quality test suite guarding regressions. See [Bug-fixing protocol](/contributing/bug-fixing-protocol).
 
 **Hermes runtime additions**
 
@@ -166,43 +166,42 @@ test suite guarding regressions. See [Bug-fixing protocol](/contributing/bug-fix
 
 **Navigation**
 
-- `/study` is renamed to `/settings`, with "Agent Configuration" tab
-  consolidating the former `/claude` page (F83, F84).
-- Surviving legacy `/dashboard/*` paths redirect to canonical routes (F46).
-- `/` redirects authenticated users to `/desk` (F52).
-- `/staff` removed; duplicate Developer/API-keys block on `/claude` removed.
+- `/study` consolidated into `/settings`, with the "Agent Configuration" tab
+  absorbing the older `/claude` page.
+- Legacy `/dashboard/*` paths redirect to canonical routes.
+- `/` redirects authenticated users to `/desk`.
+- `/staff` removed; the duplicate Developer/API-keys block on `/claude` removed.
 
 **Chores**
 
-- `#181`: chore cron `DOW` autocorrected and retries bounded.
+- Chore cron `DOW` autocorrected and retries bounded.
 - Duplicate generated `morning_briefing` chore swept; `BriefingWorkflow`
   registered for morning and evening in local tz.
 - Boot-time reconciler drops orphaned `chore-*` schedules.
 
 **Composio / connections**
 
-- `#180`: `composio_pull` self-ingests oversized batches.
+- `composio_pull` self-ingests oversized batches.
 - Toolkit-tools lookup repointed to `/api/v3/tools`.
 - Connected-accounts list deduplicated by toolkit.
 - Upstream Google OAuth token actually revoked on disconnect.
 
 **Continuity**
 
-- Existing tenants: `docker compose pull && docker compose up -d`. No manual
+- Running tenants: `docker compose pull && docker compose up -d`. No manual
   filesystem ops required.
 - Fresh tenants: same one-command deploy as 2026-05-20.
-- If a prior onboarding produced a sparse vault, re-running on this release
-  populates it correctly. The promotion-quality report at
+- If an earlier onboarding produced a sparse vault, re-running on this
+  release populates it correctly. The promotion-quality report at
   `GET /api/v1/onboarding/quality-report` shows what landed.
 
 </Update>
 
 <Update label="2026-05-20" description="The Alfred Black platform — first release">
 
-The project that gave you the `alfred` CLI is now a complete, deployable
-platform. Alfred Black wraps the same dependable vault engine in everything
-you need to actually live with an agentic butler: a real UI, onboarding, a
-daily Brief, and a one-command self-hosted deploy.
+The first release of the Alfred Black platform: a complete, deployable
+agentic butler with a real UI, onboarding, a daily Brief, and a one-command
+self-hosted deploy.
 
 **The platform**
 
@@ -210,8 +209,8 @@ daily Brief, and a one-command self-hosted deploy.
   domain; the stack brings everything else and serves the web app over
   HTTPS.
 - **Web dashboard** for working with the vault.
-- **Hermes runtime** — a single isolated runtime that replaces the prior
-  the prior two-container split.
+- **Hermes runtime** — a single isolated container that supervises three
+  profiles (`main`, `workers`, `heavy`).
 - **Bundled Caddy** reverse proxy with automatic per-host TLS (Let's
   Encrypt HTTP-01); no DNS API token required.
 - **Four-store storage model**: the vault (markdown), `alfred-state.db`
@@ -228,15 +227,10 @@ daily Brief, and a one-command self-hosted deploy.
   build a behavioural profile, confirm the inferred facts.
 - Daily Brief surface composed for the owner.
 
-**alfred-vault 0.3.2 → 1.0.0 — first stable release**
+**alfred-vault 1.0.0**
 
-The pip-installable CLI moved into this monorepo at `packages/alfred-vault/`.
+The pip-installable CLI lives in this monorepo at `packages/alfred-vault/`.
 The platform's vault daemon runs the same engine.
-
-**Continuity**
-
-- CLI-only users: `pip install alfred-vault` continues to work unchanged.
-- Source installs: the CLI lives at `packages/alfred-vault/` in this repo.
 
 **Versioning**
 
@@ -245,6 +239,3 @@ package uses SemVer and publishes to PyPI on `alfred-vault-vX.Y.Z` tags; the
 platform uses date-based releases.
 
 </Update>
-
-For earlier `alfred-vault` CLI history, see the git log and PyPI release
-history.

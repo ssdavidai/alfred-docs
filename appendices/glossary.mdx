@@ -71,8 +71,8 @@ schedule. See [Surfaces → Chores](/surfaces/chores).
 
 **clerk** — the disciplined-terminology name for the LLM call layer.
 Synonym for what other systems call "the model" or "the agent" — but in
-`packages/learn` the word **must** be `clerk` (never `subken`, `agent`,
-`model`) per the project's terminology constraint *(packages/learn/CLAUDE.md)*.
+`packages/learn` the word **must** be `clerk` (never `agent`, `model`) per
+the project's terminology constraint *(packages/learn/CLAUDE.md)*.
 
 **cold.db** — Store 3. zstd-compressed SQLite for the forensic long-tail
 (>90 days). Daily TTL compactor moves aged rows out of `state.db`.
@@ -220,10 +220,10 @@ server at `mcp.{$DOMAIN}/hermes/mcp`. See
 **needs_attention card** — an alternate name for what shows up on `/desk`.
 The canonical write path is `decision/<ts>.md` via `POST /api/v1/decisions`;
 the `/admin/needs-attention/:id/*` routes are an additional compatibility
-surface available to older integrations.
+surface.
 
 **notify_principal** — the Alfred tool that the agent calls to speak to the
-principal. Now a thin wrapper over `/api/v1/alfred-deliver`.
+principal. A thin wrapper over `/api/v1/alfred-deliver`.
 
 ## O
 
@@ -343,9 +343,8 @@ surface.
 
 **Vaultwarden** — the secrets-manager sidecar (Bitwarden-compatible). Lives
 at `vault.{$DOMAIN}`. Surfaces in the dashboard via the `vaultwarden` MCP
-server. **Note**: the password manager is "Vaultwarden", not "Vault" — the
-latter is the markdown surface, and the 2026-05-24 release renamed it
-consistently.
+server. **Note**: the password manager is "Vaultwarden"; the markdown
+surface is "Vault" — distinct names for distinct surfaces.
 
 **vault_index** — the SQL read-index over Store 1 in `alfred-state.db`,
 updated on every vault write via hooks. Eliminates the "walk the filesystem

@@ -20,7 +20,7 @@ The ritual lives under `packages/web/src/onboarding/`, with routes declared in `
     A verification step that proves the right account is wired before any persona work begins. If the Composio connection or OAuth scope is wrong, the ritual stops here. *(packages/web/src/onboarding/VerifyPage.tsx, main.wasp:203-206)*
   </Step>
   <Step title="/soul — choose the preset">
-    A small preset chooser (#853) for the persona archetype — formal-British, plainspoken-American, terse-technical, etc. The choice is a seed for the next step, not a final state. *(packages/web/src/onboarding/SoulPresetPage.tsx, main.wasp:210-213)*
+    A small preset chooser for the persona archetype — formal-British, plainspoken-American, terse-technical, etc. The choice is a seed for the next step, not a final state. *(packages/web/src/onboarding/SoulPresetPage.tsx, main.wasp:210-213)*
   </Step>
   <Step title="/composing — soul configuration">
     Voice and tone configuration on top of the chosen preset. Writes the `SOUL.md` draft that the Hermes supervisor later consolidates into `$HERMES_HOME/SOUL.md` so the `main` profile loads the Alfred persona rather than the stock Nous identity. *(packages/web/src/onboarding/ComposingPage.tsx, main.wasp:216-219)*

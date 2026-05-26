@@ -52,19 +52,19 @@ Alfred Black exposes its day-to-day surface as **fourteen pages** in a Wasp sing
   </Card>
 </CardGroup>
 
-## Renames and redirects
+## Aliases and redirects
 
-A few legacy URLs still work as thin redirects so old bookmarks and links keep flowing:
+A few alternate URLs resolve as thin redirects so bookmarks and email links keep flowing:
 
-| Was | Now | Redirect component |
+| Alias | Resolves to | Redirect component |
 |---|---|---|
 | `/dashboard` | `/desk` | `DashboardPage.tsx` |
 | `/triage` | `/desk` | (alias) |
 | `/study` | `/settings` (hash anchors preserved, e.g. `#settings`) | `StudyRedirect.tsx` |
-| `/back-office` | `/settings` (replaces the old CommandCenterPage) | `BackOfficeRedirect.tsx` |
+| `/back-office` | `/settings` | `BackOfficeRedirect.tsx` |
 | `/dashboard/settings` | `/settings` | `SettingsPage.tsx` |
-| `/claude` | `/settings#agent` (Claude Setup folded into agent config) | `ClaudeRedirect.tsx` |
-| `/onboarding`, `/onboarding/orb` | `/awaken` (the first step of the ritual) | back-compat for old emails |
+| `/claude` | `/settings#agent` | `ClaudeRedirect.tsx` |
+| `/onboarding`, `/onboarding/orb` | `/awaken` (the first step of the ritual) | back-compat for inbound email links |
 
 <Note>
 The principal's first session is not one of these fourteen — it is the sequential onboarding ritual (`/awaken → /reading-the-room → /verify → /soul → /composing → /preparing → /first-brief → /household → /desk`). See [The onboarding ritual](/surfaces/onboarding-ritual).

@@ -7,7 +7,7 @@ description: "One dedicated VPS per tenant, encrypted at rest, on a private mesh
 Alfred Cloud runs the **same software** as self-hosted Alfred Black. The differences are in *who provisions the VM*, *how it joins the network*, and *who owns the LUKS key*. The container set, the four-store model, the Hermes runtime, the signal pipeline — all identical.
 </Note>
 
-## Your Alfred lives on his own machine
+## Your Alfred runs on a dedicated machine
 
 When a Cloud tenant signs up, the operator provisions a fresh Hetzner Cloud VPS, attaches an encrypted volume, joins it to a private Tailscale mesh, and stands up the principal's full Docker stack on it. Nothing is shared with another tenant — not the database, not the vault, not the Hermes gateway, not the workflow engine. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:13)*
 
@@ -18,7 +18,7 @@ When a Cloud tenant signs up, the operator provisions a fresh Hetzner Cloud VPS,
 | Network | Private Tailscale mesh on WireGuard; SSH on port 22, Tailscale on UDP 41641, ICMP — nothing else *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:19)* |
 | Browser path | Cloudflare → SaaS host → Tailscale → tenant `ctrl-api` on `127.0.0.1:3100` *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:20)* |
 
-There is **no public route** into your Alfred's services. The Hetzner firewall denies everything except SSH, ICMP, and Tailscale's WireGuard port. Every container binds to localhost.
+There is **no public route** into the tenant's services. The Hetzner firewall denies everything except SSH, ICMP, and Tailscale's WireGuard port. Every container binds to localhost.
 
 ## Provisioning, in order
 

@@ -4,7 +4,7 @@ description: "The small staff of specialists employed on the principal's behalf.
 ---
 
 <Info>
-**Status — marketing surface, not a live page.** Alfred's landing page promises *"a small staff of specialists, employed on your behalf"* *(packages/web/src/landing-page/LandingPage.tsx:87)*. CLAUDE.md §4 lists `/staff` in the surface roster, but the route is **not yet implemented** in `packages/web/main.wasp`. This page documents the concept — the staff *exists*, just not as a single dashboard URL.
+**Status — marketing surface, placeholder for future copy.** Alfred's landing page promises *"a small staff of specialists, employed on your behalf"* *(packages/web/src/landing-page/LandingPage.tsx:87)*. `/staff` is a placeholder slot in the surface vocabulary where a dedicated roster page will live; this documentation page describes the concept the slot will fill. The staff itself is real today, just distributed across the surfaces listed below.
 </Info>
 
 ## The metaphor
@@ -50,9 +50,9 @@ The pipeline that connects inbound signals to staff dispatch is detailed in [Sig
 | [Chores](/surfaces/chores) | See which chore the workers run and on what cadence |
 | [Decisions](/surfaces/decisions) | Audit the work the staff did on the principal's behalf |
 
-## When `/staff` lands
+## When `/staff` ships
 
-When a dedicated `/staff` route ships, it will collapse the above into one roster page — a card per specialist with current model, recent work, cost-per-day, and an "out of office" toggle. Until then, the staff is real but distributed across the surfaces above.
+The dedicated `/staff` page will collapse the surfaces above into one roster — a card per specialist with current model, recent work, cost-per-day, and an "out of office" toggle. Until then, the staff is real but distributed across the surfaces above.
 
 <Note>
 The roster lives in **runtime config**, not source. Add a profile by editing `packages/hermes/profiles/<name>/config.yaml`; add an agent and bind it to a profile by editing the agents table in ctrl-api. The Settings page surfaces whatever ctrl-api reports.

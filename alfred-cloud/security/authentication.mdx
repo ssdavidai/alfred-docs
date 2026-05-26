@@ -23,7 +23,7 @@ A request from a script or client reaches the tenant via this chain:
 
 <Steps>
   <Step title="Client sends `Authorization: Bearer ${AAS_API_KEY}` to `alfred.black`">
-    Every endpoint Sir's tenant exposes is reachable at `https://alfred.black/api/...` — the same hostname for every subscriber.
+    Every endpoint the tenant exposes is reachable at `https://alfred.black/api/...` — the same hostname for every subscriber.
   </Step>
   <Step title="SaaS edge looks up the token">
     The SaaS edge hashes the token (SHA-256) and looks it up in the `ApiKey` table. The row points at exactly one `Instance` record.
@@ -112,7 +112,7 @@ A token authenticates the holder as the tenant's owner. It does **not** grant:
 - **Cross-tenant access** — Prime federation is a separate, explicitly opted-in capability.
 - **Access to the SaaS host's admin endpoints** — those use a separate operator identity.
 - **A bypass of the per-instance Tailscale firewall** — only the SaaS edge can reach the tenant's `:3100`; a token alone is not enough.
-- **Granular scoping** — there is no read-only / write-only / scoped-to-a-route capability today (other than the voice-bridge token, which is internal). Every key has the same permissions as Sir himself does in the dashboard. Use one key per integration and revoke aggressively.
+- **Granular scoping** — there is no read-only / write-only / scoped-to-a-route capability today (other than the voice-bridge token, which is internal). Every key has the same permissions as the principal does in the dashboard. Use one key per integration and revoke aggressively.
 
 <Warning>
 The most common cause of a `401 Invalid API key` is whitespace or quotes accidentally included around the token when it was set in the environment. Strip both: `AAS_API_KEY=alf_…` not `AAS_API_KEY="alf_…"\n`.

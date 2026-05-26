@@ -65,7 +65,7 @@ Every profile registers the same set of Model Context Protocol servers in its `c
 That's **6 MCP servers per profile** in the current rendered config — 1 HTTP proxy + 5 stdio apps.
 
 <Note>
-A sixth stdio app, **`hermes`**, was added to the MCP server bundle on 2026-05-26 to surface the Hermes runtime itself (scheduling, run delegation, model selection) — useful for the voice agent. It exists in `packages/mcp-server/src/tools/hermes.ts` and the catalogue registry, but is not yet wired into the profile `config.yaml` template. When it ships, each profile will register 7 MCP servers *(packages/mcp-server/src/tools/registry.ts:11-43)*.
+A sixth stdio app, **`hermes`**, lives in the MCP server bundle to surface the Hermes runtime itself (scheduling, run delegation, model selection) — useful for the voice agent. It exists in `packages/mcp-server/src/tools/hermes.ts` and the catalogue registry, but is not wired into the profile `config.yaml` template by default. When enabled, each profile will register 7 MCP servers *(packages/mcp-server/src/tools/registry.ts:11-43)*.
 </Note>
 
 The five stdio apps all live in one compiled Node bundle at `/opt/mcp-stdio/dist/bin/stdio-app.js`, dispatched by app id *(packages/hermes/Dockerfile:138-141)*. The init container `rsync`s the bundle into each profile's `mcp-stdio/` directory at first boot. Per-profile MCP timeout is 120s; connect timeout 60s.
@@ -93,7 +93,7 @@ The main profile loads two plugins that workers and heavy don't:
 
 ## What's not used
 
-The **Hermes web dashboard** is not deployed. The upstream pip wheel ships neither the React source nor a pre-built `web_dist/`; deploying the dashboard backend yields `{"error":"Frontend not built"}` for every request. The November 2026 attempt was reverted. Use the in-container CLI instead:
+The **Hermes web dashboard** is not deployed. The upstream pip wheel ships neither the React source nor a pre-built `web_dist/`; running the dashboard backend yields `{"error":"Frontend not built"}` for every request. Use the in-container CLI instead:
 
 - `hermes config` — view/edit profile config.yaml
 - `hermes profile use <name>` — change sticky default

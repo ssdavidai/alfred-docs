@@ -7,16 +7,16 @@ description: "The audit ledger of every choice Alfred has made on the principal'
 
 ## Two tabs
 
-Phase I (#897) split the page into two top-level tabs *(DecisionsPage.tsx:28-30, 304-342)*:
+The page is split into two top-level tabs *(DecisionsPage.tsx:28-30, 304-342)*:
 
 <Tabs>
-  <Tab title="Decisions (legacy)">
-    The HANDLED / HELD / ASKED ledger plus the 30-day chart. Source is the merge of three queries — `getRecentJudgments` (deprecated, kept for back-compat), `getStewardFeed` (event/steward-action records from the background workflow), and `getRecentDecisions` (the new decision/* records written by every Desk click) *(DecisionsPage.tsx:128-148)*.
+  <Tab title="Decisions">
+    The HANDLED / HELD / ASKED ledger plus the 30-day chart. Source is the merge of three queries — `getRecentJudgments`, `getStewardFeed` (event/steward-action records from the background workflow), and `getRecentDecisions` (the `decision/*` records written by every Desk click) *(DecisionsPage.tsx:128-148)*.
 
     Each row is normalised into `{ when, input, conf, outcome, state, intent, matterRef, taskRef, sourceSignal }` so the three sources land in the same table.
   </Tab>
   <Tab title="State Changes">
-    The cross-target `state_change` feed shipped by Phase A (#889). Reads `getStateChanges` and `getStateChangeSources`. This is the source-of-truth audit for every mutation that flowed through the state-mutator — matter status flips, task transitions, narrative refreshes, briefing-driven changes.
+    The cross-target `state_change` feed. Reads `getStateChanges` and `getStateChangeSources`. This is the source-of-truth audit for every mutation that flowed through the state-mutator — matter status flips, task transitions, narrative refreshes, briefing-driven changes.
   </Tab>
 </Tabs>
 
@@ -40,7 +40,7 @@ A Desk click can carry one of five intents *(DecisionsPage.tsx:215-221, packages
 
 | Intent | Outcome pill | What ctrl-api does |
 |---|---|---|
-| **Done** | Handled | Flip the source NA card to handled, stamp `synchronous_flip: true`, write `decision/<ts>.md` with `state: open`. `DecisionRouterWorkflow` skips the action path; `extract_observation_from_decision` still fires. |
+| **Done** | Handled | Flip the source needs-attention card to handled, stamp `synchronous_flip: true`, write `decision/<ts>.md` with `state: open`. `DecisionRouterWorkflow` skips the action path; `extract_observation_from_decision` still fires. |
 | **Defer** | Held | Park the card with an optional `execute_at`; the scheduled-decisions worker re-surfaces it at that time. |
 | **Noise** | Handled | One-tap gesture — materialises a `signal_noise_pattern` instinct so future events of the same kind are suppressed at the router. No note, no panel. |
 | **Delegate** | Asked | Dispatch the action to an agent. `DecisionRouterWorkflow` calls `dispatch_action_to_agent` directly with three idempotency layers (state guard, `dispatching` mark, `side_effects.agent_dispatched`). |

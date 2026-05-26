@@ -4,12 +4,12 @@ description: "How one Cloud tenant can be granted scoped, authenticated access t
 ---
 
 <Note>
-Federation is **a Cloud-only capability** and is gated on top of normal Cloud access. The plumbing exists in every tenant, but the *tools* only appear in the agent's catalogue when the operator provisions a tenant as Prime. Today **a single tenant** is Prime.
+Federation is **a Cloud-only capability** and is gated on top of normal Cloud access. The plumbing exists in every tenant, but the *tools* only appear in the agent's catalogue when the operator provisions a tenant as Prime. Prime status is granted to specific tenants on request.
 </Note>
 
 ## What Prime is
 
-A **Prime tenant** is one that's been configured, at provisioning time, to talk to a fixed list of other Alfred tenants. When the Prime principal asks his Alfred "what does *Person X* think we should do about *Topic Y*?", his Alfred doesn't guess. He routes the question over the tailnet to *Person X*'s Alfred, lets that Alfred reason over its principal's vault using its principal's tokens, and returns the answer.
+A **Prime tenant** is one that's been configured, at provisioning time, to talk to a fixed list of other Alfred tenants. When the Prime principal asks their Alfred "what does *Person X* think we should do about *Topic Y*?", the agent doesn't guess. It routes the question over the tailnet to *Person X*'s Alfred, lets that Alfred reason over its principal's vault using its principal's tokens, and returns the answer.
 
 A **non-Prime tenant** has none of this. The tools simply don't exist in that agent's tool list — there's no `tenant`, no `ask_alfred`. From the outside, every tenant is a sealed unit; only Prime sees more than one.
 
@@ -49,7 +49,7 @@ The init container only forwards these two variables to the MCP server's `env` b
 When a new Cloud tenant is provisioned, the fleet CLI **automatically appends** the new peer to Prime's `CROSS_TENANT_PEERS` list and dedupes by `id` — so adding a tenant to the fleet quietly grants Prime visibility into it, by design. *(/tmp/alfred-doc-old/architecture/prime-federation.mdx:52)*
 
 <Warning>
-This auto-append behaviour is a deliberate operator choice in the current beta. It will become opt-in at public launch — a new tenant will need to *explicitly* consent to being reachable by Prime before they're added to anyone's peer list.
+This auto-append behaviour is a deliberate operator choice during the private beta. At public launch it becomes opt-in — a new tenant will need to *explicitly* consent to being reachable by Prime before being added to anyone's peer list.
 </Warning>
 
 ## The API surface
@@ -112,7 +112,7 @@ In practice:
 Neither tool exfiltrates raw secrets — `ctrl-api` doesn't expose `.env` files, LUKS keys, or device tokens through any `/api/v1/*` route.
 
 <Warning>
-**Cross-tenant writes are possible through `tenant` and have caused real damage before.** The `alfred-prime-federation` skill carries an explicit rule to **never** write to a peer's vault without per-call principal approval. That's a discipline encoded in the skill prompt, not a database constraint. It exists because of one specific past incident. *(/tmp/alfred-doc-old/architecture/prime-federation.mdx:112)*
+**Cross-tenant writes are possible through `tenant` and warrant care.** The `alfred-prime-federation` skill carries an explicit rule to **never** write to a peer's vault without per-call principal approval. That discipline is encoded in the skill prompt, not a database constraint. *(/tmp/alfred-doc-old/architecture/prime-federation.mdx:112)*
 </Warning>
 
 ## Why on the tailnet
@@ -148,7 +148,7 @@ The skill teaches the heuristic; **the agent decides.** There is no router servi
 
 ## How to become Prime
 
-Today: **you don't**. Prime is operator-provisioned and the cohort is currently one tenant. If federation is the reason you're interested in Cloud — say so during the onboarding call and the operator will let you know whether and when Prime invitations open up.
+Prime is operator-provisioned and granted to specific tenants on request. If federation is the reason you're interested in Cloud — say so during the onboarding call and the operator will discuss whether Prime is the right fit and when an invitation can be issued.
 
 <CardGroup cols={2}>
   <Card title="Cloud architecture" icon="server" href="/alfred-cloud/architecture">

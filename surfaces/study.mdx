@@ -1,10 +1,10 @@
 ---
-title: "Study (now Settings)"
+title: "Settings"
 description: "The unified back office — agent config, workspace files, API keys, audit, theme."
 ---
 
 <Info>
-This page used to live at `/study`. F83 renamed it to **`/settings`**; `/study` and `/back-office` are thin redirects that preserve hash anchors *(packages/web/main.wasp:269-289)*. The component file is still called `StudyPage.tsx` and the page's left-rail still reads "The Study" — a small nod to its origin *(packages/web/src/dashboard/StudyPage.tsx:104-179)*.
+This page lives at **`/settings`**. The aliases `/study` and `/back-office` resolve here as thin redirects that preserve hash anchors *(packages/web/main.wasp:269-289)*. The component file is `StudyPage.tsx` and the page's left-rail reads "The Study" — the in-product nickname for the back office *(packages/web/src/dashboard/StudyPage.tsx:104-179)*.
 </Info>
 
 `/settings` is the one place where the principal configures Alfred outside of the day-to-day surfaces. Sidebar layout, five sections; each section is its own self-contained block backed by a small set of Wasp ops.
@@ -35,7 +35,7 @@ This page used to live at `/study`. F83 renamed it to **`/settings`**; `/study` 
 
     **Standing rules** — the principal's RULES.md as a bullet list with inline edit. Save serialises `# Standing rules\n\n- …` back to the vault via `updateWorkspaceFile` *(StudyPage.tsx:251-291, 407-483)*.
 
-    **Hand off to Claude** — the relocated `/claude` page body: MCP server URLs, the approval secret, Skill downloads, Composio skills, Vault login (see [Claude](/surfaces/claude)).
+    **Hand off to Claude** — MCP server URLs, the approval secret, Skill downloads, Composio skills, Vault login (see [Claude](/surfaces/claude)).
   </Tab>
 
   <Tab title="Account">
@@ -61,7 +61,7 @@ The page reads `location.hash` on mount and resolves any of these anchors to a s
 
 | Anchor | Section |
 |---|---|
-| `#agent` (or legacy `#settings`) | Agent Configuration |
+| `#agent` (alias `#settings`) | Agent Configuration |
 | `#account` | Account |
 | `#api-keys` | API keys |
 | `#audit` | Audit |
@@ -69,20 +69,20 @@ The page reads `location.hash` on mount and resolves any of these anchors to a s
 
 Selecting a section in the sidebar replaces the hash so the URL stays bookmarkable.
 
-## The retired Credentials section
+## Credentials live elsewhere
 
-`/dashboard/credentials` used to live as a sixth section: a paste-zone for LLM provider keys (Anthropic, OpenAI, OpenRouter), the Composio API key, the Vaultwarden master password, and a handful of Twilio fields. It was retired because:
+The page does **not** carry a Credentials paste-zone. The reasoning is deliberate:
 
-1. **It mixed principal choices with operational dangers.** "Which LLM to use" belongs in Agent Configuration; the Vaultwarden master password belongs nowhere in the UI at all.
-2. **It competed with the vault as the source of truth for secrets.** Vaultwarden already holds those values; surfacing a second-source paste-zone invited drift.
+1. **Principal choices and operational dangers should not share a panel.** "Which LLM to use" belongs in Agent Configuration; the Vaultwarden master password belongs nowhere in the UI at all.
+2. **Vaultwarden is the source of truth for secrets.** A second-source paste-zone in the SPA would invite drift.
 
-The redirect now lands on Settings (no fragment), since `credentials` is no longer a valid hash *(StudyPage.tsx:14-22)*. Provider keys are configured via `.env` + `bootstrap.sh`; channel-specific secrets (Twilio, AgentMail, Groq) are entered on the [Channels](/surfaces/channels) cards that consume them.
+The `/dashboard/credentials` alias lands on Settings (no fragment), since `credentials` is not a valid hash *(StudyPage.tsx:14-22)*. Provider keys are configured via `.env` + `bootstrap.sh`; channel-specific secrets (Twilio, AgentMail, Groq) are entered on the [Channels](/surfaces/channels) cards that consume them.
 
-The **Ledger** sub-section had the same fate — no workflow ever produced `ledger_entry` records, so the surface had no producer. It will resurface only when there is a real financial-tracking feature to populate it *(StudyPage.tsx:19-22)*.
+A **Ledger** sub-section is not rendered: no workflow currently produces `ledger_entry` records, so the surface has no producer. It will appear when a financial-tracking feature exists to populate it *(StudyPage.tsx:19-22)*.
 
 ## Why one back office
 
-The Alfred Black redesign collapses *six* legacy surfaces (`/dashboard/settings`, `/dashboard/credentials`, `/dashboard/api-docs`, `/back-office`, `/study`, `/claude`) into this one page. Every one of those URLs still resolves — as a redirect into Settings on the right hash *(packages/web/main.wasp:275-296)* — so old emails, in-product links, and bookmarks survive the rename.
+Settings consolidates six configuration URLs (`/dashboard/settings`, `/dashboard/credentials`, `/dashboard/api-docs`, `/back-office`, `/study`, `/claude`) onto a single page. Each of those URLs resolves here as a redirect on the right hash *(packages/web/main.wasp:275-296)*, so inbound bookmarks and email links land in the matching section.
 
 <Tip>
 If you change the agent's model, the running profile reloads with the new model on the next request. There is no "restart Hermes" button; the gateway picks up `default_model` from each agent record on every call.

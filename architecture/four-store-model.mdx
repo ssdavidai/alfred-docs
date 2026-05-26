@@ -66,7 +66,7 @@ matter  task  note  person  org  place  asset  chore  instinct  decision  briefi
 The list is frozen in code as `CANONICAL_RECORD_TYPES` *(packages/ctrl/src/db/promotionContract.ts:29-43)*. Each record lives at `<type>/<slug>.md` with YAML frontmatter and a markdown body. Closed records may move to `<type>/_closed/` but stay under the same canonical root.
 
 <Note>
-The standalone `alfred-vault` Python package (the daemon) recognises 20+ legacy entity types for development and migration use, but ctrl-api's promotion contract enforces only these twelve in production writes.
+The standalone `alfred-vault` Python package (the daemon) recognises 20+ additional entity types for development and migration tooling, but ctrl-api's promotion contract enforces only these twelve in production writes.
 </Note>
 
 ### Singletons and operator paths
@@ -77,7 +77,7 @@ Six top-level paths bypass the canonical-type check but are still allowed inside
 - `RULES.md` — the principal's standing instructions (editable on `/household`)
 - `_templates/` — seed scaffolds
 - `_archive/`, `_migrated*/`, `_rescue/`, `_raw/`, `_migrate/` — bulk operator surfaces
-- `needs_attention/` — the Desk queue (still markdown until storage cutover #28)
+- `needs_attention/` — the Desk queue (markdown-backed)
 - `inbox/` — the orphan-task fallback
 
 ## Store 2 — alfred-state.db

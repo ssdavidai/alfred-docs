@@ -4,9 +4,12 @@ description: "One TypeScript codebase, two deployment shapes — the standalone 
 ---
 
 `packages/mcp-server/` is a **single TypeScript codebase** that compiles to
-**two deployment shapes**. The same six MCP apps run as either an Express
+**two deployment shapes**. The same MCP apps run either as an Express
 HTTP server (for [claude.ai](https://claude.ai) and other remote
-connectors) or as five stdio child processes spawned by the Hermes runtime (the bundle has six apps total; the sixth, `hermes`, is in the catalogue but not yet wired into the profile template).
+connectors) or as stdio child processes spawned by the agent runtime. The
+catalogue defines six apps; the profile template wires five of them
+(`alfred`, `sure`, `plane`, `vaultwarden`, `execute`) as stdio servers,
+with the sixth (`hermes`) available via the HTTP shape.
 
 ## Layout
 
@@ -71,8 +74,8 @@ packages/mcp-server/
     The bundle is compiled in the Hermes Dockerfile's `mcp-builder` stage
     *(packages/hermes/Dockerfile:28-35)* and copied into the Hermes image
     at `/opt/mcp-stdio/`. The init container then rsyncs it into each
-    Hermes profile's `mcp-stdio/` dir. Hermes spawns six child processes,
-    one per app.
+    Hermes profile's `mcp-stdio/` dir. Hermes spawns one child process per
+    wired stdio app.
   </Tab>
 </Tabs>
 
@@ -89,15 +92,15 @@ are **transport-agnostic** — they look the same to either entrypoint.
 | **plane** | 10 | ctrl-api `/api/v1/plane/*` → the Plane REST API |
 | **vaultwarden** | 14 | ctrl-api → `bw serve` sidecar → Vaultwarden REST |
 | **execute** | 6 | ctrl-api `/api/v1/integrations/*` → Composio v3 platform |
-| **hermes** | 7 | ctrl-api `/api/v1/hermes/*` → Hermes HTTP API + cron CLI (added 2026-05-26) |
+| **hermes** | 7 | ctrl-api `/api/v1/hermes/*` → agent runtime HTTP API + cron CLI |
 
 Approximate total: **155–165 tools** across the six apps.
 
 <Note>
-  Each Hermes profile currently registers **six MCP servers**: the five wired stdio apps
-  above plus a seventh HTTP server (`alfred-ctrl`) that proxies to ctrl-api
-  directly. The `alfred-ctrl` server is *not* part of this package — it's
-  a small `ctrl-server.mjs` shim that lives in `packages/hermes/mcp/`.
+  Each agent-runtime profile registers **six MCP servers**: the five stdio
+  apps wired above plus an HTTP server (`alfred-ctrl`) that proxies to
+  ctrl-api directly. The `alfred-ctrl` server is *not* part of this package
+  — it is a small `ctrl-server.mjs` shim that lives in `packages/hermes/mcp/`.
 </Note>
 
 The full tool catalogue with parameters lives in the

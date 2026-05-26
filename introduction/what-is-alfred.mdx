@@ -3,7 +3,7 @@ title: "What is Alfred Black?"
 description: "A single-VM, open-source AI butler — the entire household runtime in one docker compose up."
 ---
 
-Alfred Black is an **open-source AI butler that runs entirely on one Linux VM**. You clone a repo, fill in a `.env`, run a bootstrap script, and `docker compose up -d`. There is no SaaS account to create, no Hetzner provisioner, no Tailscale mesh, no Cloudflare automation, no billing wall. The whole household runtime — dashboard, intelligence layer, sidecars, TLS, ingress — comes up on your own machine, against your own domain.
+Alfred Black is an **open-source AI butler that runs entirely on one Linux VM**. You clone a repo, fill in a `.env`, run a bootstrap script, and `docker compose up -d`. There is no SaaS account to create, no managed provisioner to talk to, no overlay network to join, no billing wall. The whole household runtime — dashboard, intelligence layer, sidecars, TLS, ingress — comes up on your own machine, against your own domain.
 
 Alfred Black is **one repo, one VM, one stack** *(CLAUDE.md §1)*.
 
@@ -32,7 +32,7 @@ A fresh deploy stands up roughly thirty containers. The ones a principal actuall
     Plane (project management), Sure (personal finance), Vaultwarden (secrets), and an optional Vexa profile for meeting transcripts *(docker-compose.yaml)*.
   </Card>
   <Card title="MCP server" icon="plug">
-    A bundle of six stdio MCP apps (alfred, sure, plane, vaultwarden, execute, hermes) plus an HTTP `alfred-ctrl` proxy. Each Hermes profile currently registers six MCP servers (five stdio + the HTTP proxy); the `hermes` stdio app ships in the bundle but isn't wired into the profile template yet *(packages/mcp-server/src/)*.
+    A bundle of six stdio MCP apps (alfred, sure, plane, vaultwarden, execute, hermes) plus an HTTP `alfred-ctrl` proxy. Each Hermes profile registers six MCP servers — five stdio plus the HTTP proxy *(packages/mcp-server/src/)*.
   </Card>
 </CardGroup>
 

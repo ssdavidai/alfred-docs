@@ -25,7 +25,7 @@ The page fires eight `useQuery` calls in parallel on mount *(DeskPage.tsx:240-32
 | `getActivityFeed` | Container activity from the `alfred` daemon |
 | `getRecentStewardActions` | `event/steward-action-*.md` writes |
 | `getMyTodos` | The persistent Backstage tray |
-| `getRecentDecisions` | Every Desk click since the cascade rolled out |
+| `getRecentDecisions` | Every Desk click recorded in the ledger |
 | `getInFlightDecisions` | Decisions in `open` / `scheduled` / `executing` — polled every 10s |
 
 A separate pair of queries (`getBriefings` + `getBriefing`) pulls today's brief envelope so the principal reads the morning letter inline before scanning the queue *(DeskPage.tsx:302-316)*.
@@ -52,5 +52,5 @@ The fix is a flag in the decision's `side_effects` envelope. When ctrl-api flips
 The one thing the router does **not** skip is `extract_observation_from_decision`. That call always fires — it is the loop closer that turns each Desk click into a learning-layer observation, which feeds tier promotion in the nightly `ReflectionWorkflow`. Without it, the system never learns.
 
 <Note>
-The legacy needs-attention endpoint (`POST /api/v1/admin/needs-attention/:id/{done,dispatch,skip}`) also mints a mirror decision with the same `synchronous_flip: true` stamp — except when the request body already carries `decision_origin`, which only the router itself passes. That guard prevents the router → mirror → router recursion that bit us once.
+The legacy needs-attention endpoint (`POST /api/v1/admin/needs-attention/:id/{done,dispatch,skip}`) also mints a mirror decision with the same `synchronous_flip: true` stamp — except when the request body already carries `decision_origin`, which only the router itself passes. That guard prevents a router → mirror → router recursion.
 </Note>

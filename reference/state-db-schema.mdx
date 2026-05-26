@@ -268,9 +268,9 @@ The instance row carries the deploy identity *(schema.sql:223-239)*. `instance_i
 
 Index: `idx_health_checks_checked ON health_checks(checked_at DESC)`.
 
-### `events` — legacy event log
+### `events` — generic event log
 
-Repurposed from the old provisioning schema *(schema.sql:241-250)*. `instance_id` is always `0`.
+A generic single-VM event log *(schema.sql:241-250)*. `instance_id` is always `0`.
 
 | Column | Type |
 |---|---|
@@ -285,7 +285,7 @@ Indexes: `idx_events_created ON events(created_at DESC)`, `idx_events_type ON ev
 
 ### `alfred_principal` — cross-channel identity (migration `0002`)
 
-The continuity-layer principal table — Sir is one principal whether he messages from Telegram, Slack, or email *(packages/ctrl/src/db/migrations/0002_alfred_journal.sql)*.
+The continuity-layer principal table — the principal is one identity whether they message from Telegram, Slack, or email *(packages/ctrl/src/db/migrations/0002_alfred_journal.sql)*.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -294,7 +294,7 @@ The continuity-layer principal table — Sir is one principal whether he message
 | `is_owner` | INTEGER NOT NULL DEFAULT 0 | Exactly one row has this set |
 | `created_at` | TEXT NOT NULL | |
 
-Bootstrap row: `('owner', 'Sir', 1)`.
+Bootstrap row: `('owner', 'Principal', 1)`.
 
 ### `alfred_principal_channel` — channel-to-principal binding
 
@@ -310,7 +310,7 @@ Bootstrap row: `('owner', 'Sir', 1)`.
 Primary key: `(channel, chat_id)`.
 Index: `idx_alfred_principal_channel_by_principal ON alfred_principal_channel(principal_id)`.
 
-### `alfred_journal` — append-only Alfred↔Sir ledger
+### `alfred_journal` — append-only Alfred↔principal ledger
 
 Every outbound and inbound exchange, across every channel. The Hermes `pre_gateway_dispatch` hook queries this on every inbound message and rewrites the user message to inject recent context — so the `main` profile sees a coherent conversation across channels *(migration `0002`)*.
 
@@ -324,7 +324,7 @@ Every outbound and inbound exchange, across every channel. The Hermes `pre_gatew
 | `channel` | TEXT NOT NULL | `telegram \| slack \| email \| web \| phone \| …` |
 | `chat_id` | TEXT NOT NULL | |
 | `direction` | TEXT NOT NULL | CHECK in (`outbound`, `inbound`) |
-| `message` | TEXT NOT NULL | Exact bytes Sir saw or typed |
+| `message` | TEXT NOT NULL | Exact bytes the principal saw or typed |
 | `source_kind` | TEXT | `delegate \| instinct \| reply \| init \| system` |
 | `source_ref` | TEXT | E.g. decision_id, signal_id |
 | `hermes_session_id` | TEXT | The Hermes session the exchange landed in |
@@ -491,7 +491,7 @@ The migration runner (`runMigrations` in `packages/ctrl/src/db/migrate.ts`) is i
 
 | File | Adds | Purpose |
 |---|---|---|
-| `0001_fix_pack.sql` | `observation.processed_at` column + `idx_observation_processed` index | Anchor for Reflection's "has this observation been seen yet?" check. Fixes the original `mark_observations_processed` bug (wrote to the vault, never `alfred-state.db`). |
+| `0001_fix_pack.sql` | `observation.processed_at` column + `idx_observation_processed` index | Anchor for Reflection's "has this observation been seen yet?" check. Ensures `mark_observations_processed` writes to `alfred-state.db` rather than the vault. |
 | `0002_alfred_journal.sql` | `alfred_principal`, `alfred_principal_channel`, `alfred_journal` tables + indexes; bootstraps the owner principal | The continuity layer for "one Alfred" UX — bridges the per-(user, channel) Hermes sessions so the `main` profile sees a coherent conversation across channels. |
 
 <Warning>

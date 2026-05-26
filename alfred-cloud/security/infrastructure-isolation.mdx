@@ -14,7 +14,7 @@ When a tenant signs up, the SaaS control plane provisions a fresh Hetzner Cloud 
 
 | Component | Detail |
 |---|---|
-| Server tier | Hetzner Cloud `cx53` (16 vCPU, 32 GB RAM, 320 GB local NVMe) for Premium and Black plans. Older Starter tier was `cx33`. *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:17`)* |
+| Server tier | Hetzner Cloud `cx53` (16 vCPU, 32 GB RAM, 320 GB local NVMe) for Premium and Black plans. Starter plans run on `cx33`. *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:17`)* |
 | Region | EU only — Hetzner Germany (Falkenstein, Nuremberg) or Finland (Helsinki) depending on capacity at provision time. |
 | Attached volume | Hetzner Cloud volume, sized per plan, formatted with LUKS2 (AES-256-XTS) at first boot. *(`/Users/ssd/dev/alfred/packages/ctrl/src/templates/cloud-init.yaml.njk`)* |
 | Mesh | Private Tailscale tailnet on WireGuard. The tenant's node, the SaaS host, the operator's laptop, and any devices the principal explicitly paired. |
@@ -89,7 +89,7 @@ Composio is the most security-critical shared dependency — it brokers OAuth to
 
 - `ctrl-api` refuses to start if `COMPOSIO_USER_ID` is unset or `"default"`. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:109`)*
 - Every Composio call passes `user_id` to filter results.
-- Every connection lookup by ID **re-verifies ownership** on the tenant side — Composio's server-side filter has been observed to occasionally return cross-tenant accounts, so `ctrl-api` re-checks ownership on every read. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:1965`)*
+- Every connection lookup by ID **re-verifies ownership** on the tenant side — `ctrl-api` re-checks `user_id` ownership on every read as a defence-in-depth backstop to Composio's server-side filter. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:1965`)*
 - Connection IDs that don't belong to the tenant return **404** (not 403, to prevent enumeration). *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:284`)*
 
 See [Per-tenant isolation → Composio](/alfred-cloud/security/per-tenant-isolation#composio) for the full enforcement detail.

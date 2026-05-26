@@ -1,15 +1,11 @@
 ---
 title: "Claude"
-description: "MCP setup from Claude Desktop and Claude Code — now folded into Settings → Agent Configuration."
+description: "MCP setup from Claude Desktop and Claude Code, stacked under Settings → Agent Configuration."
 ---
 
 <Info>
-`/claude` is a thin redirect to **[`/settings#agent`](/surfaces/study)** *(packages/web/src/dashboard/ClaudeRedirect.tsx)*. The old standalone page was retired in F84; its sections (MCP server URLs, approval secret, Skill download, vault login) are now stacked below the agent-model matrix on the Settings page.
+`/claude` resolves as a thin redirect to **[`/settings#agent`](/surfaces/study)** *(packages/web/src/dashboard/ClaudeRedirect.tsx)*. Claude-related sections — MCP server URLs, approval secret, Skill download, vault login — sit below the agent-model matrix on the Settings page, so the principal configures the agent in one place.
 </Info>
-
-## Why the redirect
-
-The standalone `/claude` page started as a setup surface for a single concept (MCP from claude.ai) and accreted sections that overlapped with the Settings page (model picker, API keys, audit). Rather than keep two places where the principal configures their agent, F84 collapsed both into one: **Settings → Agent Configuration**. The redirect keeps every old bookmark, in-product link, and email pointer working — they all land on the same content, just inside the unified back office.
 
 ## What the principal sees at `/settings#agent`
 
@@ -42,12 +38,12 @@ The `ClaudeSetupSections` block renders five sub-sections, each only visible whe
 Each Hermes profile currently registers **5 stdio MCP apps** (`alfred`, `sure`, `plane`, `vaultwarden`, `execute`) plus the HTTP `alfred-ctrl` proxy — **6 servers per profile** *(packages/hermes/hermes-config.yaml.njk:280-354)*. A sixth stdio app, `hermes`, ships in the MCP bundle (`packages/mcp-server/src/tools/hermes.ts`) but isn't yet wired into the profile template; it is reachable via the external HTTP MCP server. They share the same approval-secret bearer; rotating the secret invalidates every Claude-side connector at once.
 
 <Note>
-The `hermes` MCP app (voice agent orchestration, scheduling) was added to the catalogue in commit `9ca51577` on 2026-05-26 *(packages/mcp-server/src/tools/hermes.ts:1-27)*, bringing the bundle to six apps. The Hermes profile template still wires only five stdio apps + the `alfred-ctrl` HTTP proxy (six servers); the seven-servers-per-profile count will land when the profile template catches up.
+The `hermes` MCP app (voice agent orchestration, scheduling) lives in the bundle at `packages/mcp-server/src/tools/hermes.ts` and is reachable via the external HTTP MCP server. The Hermes profile template wires five stdio apps plus the `alfred-ctrl` HTTP proxy (six servers per profile); the seven-servers-per-profile count lands once the profile template registers `hermes` as a stdio app.
 </Note>
 
-## What lives elsewhere now
+## Where related controls live
 
-| Was on `/claude` | Now lives at |
+| Setting | Location |
 |---|---|
 | Model picker | [Settings → Agent Configuration](/surfaces/study) (the matrix above the Claude block) |
 | Developer API keys | [Settings → API keys](/surfaces/study) |

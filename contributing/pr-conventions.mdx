@@ -28,8 +28,8 @@ fix(compose): voice-bridge missing MCP + VOICE_* + TWILIO_AUTH_TOKEN env (#51)
 
 Conventions visible from those:
 
-- **Type vocabulary**: `feat`, `fix`, `merge`, `orchestrator`. We don't use
-  `chore`, `refactor`, `style`, `docs` as top-level types — they go under
+- **Type vocabulary**: `feat`, `fix`, `merge`, `orchestrator`. `chore`,
+  `refactor`, `style`, `docs` are not used as top-level types — they go under
   `fix` or `feat` with an explanatory scope.
 - **Scope** is the package or surface: `ctrl`, `learn`, `web`, `hermes`,
   `mcp-server`, `voice`, `voice-bridge`, `compose`, `matters`, `integrations`.
@@ -61,10 +61,10 @@ that:
 4. References the related contract clause (`C-OB1`, `C14`, etc.) or issue
    number.
 
-The team's standing prompt for new agents reinforces this: *"focus on the
-why, not the what — the diff is the what"*. The CHANGELOG borrows liberally
-from these bodies; if you write a good body, your work gets surfaced
-correctly in the next release notes.
+The standing prompt for new agents reinforces this: *"focus on the why, not
+the what — the diff is the what"*. The CHANGELOG borrows liberally from
+these bodies; if you write a good body, your work gets surfaced correctly in
+the next release notes.
 
 ## Scope cap
 

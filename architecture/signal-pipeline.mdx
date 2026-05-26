@@ -73,12 +73,12 @@ The signal-extract observation hook is wrapped in `workflow.patched("signal_extr
 
 `SignalRouterWorkflow` runs every 2 minutes, also gated at registration *(packages/learn/src/workflows/signal_router.py:6)*. For each `status=unrouted` signal it dispatches to one of three paths.
 
-For `effect=mutation` it calls `apply_signal_mutation`, which feeds the proposal through the legacy `apply_state_change` (v1) writer after a confidence gate *(signal_mutations.py)*.
+For `effect=mutation` it calls `apply_signal_mutation`, which feeds the proposal through the `apply_state_change` writer after a confidence gate *(signal_mutations.py)*.
 
 For `effect=action` it calls `route_signal_action` *(signal_actions.py)*:
 
 1. Load all non-deprecated instincts (the matcher accepts `status ∉ {deprecated, disabled}` — filtering on `status=active` would starve the matcher, because most instincts live in `unconfirmed`).
-2. Score each instinct against the signal via `_score_keyword_overlap` — weighted: 0.30 domain + 0.30 keywords + 0.15 input_type + 0.15 attachment + 0.10 tags. As of Gap 5b (2026-05-24), matching is **substring + tokenised**, not set-intersection on single-word tokens — multi-word patterns now actually match *(packages/learn/src/matching/scorer.py)*.
+2. Score each instinct against the signal via `_score_keyword_overlap` — weighted: 0.30 domain + 0.30 keywords + 0.15 input_type + 0.15 attachment + 0.10 tags. Matching uses **substring + tokenised** comparison (not set-intersection on single-word tokens), so multi-word patterns match correctly *(packages/learn/src/matching/scorer.py)*.
 3. Match-threshold is **0.05** (low on purpose — the discretion gate downstream is the real filter).
 4. Compute combined confidence = `min(target_confidence, effect_confidence)`.
 5. Apply the **discretion gate**: per-instinct `discretion_threshold` (default 0.95). Combined-confidence ≥ threshold AND `signal_action_mode = live` → HIGH path. Otherwise → HUMAN path.
@@ -99,7 +99,7 @@ Why? Because `state=completed` decisions don't enter the DecisionRouter, which m
 
 The synchronous flip sets `side_effects.synchronous_flip = true` on the decision, which downstream guards use to skip re-firing the side effect.
 
-A second write path — the legacy `/admin/needs-attention/:id/{done,dispatch,skip}` surface — also mints a mirror decision via `mintDecisionMirror`, **unless** the body carries `decision_origin` (which DecisionRouter sets when *it* calls `/dispatch`). This guard prevents the recursive loop where DecisionRouter→/dispatch→mintDecisionMirror→DecisionRouter again *(packages/ctrl/src/api/routes/attention.ts)*.
+A second write path — the `/admin/needs-attention/:id/{done,dispatch,skip}` surface — also mints a mirror decision via `mintDecisionMirror`, **unless** the body carries `decision_origin` (which DecisionRouter sets when *it* calls `/dispatch`). This guard prevents the recursive loop where DecisionRouter→/dispatch→mintDecisionMirror→DecisionRouter again *(packages/ctrl/src/api/routes/attention.ts)*.
 
 ## Stage 5 — decision routing
 
@@ -127,7 +127,7 @@ The guards exist because the Desk-click route already performed the user-visible
 
 After the guarded side-effect block, `route_decision` calls `extract_observation_from_decision(decision)` unconditionally *(decision_router.py:988-1008)*. There is no `synchronous_flip` check around it.
 
-This is **deliberate**. Observation writes are pure (no side effects on user state), idempotent at the observation level (each decision-id maps to one observation record), and load-bearing for learning: every click on the Desk **must** produce an observation, or the Reflection workflow has nothing to feed Opus. Gating observation writes on the synchronous-flip path would silently starve the intuition engine — exactly the bug that the 2026-05-24 incident campaign was about *(packages/alfred/CLAUDE.md §16)*.
+This is **deliberate**. Observation writes are pure (no side effects on user state), idempotent at the observation level (each decision-id maps to one observation record), and load-bearing for learning: every click on the Desk **must** produce an observation, or the Reflection workflow has nothing to feed Opus. Gating observation writes on the synchronous-flip path would silently starve the intuition engine.
 
 The observation is best-effort: failures log a warning but don't roll back the decision routing.
 

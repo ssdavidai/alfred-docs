@@ -69,14 +69,14 @@ old shape will break**. Those tests are part of the contract too. Update
 them in the **same commit** that changes the contract.
 
 <Warning>
-**Commit `e3c1ad2` is the lesson.** A previous fix changed the canonical
-task `status` vocabulary from including `'queued'` to `active | blocked |
-cancelled | done | todo` (CLAUDE.md §6.2). The fix landed without updating
-the tests that asserted `status: queued` was valid. The lane gate's VERIFY
-caught it on the next PR — but only because the gate exists; without it,
-the breakage would have shipped silently. The rule that came out of that:
-**the test update is part of the same commit as the contract change**.
-A PR that says "tests in follow-up" is a PR that lies *(CLAUDE.md §11.3)*.
+**Commit `e3c1ad2` is the example.** A fix changed the canonical task
+`status` vocabulary to `active | blocked | cancelled | done | todo`
+(CLAUDE.md §6.2), but landed without updating the tests that asserted
+`status: queued` was valid. The lane gate's VERIFY caught it on the next PR
+— but only because the gate exists; without it, the breakage would have
+shipped silently. The rule: **the test update is part of the same commit as
+the contract change**. A PR that says "tests in follow-up" is a PR that lies
+*(CLAUDE.md §11.3)*.
 </Warning>
 
 ## When the test is hard to write

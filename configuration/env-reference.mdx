@@ -145,6 +145,6 @@ The compose file also reads a handful of variables that have working defaults ba
 
 ## How variables flow through compose
 
-The compose file *(`docker-compose.yaml:1-1514`)* pulls values from `.env` via the standard `${VAR}` syntax and mirrors many of them onto multiple services. For example, `DOMAIN` is referenced by 9 services so that each can build its own public URL; `HERMES_API_SERVER_KEY` is also exposed as `OPENCLAW_GATEWAY_TOKEN` on services that talk to Hermes (the env-var name pre-dates the rename and is still read by `packages/learn`); `OWNER_EMAIL` is also mirrored into `ALFRED_OWNER_EMAIL` because the transcript code reads the alternate name *(`.env.example:81-87`)*.
+The compose file *(`docker-compose.yaml:1-1514`)* pulls values from `.env` via the standard `${VAR}` syntax and mirrors many of them onto multiple services. For example, `DOMAIN` is referenced by 9 services so each can build its own public URL; `HERMES_API_SERVER_KEY` is also exposed as `OPENCLAW_GATEWAY_TOKEN` on services that talk to Hermes (the `packages/learn` code reads the gateway token under that variable name); `OWNER_EMAIL` is also mirrored into `ALFRED_OWNER_EMAIL` because the transcript code reads the alternate name *(`.env.example:81-87`)*.
 
 If you change a `.env` value after the stack is up, you must `docker compose up -d` (without `--force-recreate` unless you've hot-patched something — see [redeploying](/operations/redeploy)) to propagate the new value into the affected containers.

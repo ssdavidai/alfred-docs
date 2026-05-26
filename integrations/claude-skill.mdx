@@ -23,7 +23,7 @@ Six markdown files plus one custom-instructions document *(packages/mcp-server/s
 
 The web app vendors these files into `packages/web/public/mcp-skills/` *(packages/ctrl/src/api/routes/claudeSetup.ts:162–166)* so the dashboard can serve them as direct downloads from `/settings#agent`. The canonical source of truth stays in `packages/mcp-server/`; CI keeps the vendored copies in sync.
 
-The `hermes` MCP app (the sixth app in the bundle, added 2026-05-26) does not yet ship a dedicated skill file — its 7 tools are simple enough that tool descriptions alone suffice in practice.
+The `hermes` MCP app does not ship a dedicated skill file — its 7 tools are simple enough that tool descriptions alone suffice in practice.
 
 ## Where it goes in claude.ai
 
@@ -52,7 +52,7 @@ claude.ai's **Custom Skills** feature lets you attach markdown files to a specif
 
 `alfred-custom-instructions.md` goes in claude.ai's **Personalisation** field (Settings → Profile → "What personal preferences should Claude consider in responses?"). Paste everything from `You are Alfred` through the end *(packages/mcp-server/instructions/alfred-custom-instructions.md:1–3)* — the header lines that explain where to paste are intentionally above the paste boundary.
 
-This is the file that turns claude.ai *into* Alfred for this account — establishing the principal model ("Sir"), the tone register (warm + dry, never sycophantic), and the operating discipline (anticipate, be brief, push back when something seems wrong, never fabricate).
+This is the file that turns claude.ai *into* Alfred for this account — establishing the principal-and-butler model, the tone register (warm + dry, never sycophantic), and the operating discipline (anticipate, be brief, push back when something seems wrong, never fabricate).
 
 ## The Claude Code skill
 

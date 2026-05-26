@@ -3,7 +3,7 @@ title: "Environment variables"
 description: "Every variable in .env — what's required, what bootstrap.sh generates for you, what's optional."
 ---
 
-Alfred Black is configured by a **single `.env` file** at the repo root. The flow is:
+Alfred is configured by a **single `.env` file** at the repo root. The flow is:
 
 <Steps>
   <Step title="Copy the template">
@@ -36,7 +36,7 @@ The sections below enumerate every variable, what reads it, and what happens if 
 | **`OPENROUTER_API_KEY`** | Primary model routing for Hermes and alfred-learn (model IDs in `HERMES_*_MODEL`). | hermes, alfred-learn |
 | **`COMPOSIO_API_KEY`** | Third-party app integrations (Gmail, Stripe, Notion, Slack, …) used by the `execute` MCP app and onboarding's email backfill. | init, alfred-learn, ctrl-api, mcp-server |
 
-<Note>`.env.example` lists `ANTHROPIC_API_KEY` under the same "USER MUST FILL — required" header *(.env.example:25-26)*, but `bootstrap.sh:71-77` does NOT validate it. Anthropic is genuinely optional — set it only if you want a direct Anthropic route bypassing OpenRouter for the heavy profile. CLAUDE.md §3 reflects this.</Note>
+<Note>`.env.example` lists `ANTHROPIC_API_KEY` under the same "USER MUST FILL — required" header *(.env.example:25-26)*, but `bootstrap.sh:71-77` does NOT validate it. Anthropic is genuinely optional — set it only if you want a direct Anthropic route bypassing OpenRouter for the heavy profile.</Note>
 
 ### Strongly recommended (warn, not fail)
 
@@ -131,7 +131,7 @@ With `COMPOSIO_API_KEY` set, onboarding's Gmail connect goes through Composio's 
 | `MAILGUN_API_KEY` | Mailgun API key — the web app's configured email provider. The app boots with a placeholder, but verification + password-reset only deliver with a real key. | `placeholder-set-a-real-key-to-send-email` | web |
 | `MAILGUN_DOMAIN` | Mailgun-verified domain. | `new.alfred.black` | web |
 | `AGENTMAIL_API_KEY` | Outbound email for Alfred — the first-brief email + the `self` email tool. Without it, every send returns `AGENTMAIL_API_KEY not configured` and the first brief never reaches the inbox. | — | ctrl-api |
-| `AGENTMAIL_INBOX_ID` | Inbox-scoped id created by AgentMail. Normally written per tenant by the SaaS host; set by hand for standalone deploys. | — | ctrl-api |
+| `AGENTMAIL_INBOX_ID` | Inbox-scoped id created by AgentMail. Set by hand for this deploy. | — | ctrl-api |
 | `AGENTMAIL_INBOX_ADDRESS` | Optional display `From:` address. | — | ctrl-api |
 
 A JSON fallback at `/mnt/encrypted/alfred/.agentmail-credentials.json` is honoured too.
@@ -196,7 +196,7 @@ These are checked each time the corresponding activity runs. Flipping them via `
 
 Valid mode values: `"shadow"`, `"live"`, `"live_high_confidence_only"`.
 
-<Warning>CLAUDE.md §8 documents all three `*_mode` flags as defaulting to `"live"`. Live code at *(packages/learn/src/activities/state_mutator.py:183-220)* defaults `state_mutator_mode` to `"shadow"`. The recon checked the code and the code is the source of truth.</Warning>
+<Warning>`state_mutator_mode` defaults to `"shadow"` in code at *(packages/learn/src/activities/state_mutator.py:183-220)*; the other two `*_mode` flags default to `"live"`. The code is the source of truth.</Warning>
 
 ### Compose & URL plumbing
 
@@ -204,13 +204,13 @@ Valid mode values: `"shadow"`, `"live"`, `"live_high_confidence_only"`.
 |----------|---------|---------|----------|
 | `COMPOSE_DIR_HOST` | Host filesystem path of the compose dir (the dir holding `.env` and `docker-compose.yaml`). Bind-mounted into ctrl-api at `/srv/alfred-black` so it can read/write `.env` and shell out to `docker compose`. | `/opt/alfred` | ctrl-api |
 | `TENANT_BASE_URL` | The tenant's public base URL. ctrl-api uses it to build absolute webhook URLs (OMI, custom webhooks); unset → URLs come back null and integrations are unusable. | `https://${DOMAIN}` | ctrl-api |
-| `SAAS_HOST` | Fallback when `TENANT_BASE_URL` is absent. Override only for a multi-host SaaS deployment. | `https://${DOMAIN}` | ctrl-api |
+| `SAAS_HOST` | Fallback when `TENANT_BASE_URL` is absent. Override only when serving Alfred across multiple hosts. | `https://${DOMAIN}` | ctrl-api |
 | `ALFRED_LEARN_ENABLED` | Master switch for the alfred-learn worker. Set to `false` to keep the container idle. | `true` | alfred-learn |
 | `DISPATCH_USE_EPHEMERAL_EXECUTOR` | Whether autonomous dispatches spawn ephemeral exec subagents (vs running in-process). | (compose default) | alfred-learn |
 
 ### Telegram / Slack
 
-Per *(docker-compose.yaml:?)*, `TELEGRAM_BOT_TOKEN` is intentionally **not** passed through env — Telegram pairing flows through Hermes' main-profile config rendered by the init container, not via env. Same for Slack. Set up channels via the dashboard once Alfred is running rather than through `.env`.
+`TELEGRAM_BOT_TOKEN` is intentionally **not** passed through env — Telegram pairing flows through Hermes' main-profile config rendered by the init container, not via env. Same for Slack. Set up channels via the dashboard once Alfred is running rather than through `.env`.
 
 ---
 
@@ -226,10 +226,10 @@ Any unrecognised value → log a warning, fall back to default.
 
 ---
 
-## Variables removed since 1.0
+## Notes on specific variables
 
-- **`ANTHROPIC_API_KEY` in REQUIRED** — `.env.example` still shows it under the "USER MUST FILL — required" header, but `bootstrap.sh` no longer enforces it.
-- **`AAS_*` legacy aliases** — `AAS_HOST`, `AAS_PORT` are still set in compose but are not read from `.env`; ctrl-api gets them from compose-internal defaults *(docker-compose.yaml:401-402)*.
+- **`ANTHROPIC_API_KEY`** — `.env.example` shows it under the "USER MUST FILL — required" header, but `bootstrap.sh` does not enforce it; it is optional.
+- **`AAS_HOST` / `AAS_PORT`** — set in compose but not read from `.env`; ctrl-api gets them from compose-internal defaults *(docker-compose.yaml:401-402)*.
 - **`ALFRED_OWNER_EMAIL`** — set by compose by mirroring `OWNER_EMAIL`. `transcript.py` reads it; everywhere else reads `OWNER_EMAIL` directly.
 
 ---

@@ -20,7 +20,7 @@ The stack runs roughly thirty containers in its default configuration *(docker-c
 The Vexa transcript profile adds nine more containers — Postgres, Redis, MinIO, four Vexa services, a bot runtime, and a dashboard *(docker-compose.yaml, profiles: ["vexa"] at lines 1251–1489)*. Skip it on first deploy unless you need meeting transcription right away.
 </Note>
 
-A Hetzner CCX33 (8 vCPU / 32 GB RAM) is too small. A CCX43 (16 vCPU / 64 GB RAM) handles default and Vexa comfortably. Any cloud provider with equivalent specs works — there is no Hetzner-specific code anywhere in the stack.
+A Hetzner CCX33 (8 vCPU / 32 GB RAM) is too small. A CCX43 (16 vCPU / 64 GB RAM) handles default and Vexa comfortably. Any cloud provider with equivalent specs works — the stack contains no provider-specific code.
 
 ## DNS records
 

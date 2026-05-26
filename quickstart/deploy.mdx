@@ -68,7 +68,7 @@ Each unlocks one feature:
 </Tabs>
 
 <Note>
-**Which LLM key do you actually need?** Despite some older docs implying `ANTHROPIC_API_KEY` is interchangeable, `bootstrap.sh` requires `OPENROUTER_API_KEY` *(scripts/bootstrap.sh:71–77)*. Anthropic is explicitly optional. Hermes routes through OpenRouter by default and the heavy profile defaults to `anthropic/claude-opus-4-6` *via* OpenRouter *(.env.example:42–44)*.
+**Which LLM key do you actually need?** `bootstrap.sh` requires `OPENROUTER_API_KEY` *(scripts/bootstrap.sh:71–77)*. `ANTHROPIC_API_KEY` is explicitly optional. Hermes routes through OpenRouter by default and the heavy profile defaults to `anthropic/claude-opus-4-6` *via* OpenRouter *(.env.example:42–44)*.
 </Note>
 
 </Step>

@@ -52,7 +52,7 @@ Every write route enforces `assertCanonicalVaultPath()` *(promotionContract.ts:1
 | POST | `/api/v1/vault/promote-triage` | Convert an `inbox/` triage card into a `task/`. |
 | GET | `/api/v1/vault/graph` | Cross-record edges (`mentions`, `derived_from`, `blocks`, …). |
 | GET | `/api/v1/vault/nebula-data` | Graph-visualisation payload. |
-| GET | `/api/v1/vault/schema` | Per-type field schema (used by the SaaS editor). |
+| GET | `/api/v1/vault/schema` | Per-type field schema (used by the editor). |
 | GET | `/api/v1/vault/inbox` | List inbox triage queue. |
 | POST | `/api/v1/vault/inbox` | Append to the inbox. |
 | POST | `/api/v1/vault/inbox/bulk` | Bulk-insert inbox items. |
@@ -78,7 +78,7 @@ Every write route enforces `assertCanonicalVaultPath()` *(promotionContract.ts:1
 - unset / `"warn"` (default): log a warning, proceed.
 - `"reject"`: return `403 STATE_CHANGE_REQUIRED` with the offending field list.
 
-Manual state edits via the SaaS editor route through `POST /api/v1/state-changes` instead.
+Manual state edits via the editor route through `POST /api/v1/state-changes` instead.
 </Info>
 
 </Accordion>
@@ -105,7 +105,7 @@ A `decision/<ts>-<short>.md` record is the first-class artefact of every human a
 **Lifecycle:** `open → dispatching → executing → completed` (terminal) or `reversed` *(decisions.ts:65-79)*.
 
 <Warning>
-**Always mint `state: open`.** The DecisionRouterWorkflow only fires `extract_observation_from_decision` for decisions in `state=open`. If you mint `state=completed` directly, the learning loop never closes. This is the regression caught on 2026-05-24 (CLAUDE.md §16).
+**Always mint `state: open`.** The DecisionRouterWorkflow only fires `extract_observation_from_decision` for decisions in `state=open`. If you mint `state=completed` directly, the learning loop never closes.
 </Warning>
 
 <Accordion title="Decision routes (6)">
@@ -129,7 +129,7 @@ A `decision/<ts>-<short>.md` record is the first-class artefact of every human a
 
 ## Attention / Desk surface
 
-The legacy "needs-attention" desk queue. ctrl-api owns `vault/needs_attention/` *(promotionContract.ts:55-69)* — the signal router writes cards here when a signal needs a human decision.
+The "needs-attention" desk queue. ctrl-api owns `vault/needs_attention/` *(promotionContract.ts:55-69)* — the signal router writes cards here when a signal needs a human decision.
 
 <Accordion title="Attention routes (5)">
 
@@ -138,11 +138,11 @@ The legacy "needs-attention" desk queue. ctrl-api owns `vault/needs_attention/` 
 | GET | `/api/v1/admin/needs-attention` | List pending cards (status filter). |
 | POST | `/api/v1/admin/needs-attention/:id/done` | Mark card resolved by the principal. |
 | POST | `/api/v1/admin/needs-attention/:id/dispatch` | Re-route the card to a Hermes agent. Mints a mirror `decision/` record **unless** `body.decision_origin` is set. |
-| POST | `/api/v1/admin/needs-attention/:id/skip` | Negative calibration — Sir doesn't want this. |
+| POST | `/api/v1/admin/needs-attention/:id/skip` | Negative calibration — the principal doesn't want this. |
 | POST | `/api/v1/admin/desk-action` | Generic manual desk-action audit. |
 
 <Info>
-**The decision-mirror recursion guard.** `/dispatch` mints a `decision/<ts>.md` so the Desk shows a unified history. DecisionRouter also calls `/dispatch` to execute delegate intents — passing `decision_origin` so the mirror is skipped, preventing an infinite loop (CLAUDE.md §15.3, fix in commit `4466c68`).
+**The decision-mirror recursion guard.** `/dispatch` mints a `decision/<ts>.md` so the Desk shows a unified history. DecisionRouter also calls `/dispatch` to execute delegate intents — passing `decision_origin` so the mirror is skipped, preventing an infinite loop.
 </Info>
 
 </Accordion>
@@ -269,7 +269,7 @@ The three mode flags that gate Alfred's autonomy *(packages/ctrl/src/api/routes/
 | GET | `/api/v1/settings/:key` | Resolve one flag. |
 | PUT | `/api/v1/settings/:key` | Set: `{mode: "live" \| "shadow"}`. |
 
-Legacy hyphenated alias `/api/v1/settings/signal-action-mode` is preserved for backwards compatibility *(settings.ts:82-87)*.
+A hyphenated alias `/api/v1/settings/signal-action-mode` is also accepted for backwards compatibility *(settings.ts:82-87)*.
 
 </Accordion>
 
@@ -375,7 +375,7 @@ Temporal proxy. Lists running workflows, lets you signal / cancel / terminate, a
 | GET | `/api/v1/onboarding/suggested-streams` | Streams the Composio audit suggests connecting. |
 | GET | `/api/v1/onboarding/quality-report` | Quality of extracted facts / patterns. |
 | GET | `/api/v1/onboarding/progress` | Live progress (step, percent, last activity). |
-| POST | `/api/v1/onboarding/corrections` | Sir-edited corrections fed back to personalize_opus. |
+| POST | `/api/v1/onboarding/corrections` | Principal-edited corrections fed back to personalize_opus. |
 
 **Schedules** (one per chore + system schedules like the daily Reflection)
 
@@ -504,7 +504,7 @@ The raw firehose into `ingest.db` *(packages/ctrl/src/api/routes/ingest.ts)*. Ha
 
 ## Alfred journal & delivery surface
 
-The continuity layer — every Alfred↔Sir exchange across every channel lands in `alfred_journal` so the `main` profile sees a coherent conversation *(packages/ctrl/src/db/migrations/0002_alfred_journal.sql, packages/ctrl/src/api/routes/alfredJournal.ts, alfredDeliver.ts)*.
+The continuity layer — every Alfred↔principal exchange across every channel lands in `alfred_journal` so the `main` profile sees a coherent conversation *(packages/ctrl/src/db/migrations/0002_alfred_journal.sql, packages/ctrl/src/api/routes/alfredJournal.ts, alfredDeliver.ts)*.
 
 <Accordion title="Journal + delivery routes (5)">
 
@@ -655,7 +655,7 @@ The principal-facing phone surface. SMS routes here are user-facing (`/phone/sms
 
 ## Integrations surface
 
-Composio. The integration shipped with full v3 (`/tools`) support after the v2 deprecation *(commit `d567ea9e`)*.
+Composio. The integration uses Composio v3 (`/tools`).
 
 <Accordion title="Integrations routes (23)">
 
@@ -1084,14 +1084,14 @@ Operations: container control, system info, backups, Temporal probes *(packages/
 ## Quick reference — most-used endpoints
 
 ```http
-# Sir's daily Desk write
+# Principal's daily Desk write
 POST /api/v1/decisions
   { "intent": "delegate",
     "source": "needs_attention",
     "source_record": "needs_attention/2026-05-24-…-abc.md",
     "note": "Reply with the call link" }
 
-# Sir's vault edit (canonical body shape)
+# Principal's vault edit (canonical body shape)
 PATCH /api/v1/vault/records/matter/acme.md
   { "set":          { "status": "completed" },
     "append":       { "tags": "resolved" },

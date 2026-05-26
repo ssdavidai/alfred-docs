@@ -4,8 +4,8 @@ description: "Five package lanes, frozen cross-lane contracts, and the providers
 ---
 
 Alfred is changed by many parallel agents — humans and Claude Code workers
-alike. The **lane protocol** is the discipline that makes those changes
-land without merge conflicts, contract drift, or partial rollouts.
+alike. The **lane protocol** is the discipline that keeps those changes
+landing without merge conflicts, contract drift, or partial rollouts.
 
 The full source-of-truth narrative is in [`CLAUDE.md` §11](https://github.com/ssdavidai/alfred/blob/main/CLAUDE.md);
 this page is its practical contributor-facing summary.
@@ -140,7 +140,7 @@ the worktree path, and then two agents overwrite each other's
 confirm it touched only its lane's files before trusting it.
 </Warning>
 
-A few hard-won rules from running this at scale:
+A few practical rules that keep parallel work from corrupting itself:
 
 - **Agents must never run `npm install`, `npm ci`, or `npm prune`.**
   The worktrees share a symlinked `node_modules`; install churn

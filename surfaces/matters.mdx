@@ -20,7 +20,7 @@ The cards link straight to `/matters/:id`.
 
 ## `/matters/:id` — the living-matter detail
 
-The detail page is structured around the **living-narrative layer** added in RFC #884 *(packages/web/src/dashboard/MatterDetailPage.tsx:1-9)*. It reads `getMatterDetail`, which returns:
+The detail page is structured around the **living-narrative layer** *(packages/web/src/dashboard/MatterDetailPage.tsx:1-9)*. It reads `getMatterDetail`, which returns:
 
 | Field | Source | Purpose |
 |---|---|---|
@@ -36,7 +36,7 @@ The body shows the narrative paragraph under an *As of* timestamp, then the task
 
 ### Two `state_change` entries
 
-`state_change` timeline entries are first-class as of Phase E (#893). Each carries a nested envelope — `source`, `prior_as_of`, an `observed_window` with signal/decision counts, the changed fields, a reason string, a confidence number, and a `mode` (`shadow|live`) tag *(MatterDetailPage.tsx:47-63)*. The renderer special-cases `source: "briefing.morning"` and `source: "briefing.evening"` to surface the briefing slug-date as a clickable eyebrow *(MatterDetailPage.tsx:184-208)*.
+`state_change` timeline entries are first-class. Each carries a nested envelope — `source`, `prior_as_of`, an `observed_window` with signal/decision counts, the changed fields, a reason string, a confidence number, and a `mode` (`shadow|live`) tag *(MatterDetailPage.tsx:47-63)*. The renderer special-cases `source: "briefing.morning"` and `source: "briefing.evening"` to surface the briefing slug-date as a clickable eyebrow *(MatterDetailPage.tsx:184-208)*.
 
 ## The `done | active | waiting` roll-up
 
@@ -56,4 +56,4 @@ The roll-up depends on the task **`state`** field (the matters-aggregator vocabu
 
 ## Editing a matter
 
-The detail page's *Edit* button writes a `triage/*` record with `intent: matter_edit` — the legacy pattern that pre-dates the state-change envelope. State-field edits (status, current_state, as_of, surface_class, last_briefing_at) are routed through `applyManualStateChange` from the Vault page; the matter detail itself does not yet expose that panel directly. Use `/vault?slug=matter/<id>` to edit the state fields with an audit trail.
+The detail page's *Edit* button writes a `triage/*` record with `intent: matter_edit`. State-field edits (status, current_state, as_of, surface_class, last_briefing_at) are routed through `applyManualStateChange` from the Vault page; the matter detail itself does not expose that panel directly. Use `/vault?slug=matter/<id>` to edit the state fields with an audit trail.

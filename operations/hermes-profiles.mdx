@@ -17,7 +17,7 @@ Models are overridable via `HERMES_MAIN_MODEL`, `HERMES_WORKERS_MODEL`, `HERMES_
 
 ## The dashboard caveat
 
-Hermes ships a web-dashboard backend, but the upstream pip wheel does **not** include the React frontend bundle. Hooking it up returns `{"error":"Frontend not built"}` on every request — we tried this once and reverted (commit `ce6c177`).
+Hermes ships a web-dashboard backend, but the upstream pip wheel does **not** include the React frontend bundle. Hooking it up returns `{"error":"Frontend not built"}` on every request, so the dashboard is not wired into the ingress.
 
 Use the CLI inside the container for everything until upstream ships the SPA bundle.
 

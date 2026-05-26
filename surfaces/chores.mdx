@@ -28,7 +28,7 @@ Expanding a row reveals the full description plus four actions, each calling its
 
 A **+ New chore** affordance opens a text panel — the principal describes the chore in prose; the request is dropped into the triage pipe as a `triage` record with `intent: chore_request`, and the curator / chore-generator workflow picks it up to materialise the code and schedule *(ChoresPage.tsx:208-225)*.
 
-A **category filter** above the rows derives its facets from the chores actually present on the tenant *(ChoresPage.tsx:161-163)* — the legacy /dashboard/tasks route redirects here.
+A **category filter** above the rows derives its facets from the chores actually present on the tenant *(ChoresPage.tsx:161-163)*. The `/dashboard/tasks` alias resolves here.
 
 ## `/chores/:slug` — the detail page
 

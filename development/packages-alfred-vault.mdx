@@ -93,11 +93,11 @@ list-vs-scalar field raises a `VaultError` exception with a clear message
 the error and returns it as JSON to the caller.
 
 <Warning>
-  The task `status` field has bitten contributors more than once. The
-  validator accepts `active | blocked | cancelled | done | todo`. A value
-  like `queued` (which appears in some older comments) is **rejected
-  with an HTTP 500**. Use `status: todo` for "not yet started", and pair
-  it with the matters-aggregator's `state: pending` *(CLAUDE.md §15.2)*.
+  Watch the task `status` field carefully. The validator accepts only
+  `active | blocked | cancelled | done | todo`. Any other value — for
+  example `queued` — is **rejected with an HTTP 500**. Use `status: todo`
+  for "not yet started", and pair it with the matters-aggregator's
+  `state: pending`.
 </Warning>
 
 ## The CLI surface
@@ -129,7 +129,8 @@ The ctrl-api PATCH route maps its body shape onto these flags:
 
 A **bare field-keyed body** with none of these wrappers returns 200 with no
 mutation — the `hasCliArgs` check at the top of the PATCH handler
-short-circuits before any `dockerExec` call. Wrap the fields *(CLAUDE.md §15.1)*.
+short-circuits before any `dockerExec` call. Always wrap the fields in one
+of the shapes above.
 
 ## Scope enforcement
 

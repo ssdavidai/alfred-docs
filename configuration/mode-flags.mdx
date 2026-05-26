@@ -6,7 +6,7 @@ description: "signal_action_mode, state_mutator_mode, auto_task_create_mode — 
 Three runtime flags control how aggressively Alfred *acts* on its own. All three default to `"live"` (do the thing), and each can be flipped to `"shadow"` to record what *would* have happened without making the change. They're flippable from the dashboard at runtime — no redeploy needed.
 
 <Info>
-The defaults were `"shadow"` in earlier builds. Each was flipped to `"live"` on 2026-05-24 (Sir-matter-task #3) once the corresponding pipeline was confirmed stable. The resolver source-of-truth comments record the history *(`packages/learn/src/activities/state_mutator.py:200-211`)*.
+The default for all three flags is `"live"`. The resolver source-of-truth comments document the precedence rules in code *(`packages/learn/src/activities/state_mutator.py:200-211`)*.
 </Info>
 
 ---

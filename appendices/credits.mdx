@@ -5,17 +5,17 @@ description: "The upstream projects Alfred Black is built on."
 
 Alfred Black is mostly orchestration. The hard work — the inference runtime,
 the dashboard framework, the workflow engine, the integrations — comes from
-the projects below. We are deeply grateful to their authors and maintainers.
+the projects below. Deep thanks to their authors and maintainers.
 
 ## Runtime and intelligence
 
 - **[Hermes Agent](https://github.com/NousResearch/hermes-agent)** by
-  [NousResearch](https://nousresearch.com). The single AI runtime that
-  Hermes runs three
-  supervised profiles (`main`, `workers`, `heavy`) inside one Docker image,
-  speaks the OpenAI Responses API natively, and hosts the MCP servers that
-  give Alfred its tools. The `hermes-lcm` cross-session memory plugin and
-  the `one-alfred` continuity plugin live inside this runtime.
+  [NousResearch](https://nousresearch.com). The AI runtime that powers
+  Alfred. Hermes runs three supervised profiles (`main`, `workers`, `heavy`)
+  inside one Docker image, speaks the OpenAI Responses API natively, and
+  hosts the MCP servers that give Alfred its tools. The `hermes-lcm`
+  cross-session memory plugin and the `one-alfred` continuity plugin live
+  inside this runtime.
 - **[Temporal](https://temporal.io)**. The durable workflow engine that
   drives the intelligence layer in `packages/learn` — 30+ workflows
   including `EventProcessor`, `SignalExtract`, `SignalRouter`,

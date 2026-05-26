@@ -45,5 +45,5 @@ Each card carries:
 The page header carries a single master switch wired to `enableIntuition` / `disableIntuition`. When disabled, the entire intuition loop stops: `SignalRouterWorkflow` still extracts signals but does not match them against instincts, so nothing is ever autonomously dispatched. The principal can keep using `/desk` to handle signals manually; they just lose the *"this looks like the same pattern as last week"* assist.
 
 <Note>
-The matcher does **not** filter on `status: active`. A common bug we shipped briefly was the matcher only loading instincts in the `active` status — leaving freshly-created `unconfirmed` instincts invisible. The fix at `_load_active_instincts` accepts every non-deprecated instinct; the discretion threshold is the real safety belt for low-observation-count patterns.
+The matcher does **not** filter on `status: active`. `_load_active_instincts` accepts every non-deprecated instinct, so freshly-created `unconfirmed` patterns participate in matching from the moment they land. The discretion threshold is the real safety belt for low-observation-count patterns.
 </Note>
