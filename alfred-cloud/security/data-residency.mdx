@@ -1,0 +1,127 @@
+---
+title: "Data residency"
+description: "EU-only hosting — Hetzner Germany (Falkenstein, Nuremberg) or Finland (Helsinki). GDPR rights honoured. 30-day grace period on cancellation; full destruction outside it."
+icon: "globe"
+---
+
+<Note>
+All Alfred Cloud tenants run on Hetzner Cloud in the EU. The SaaS control-plane host is also in Germany. Your vault, your streams, your email metadata, your transcripts — all of it lives within the EU.
+</Note>
+
+## Where your tenant runs
+
+| Region | Locations | When chosen |
+|---|---|---|
+| **Germany** | Falkenstein, Nuremberg | Primary regions — selected at provision time when capacity is available |
+| **Finland** | Helsinki | Fallback when both German regions are at capacity |
+
+The choice is made at provision time and is sticky for the lifetime of the instance. There is no automatic cross-region migration. *(`/tmp/alfred-doc-old/guides/security.mdx:127`)*
+
+The SaaS control-plane host (`alfred.black`) is also in Germany. The provisioning, billing, and key-issuance layer therefore lives in the same jurisdiction as the tenant.
+
+## What is in scope for EU residency
+
+Anything on the tenant's `/mnt/encrypted` volume is EU-hosted by virtue of being on the EU VPS:
+
+| Data | Location | Notes |
+|---|---|---|
+| Your Markdown vault | `/mnt/encrypted/vault` on the tenant | EU |
+| Stream events (`ingest.db`, raw JSONLs) | `/mnt/encrypted/alfred/streams`, `/mnt/encrypted` | EU |
+| `alfred-state.db` (signals, observations, audit, decisions) | `/mnt/encrypted` (on tenant) | EU |
+| Vaultwarden credentials | `/mnt/encrypted/vaultwarden` | EU, doubly encrypted (Bitwarden + LUKS) |
+| Temporal workflow state | `/mnt/encrypted/temporal` | EU |
+| Hermes profile state + session memory | `/mnt/encrypted/hermes` | EU |
+| Backups (restic) | Hetzner Object Storage, EU region | EU, encrypted by restic |
+| AgentMail inbox storage | AgentMail EU region | EU |
+
+## What is OUT of scope for EU residency
+
+Third-party services that Composio brokers to are out of scope — your data inside those services lives where the third-party stores it, not where the tenant lives:
+
+| Service | Where the data lives |
+|---|---|
+| Gmail | Google's regions for the connected Google account |
+| Notion | Notion's regions for the connected workspace |
+| Slack | Slack's regions for the connected workspace |
+| Linear, GitHub, Stripe, etc. | Each third party's regions |
+| LLM providers (Anthropic, OpenAI, OpenRouter, Groq) | The provider's regions; calls flow out from the tenant to the provider's API |
+
+The **Twilio account** that powers AgentPhone is US-located but operates as a **passthrough** — voice and SMS content flows through Twilio briefly (Media Stream WebSocket, signed SMS webhook) before reaching the tenant. Twilio does not durably store call content; SMS body durability is per Twilio's policy. See [Network model → The voice channel exception](/alfred-cloud/security/network-model#the-voice-channel-exception).
+
+If EU-only voice / SMS routing matters for your use case, AgentPhone is currently the wrong fit — speak to the operator about alternatives.
+
+## GDPR rights
+
+The principal has the standard GDPR rights, surfaced through the operator (no automated dashboard flows yet):
+
+| Right | How to exercise |
+|---|---|
+| **Access** | Email the operator; the operator can `rsync` `/mnt/encrypted/vault` and produce a JSON export of `alfred-state.db` views. |
+| **Rectification** | The vault is yours — edit Markdown directly in `/vault` (via Obsidian sync, the web UI, or the API). |
+| **Deletion** ("right to be forgotten") | Cancel the subscription. After the 30-day grace period, the entire VM + volume + backups are destroyed (see below). |
+| **Portability** | The vault is plain Markdown; the SQLite databases are open-format. `restic restore` of your own backups produces a portable archive. |
+| **Restriction of processing** | Pause autonomous actions via the [Agent autonomy](/configuration/agent-autonomy) toggles (Study → Settings). |
+| **Object to processing** | Contact `security@alfred.black`. |
+
+## The 30-day grace period
+
+When the principal cancels the subscription:
+
+<Steps>
+  <Step title="Day 0 — cancellation">
+    The instance enters a **grace period**. It continues to run, billing stops at the next cycle boundary, but service is preserved.
+  </Step>
+  <Step title="Days 1–30 — grace">
+    The principal can:
+    - Reactivate (restores billing, no data loss)
+    - Export the vault and any data they want (via the API, SSH, or operator-assisted `rsync`)
+    - Take a final restic snapshot to their own storage
+  </Step>
+  <Step title="Day 30 — destruction">
+    Outside the grace window, the operator runs the **destroy** flow:
+    - Stop and remove every container on the tenant
+    - `cryptsetup luksRemoveKey` on the LUKS volume (rendering it cryptographically opaque)
+    - Detach and **delete** the Hetzner volume
+    - **Delete** the Hetzner VM
+    - Delete the per-tenant restic password from operator storage
+    - Delete the per-tenant backups from Hetzner Object Storage
+    - Revoke the per-tenant Composio user_id at the next Composio sync
+    - Revoke the per-tenant AgentMail inbox-scoped key
+  </Step>
+</Steps>
+
+After Day 30, there is **no recovery path**. The LUKS keyfile has been zeroized, the volume is gone, and the restic backups are deleted. Even the operator cannot recover the data.
+
+Cancel within the 30-day grace period and your data is preserved; cancel outside it and the data is destroyed in full. *(`/tmp/alfred-doc-old/guides/security.mdx:131`)*
+
+<Warning>
+The destroy flow is **deliberately irreversible**. If you need a longer grace period for compliance reasons, contact the operator before cancelling to extend it.
+</Warning>
+
+## Data processor relationships
+
+For your DPIA (Data Protection Impact Assessment), Alfred Cloud's processor chain is:
+
+| Processor | Role | Data category |
+|---|---|---|
+| **Hetzner Online GmbH** (Germany) | Sub-processor (compute + storage) | Encrypted volume content; cannot read plaintext |
+| **AgentMail** (US/EU) | Sub-processor (inbound email transit) | Email body + attachments, briefly |
+| **Composio** (US) | Sub-processor (OAuth token broker) | OAuth tokens to your connected apps |
+| **Twilio** (US) | Sub-processor (voice + SMS transit) | Call audio + SMS body, briefly |
+| **Anthropic / OpenAI / OpenRouter** (US) | LLM inference | Prompts + completions per call |
+| **Cloudflare** (US/EU) | DNS + Tunnel | TLS-terminated traffic in transit |
+| **Anthropic** (US) | Operator org host | Operator dashboards, not subscriber data |
+
+A signed Data Processing Agreement (DPA) is available from the operator on request.
+
+<CardGroup cols={2}>
+  <Card title="Infrastructure isolation" icon="server" href="/alfred-cloud/security/infrastructure-isolation">
+    The "no shared compute" guarantee underneath this.
+  </Card>
+  <Card title="Backups and recovery" icon="archive" href="/alfred-cloud/security/backups-and-recovery">
+    Where backups are stored and how they're destroyed.
+  </Card>
+  <Card title="Per-tenant isolation" icon="users" href="/alfred-cloud/security/per-tenant-isolation">
+    What flows through Composio / AgentMail / Vaultwarden.
+  </Card>
+</CardGroup>

@@ -45,7 +45,7 @@ A click writes a `decision/<ts>.md` record via `recordDecision` (POST `/api/v1/d
 
 ## The `synchronous_flip` pattern
 
-The cleanest source of bugs on `/desk` used to be a race: the principal clicked *Done*, ctrl-api wrote the decision, `DecisionRouterWorkflow` re-ran the action (flipping the source NA card again), and the agent fired twice — once from the synchronous flip, once from the cascade.
+A subtle race condition shapes the Desk's update path: when the principal clicks *Done*, ctrl-api writes the decision, and `DecisionRouterWorkflow` would otherwise re-run the action (flipping the source NA card again), firing the agent twice — once from the synchronous flip, once from the cascade.
 
 The fix is a flag in the decision's `side_effects` envelope. When ctrl-api flips the source record synchronously inside the POST `/api/v1/decisions` handler, it stamps `side_effects.synchronous_flip: true` on the decision *(packages/ctrl/src/api/routes/decisions.ts:534)*. `DecisionRouterWorkflow` then reads that flag and skips every action path it would otherwise have re-run *(referenced in decisions.ts:560 and attention.ts:218-222)*.
 

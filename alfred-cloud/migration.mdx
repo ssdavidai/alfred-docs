@@ -1,0 +1,117 @@
+---
+title: "Migration"
+description: "Moving between Alfred Cloud and self-hosted Alfred Black in both directions. Honest about what's manual today."
+---
+
+<Warning>
+Migration is **not push-button** in either direction. Both paths require the operator's help — partly because the data is encrypted at rest and the keys live with the operator (Cloud → self-hosted), and partly because the dedicated VPS provisioning isn't self-serve (self-hosted → Cloud).
+</Warning>
+
+## Why migration matters
+
+The whole point of Alfred Cloud running the same software as Alfred Black is that **you're never locked in**. If Cloud goes away, if you outgrow it, if you decide you'd rather own the box — your vault, your matters, your decisions ledger, your instinct library all come with you. The state lives in two stores you can pack into a tarball: the vault directory (markdown) and `alfred-state.db` (SQLite). *(/Users/ssd/dev/alfred/CLAUDE.md:section 5)*
+
+Symmetrically, if you've been self-hosting and want to hand the ops off, the same two artefacts move you onto a Cloud tenant.
+
+## Cloud → self-hosted
+
+### What gets exported
+
+| Artefact | What it is | Where it lives in Cloud |
+|---|---|---|
+| **Vault tarball** | The full markdown vault — every matter, task, note, person, org, decision, instinct, briefing, daybook. Plus `SOUL.md`, `RULES.md`, `_templates/`. | `/mnt/encrypted/vault/` on the VPS |
+| **`alfred-state.db` dump** | Operational SQLite — audit ledger, signals, observations, decisions metadata, vault_index. WAL is checkpointed before the dump. | `/mnt/encrypted/state/alfred-state.db` |
+| **`ingest.db` dump (optional)** | Raw stream events with 7-day TTL. Usually not needed — observations and signals are downstream and already in `alfred-state.db`. | `/mnt/encrypted/ingest/ingest.db` |
+| **`hermes_data` tarball** | Hermes profile configs, session SQLite stores, the consolidated SOUL.md, plugin install dir. | `/mnt/encrypted/hermes/` |
+| **`.env` template** | A redacted version of the tenant's `.env` — variable names with placeholder values. Real secrets you'll need to re-issue (LLM keys, Composio key, JWT secret). | `/opt/alfred/.env` |
+| **Vaultwarden export (if used)** | Optional. Standard Bitwarden JSON export. | `/mnt/encrypted/vaultwarden/` |
+
+### The process
+
+<Steps>
+  <Step title="Request export">
+    Email the operator. They'll schedule a 30-minute window when your Alfred is briefly paused (`docker compose stop alfred hermes temporal`) for a consistent snapshot. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:127)*
+  </Step>
+  <Step title="Operator runs the export">
+    On the VPS: tar the vault, SQLite-VACUUM `alfred-state.db` into a fresh copy, tar `hermes_data`, generate the `.env` template. Everything bundled into a single encrypted tarball, transferred to you via your channel of choice (signed URL, SFTP into your S3, encrypted email attachment).
+  </Step>
+  <Step title="You stand up an alfred-black VM">
+    Follow the [self-hosted Quick start](/quickstart/deploy). A clean VM with 48 GB RAM, Docker, the repo cloned, `.env` filled (using your operator-provided template + your own re-issued secrets).
+  </Step>
+  <Step title="Restore the volumes">
+    Stop the empty stack: `docker compose down`. Restore the tarball into the named volumes:
+
+    ```bash
+    # vault
+    tar xzf vault.tar.gz -C /var/lib/docker/volumes/alfred-black_vault_data/_data/
+    # alfred-state.db
+    cp alfred-state.db /var/lib/docker/volumes/alfred-black_state_data/_data/
+    # hermes
+    tar xzf hermes_data.tar.gz -C /var/lib/docker/volumes/alfred-black_hermes_data/_data/
+    ```
+
+    Then `docker compose up -d`.
+  </Step>
+  <Step title="Re-pair channels + integrations">
+    Composio user IDs are per-tenant — you'll re-pair email/calendar/drive. Authorised phone numbers carry over (they're in the vault). Voice + AgentMail require re-issuing on the self-hosted side. The operator will provide a checklist.
+  </Step>
+  <Step title="Verify the loop">
+    First Desk landing should show your matters, your open decisions, your instincts. Trigger one chore manually (`/chores/<slug>` → Run now) to confirm the workflow loader sees your dynamically loaded code. The signal pipeline takes 5-10 min to first signal because the schedulers are on 2-5 minute cadences. *(/Users/ssd/dev/alfred/CLAUDE.md:section 7)*
+  </Step>
+</Steps>
+
+**Realistic timeline:** 1-2 hours of operator-assisted export + transfer, plus however long you take to provision your VM. Most migrations land within 24 hours of the request.
+
+## Self-hosted → Cloud
+
+### Honest framing
+
+We've done this. It's not common. The operator handles it as part of normal onboarding.
+
+If you have a working self-hosted Alfred and you want to move to Cloud:
+
+1. **Ask during the onboarding call.** Mention you have an existing instance.
+2. **The operator provisions your Cloud VPS first, empty.** Same eight-step provisioning flow as a fresh tenant — see [Provisioning](/alfred-cloud/provisioning).
+3. **Before you log in for the first time**, the operator does an offline data restore — same artefacts as the Cloud → self-hosted path, just in reverse:
+   - Your `vault_data` → `/mnt/encrypted/vault/`
+   - Your `alfred-state.db` → `/mnt/encrypted/state/`
+   - Your `hermes_data` → `/mnt/encrypted/hermes/`
+4. **You re-pair channels.** Composio user, AgentMail, AgentPhone tokens move to the Cloud side; you re-authorise the OAuth scopes.
+5. **First login lands on `/desk` with your existing state.** No onboarding ritual — you skip it because your `SOUL.md` and instincts already exist.
+
+**What you need to supply:**
+
+- A `tar.gz` of your `vault_data` volume
+- A SQLite dump of `alfred-state.db` (`sqlite3 alfred-state.db .dump > dump.sql`)
+- Your current `.env` (the operator will use values that map to Cloud-managed equivalents and reissue the rest)
+
+**What we strongly recommend:**
+
+- Stop your self-hosted stack while you bundle the data (`docker compose stop`).
+- Don't run both instances in parallel after the cutover — duplicate signal extraction, duplicate decision routing, weird vault state. Let the Cloud one win.
+
+## What doesn't move
+
+A few things are genuinely tenant-bound and require re-issue, not transfer:
+
+- **LLM API keys.** Use new ones on the Cloud side (or your existing one — your call). Plain `.env` substitution.
+- **Composio user.** Each tenant has its own Composio user-id; OAuth redirects need the new domain registered. The operator handles this.
+- **JWT secret** + **`AAS_API_KEY`** + **`HERMES_API_SERVER_KEY`**. Re-generated on the new side. Your paired devices will need to re-pair.
+- **Let's Encrypt certs.** Caddy on the new side will mint new ones automatically; no transfer.
+- **Tailnet node identity.** A self-hosted box that wasn't on the mesh joins the mesh on the Cloud side — and vice versa, you leave the mesh on the way out.
+
+## What stays exactly the same
+
+- Vault contents — every word.
+- The instinct library, including learned `observation_count` and `confidence_score` and `tier` for each instinct. *(/Users/ssd/dev/alfred/CLAUDE.md:section 6.6)*
+- The audit ledger — every decision and state-change row in `alfred-state.db`.
+- Hermes sessions for the `main` profile if you bring `hermes_data` (otherwise sessions reset; not data loss, just chat history).
+
+<CardGroup cols={2}>
+  <Card title="Backups" icon="cloud-arrow-down" href="/configuration/backups">
+    Self-hosted backup strategy — same artefacts as the migration export, just on your schedule.
+  </Card>
+  <Card title="Cloud architecture" icon="server" href="/alfred-cloud/architecture">
+    Where everything lives on a Cloud tenant.
+  </Card>
+</CardGroup>

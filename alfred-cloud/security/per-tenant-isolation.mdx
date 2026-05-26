@@ -1,0 +1,156 @@
+---
+title: "Per-tenant isolation"
+description: "How Composio, AgentMail, and Vaultwarden each keep your tenant separate from every other subscriber — server-side enforcement, re-checked on every read."
+icon: "users"
+---
+
+<Note>
+Most things in Alfred Cloud are unshared by construction (your VM, your disk, your vault). The three things that *are* shared at some layer — Composio (third-party OAuth), AgentMail (inbound email), and Vaultwarden (architecturally distinct but worth covering) — each have an explicit isolation mechanism documented below.
+</Note>
+
+## Composio {#composio}
+
+Composio is the third-party action gateway. Every connection to Gmail, Calendar, Notion, Slack, GitHub, Stripe, Linear, etc. is brokered by Composio, which holds the OAuth tokens server-side. The subscriber tenant only ever holds **connection IDs**, not the underlying tokens.
+
+This is the most security-critical shared dependency in the entire system, because a misconfigured isolation here would expose every other tenant's connected apps.
+
+### The isolation primitive: `COMPOSIO_USER_ID`
+
+Every tenant has a unique `COMPOSIO_USER_ID`, typically `alfred-<slug>-<instance-id>` — namespaced and unguessable. It is set in the tenant's `.env` and re-checked from the file fallback at `/mnt/encrypted/alfred/.composio-user-id` if the env var is missing. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:123,131`)*
+
+### Server-side enforcement
+
+`ctrl-api` enforces four layers of isolation on every Composio interaction:
+
+| Layer | Enforcement | Where |
+|---|---|---|
+| **1. Refuse to start with no user_id** | `ctrl-api` exits at boot if `COMPOSIO_USER_ID` is unset or `"default"`. The fallback file is checked first — a tenant that has never had the env var injected can still recover from the file. | *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:109,139`)* |
+| **2. Every call passes `user_id`** | Every Composio API call passes `user_id` to filter results server-side. This is the primary isolation — Composio's index is `(user_id, connection_id)`. | *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:3098,3104`)* |
+| **3. Re-verify ownership on every read by ID** | When `ctrl-api` looks up a connection by ID, it **re-verifies** that Composio's returned record actually belongs to this tenant's `COMPOSIO_USER_ID`. Composio's server-side filter has been observed to occasionally return cross-tenant accounts; the re-check is the safety belt. | *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:257,1965,3251`)* |
+| **4. 404 on ownership mismatch, not 403** | A connection ID that doesn't belong to the tenant returns **404** (not 403, not 401) so enumeration cannot distinguish "doesn't exist" from "exists but belongs to someone else". | *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:284`)* |
+
+In code, layer 3 looks like:
+
+```ts
+// Defense-in-depth: require explicit ownership match. Treat a
+// mismatch as 404 (not 403) so enumeration can't distinguish
+// "doesn't exist" from "exists but belongs to someone else".
+```
+*(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:1965`)*
+
+### What never leaves Composio
+
+The OAuth refresh tokens, access tokens, and per-app secrets for Gmail / Calendar / Notion / Slack / etc. are stored by Composio on Composio's infrastructure. The subscriber tenant only ever sees:
+
+- A **connection ID** (opaque UUID) per connected app.
+- **Tool metadata** (action names, parameter schemas).
+- **Tool-call results** (e.g. an email subject line, a calendar event).
+
+If Composio were compromised, every tenant's third-party tokens would be at risk — that's Composio's problem to defend against, but the user-id scoping means a hypothetical attacker could not pivot from one tenant's connection IDs to another's.
+
+### Tier of trust: third-party data
+
+Data inside the third-party app (your Gmail inbox content, your Notion pages, your Slack messages) lives where that third-party stores it. Composio reads/writes through their APIs but does not durably store the content. See [Data residency](/alfred-cloud/security/data-residency) for the third-party scope caveat.
+
+## AgentMail {#agentmail}
+
+AgentMail is the inbound email delivery layer. When the principal forwards or BCCs `<your-alias>@agentmail.to`, the message lands on AgentMail's infrastructure, then is webhook-delivered to the SaaS host, which forwards it to the tenant. The tenant's outgoing email also flows through AgentMail.
+
+### The isolation primitive: inbox-scoped API keys
+
+There is **one master AgentMail API key**, and it lives **only on the SaaS host** (in env + macOS Keychain on the operator's machine). It is **never** present on a tenant.
+
+At tenant-provision time, the master is used to mint a per-tenant **inbox-scoped key**. The scoped key:
+
+- Can **read and send** for the tenant's own inbox only.
+- **Cannot enumerate** any other inbox.
+- **Cannot read or modify** any other tenant's inbox.
+
+The tenant stores its scoped key at `/mnt/encrypted/alfred/.agentmail-credentials.json` and in the tenant `.env`. Both locations are on the LUKS volume. *(`/tmp/alfred-doc-old/guides/security.mdx:121`)*
+
+### Inbound webhook signing
+
+When AgentMail receives mail and pushes a webhook to the SaaS, the webhook payload is signed with a shared secret using **Svix** signature verification. The SaaS verifies the signature before forwarding to the tenant — a forged inbound email cannot inject into a tenant's stream without that secret.
+
+### What gets stored where
+
+| Data | Where |
+|---|---|
+| Inbound email body + attachments | AgentMail (briefly, until webhook delivery) |
+| Webhook-delivered email summary | Tenant's `ingest.db` (`stream_event`), 7-day TTL |
+| Promoted email metadata (sender, subject, signal extraction) | Tenant's `alfred-state.db` |
+| Email referenced in a vault matter | Tenant's `/mnt/encrypted/vault` |
+
+AgentMail's storage region is EU-hosted, matching the tenant's residency. See [Data residency](/alfred-cloud/security/data-residency).
+
+## Vaultwarden {#vaultwarden}
+
+Strictly speaking, Vaultwarden is not a shared dependency — every tenant runs its **own** Vaultwarden container inside its **own** Docker stack on its **own** LUKS volume. But it's worth documenting in the isolation chapter because the password-manager content is more sensitive than the rest of the tenant's state, and the encryption properties are interesting.
+
+### Architecture
+
+Every tenant runs:
+
+- A `vaultwarden` container (Bitwarden-compatible server) — bound to `127.0.0.1`, database at `/mnt/encrypted/vaultwarden/`.
+- A `vault-init` one-shot — fetches `.env` from the vault, writes it to the shared scratch directory, exits.
+- A `vault-cli` long-running side-container — runs `bw serve` so the MCP `vaultwarden` server can proxy CLI operations.
+
+All three are in the same compose file behind a `vaultwarden_enabled` flag (on by default for new tenants). *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:95`)*
+
+### The two-layer encryption
+
+Vaultwarden content is encrypted **twice** at rest:
+
+| Layer | Algorithm | Key derivation |
+|---|---|---|
+| **1. Bitwarden per-record AES-256** | AES-256-CBC + HMAC-SHA-256 | PBKDF2-SHA256 (100k+ iterations) from the principal's master password |
+| **2. LUKS2 volume encryption** | AES-256-XTS | Per-instance LUKS passphrase (see [Encryption at rest](/alfred-cloud/security/encryption-at-rest)) |
+
+Even if an attacker obtained the LUKS master key, the Bitwarden vault on top still requires the principal's master password (which `ctrl-api` and Vaultwarden never see in derived-key form except in-memory during `bw unlock`). This is the **strongest crypto layer** on the tenant.
+
+### Where the master password lives
+
+The Vaultwarden master password is `BW_PASSWORD` in the tenant `.env` — it is also a **service credential** used internally by the `vault-init` sidecar to unlock the CLI on boot. It's surfaced in the dashboard at **Settings → Claude Setup → Vault Login** with click-to-reveal. The principal copies it to their personal password manager once and never again. *(`/tmp/alfred-doc-old/guides/security.mdx:58`)*
+
+<Warning>
+**Do not rotate the Vaultwarden master via the "Change Master Password" dialog in the Vaultwarden web UI.** That changes the Bitwarden-side key derivation without updating the `BW_PASSWORD` service credential, and the next `vault-init` boot will fail to unlock. To rotate properly, update both sides in coordination — see the operator runbook.
+</Warning>
+
+### Cross-tenant boundary
+
+Vaultwarden runs **inside** the tenant's Docker stack, bound to `127.0.0.1`, encrypted at rest under the tenant's own LUKS volume.
+
+- There is **no shared Vaultwarden** instance across tenants.
+- There is **no shared organization** or shared collection.
+- A peer cannot reach into another peer's vault — even with Tailscale ACLs misconfigured, Vaultwarden binds to localhost on the tenant, not to the Tailscale IP.
+
+The tenant's vault data is per-tenant in the same hard sense as the rest of the dedicated-VPS model.
+
+### When the main agent reads a credential
+
+When the principal asks Hermes to do something that needs a stored credential — "log into the broker and pull this month's statement", "rotate the Stripe webhook secret" — the main agent reads from Vaultwarden through the `ctrl-api` routes at `/api/v1/vaultwarden/*` (list, search, get, create, update, delete on login items; folders read/write; collections and orgs read-only). Reads return passwords and TOTPs in the response envelope; writes go through the same authenticated bearer surface as the rest of the admin API. *(`/tmp/alfred-doc-old/guides/security.mdx:60`)*
+
+The Hermes agent's access to Vaultwarden is gated through the `vaultwarden` MCP server, which itself goes through `ctrl-api` — so the bearer auth + activity log apply to every credential read. See [Agent sandboxing](/alfred-cloud/security/agent-sandboxing) for the broader tool-scoping model.
+
+## Summary table
+
+| Shared service | Per-tenant primitive | Re-check on each read? | Failure mode if isolation breaks |
+|---|---|---|---|
+| Composio | `COMPOSIO_USER_ID` | Yes — ownership re-verified at `ctrl-api` | Cross-tenant connection ID leak (404'd by the re-check) |
+| AgentMail | Inbox-scoped key + Svix webhook signing | Implicit (scoped key cannot enumerate) | Inbox enumeration (gated by AgentMail's own auth model) |
+| Vaultwarden | Not shared — per-tenant container + per-tenant LUKS | Not applicable | N/A — there is no shared Vaultwarden to break |
+
+<CardGroup cols={2}>
+  <Card title="Encryption at rest" icon="hard-drive" href="/alfred-cloud/security/encryption-at-rest">
+    The LUKS layer underneath Vaultwarden's own encryption.
+  </Card>
+  <Card title="Authentication" icon="key" href="/alfred-cloud/security/authentication">
+    The `AAS_API_KEY` that gates the `/api/v1/vaultwarden/*` routes.
+  </Card>
+  <Card title="Agent sandboxing" icon="lock" href="/alfred-cloud/security/agent-sandboxing">
+    What the Hermes agent can and cannot do with these credentials.
+  </Card>
+  <Card title="Audit and logging" icon="clipboard-list" href="/alfred-cloud/security/audit-and-logging">
+    Every Vaultwarden read shows up in the activity log.
+  </Card>
+</CardGroup>

@@ -83,7 +83,7 @@ Updating a vault item rotates the value, but the running containers don't know. 
 { "services": ["sure-web", "sure-worker"] }
 ```
 
-It rewrites `/opt/alfred/compose/.env` from the current Vaultwarden state and restarts the named services. Defaults are `['openclaw', 'alfred']` (the most common consumers). ctrl-api refuses to restart itself, which would 502 the response mid-call.
+It rewrites `/opt/alfred/compose/.env` from the current Vaultwarden state and restarts the named services (the caller passes the list of compose service names to recreate after vault-init runs). ctrl-api refuses to restart itself, which would 502 the response mid-call.
 
 <Warning>
 The MCP catalogue is intentionally narrow because the bearer token is the entire blast radius — a leaked token can list, read, write, and delete every credential Vaultwarden holds. Rotate `MCP_APPROVAL_SECRET` from `/settings#agent` if you suspect compromise; the rotation is reveal-once and invalidates the prior secret immediately.

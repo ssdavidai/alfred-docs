@@ -32,7 +32,7 @@ The same TS bundle is also shipped as a standalone container (`alfred-mcp-server
 
 **Backend**: HTTP via `proxyToCtrl()` to ctrl-api's `/api/v1/*` endpoints *(packages/mcp-server/src/tools/alfred.ts:46-562)*. Bearer auth using `AAS_API_KEY`. Backing endpoints: vault filesystem (read/write through the alfred CLI under a per-path mutex), Temporal CLI via `docker exec`, Hermes pairing CLI, ctrl-api ledger queries.
 
-This is the Alfred Black control surface: read or write any vault record, kick off Temporal workflows, inspect the OpenClaw/Hermes gateway, and send notifications. Twenty-four tools intentionally exposed; restart / rotate-secret / fleet-pause operations are deliberately withheld from connector traffic *(packages/mcp-server/src/tools/alfred.ts:18-28)*.
+This is the Alfred Black control surface: read or write any vault record, kick off Temporal workflows, inspect the Hermes gateway, and send notifications. Twenty-four tools intentionally exposed; restart / rotate-secret / fleet-pause operations are deliberately withheld from connector traffic *(packages/mcp-server/src/tools/alfred.ts:18-28)*.
 
 <Accordion title="alfred — full tool table">
 
@@ -63,7 +63,7 @@ This is the Alfred Black control surface: read or write any vault record, kick o
 | `start_workflow` | Start a new workflow execution by type. | `workflow_type`, `task_queue`, `input`, `workflow_id` |
 | `signal_workflow` | Send a Temporal signal to a running workflow. | `wfId`, `signal_name`, `input`, `run_id` |
 
-### OpenClaw / Hermes diagnostics (3, read-only)
+### Hermes gateway diagnostics (3, read-only)
 
 | Tool | Purpose | Key params |
 |------|---------|-----------|

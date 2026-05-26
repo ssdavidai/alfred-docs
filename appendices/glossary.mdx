@@ -138,7 +138,7 @@ files, `FIX-*` docs, `scripts/hooks/**`, `CLAUDE.md`.
 
 **Hermes** — the AI runtime
 ([NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent))
-that replaces OpenClaw. Three supervised profiles in one container: `main`
+that powers Alfred. Three supervised profiles in one container: `main`
 (:18789, user-facing chat), `workers` (:18790, background agents), `heavy`
 (:18791, Opus-class reasoning).
 
@@ -203,10 +203,13 @@ time from linked tasks. See [State machines → Matter](/architecture/state-mach
 household. Reads from `parent_matter`, `matter_ref`, `project` task
 frontmatter.
 
-**MCP servers** — the seven Model Context Protocol servers registered on
-each Hermes profile: `alfred-ctrl` (HTTP), and six stdio apps (`alfred`,
-`sure`, `plane`, `vaultwarden`, `execute`, `hermes`). See
-[MCP catalog](/development/mcp-catalog).
+**MCP servers** — the Model Context Protocol servers registered on each
+Hermes profile. Six are wired in the profile template today: `alfred-ctrl`
+(HTTP) plus five stdio apps (`alfred`, `sure`, `plane`, `vaultwarden`,
+`execute`). A sixth stdio app (`hermes`) ships in the bundle but isn't yet
+wired into the profile template; it is reachable through the HTTP MCP
+server at `mcp.{$DOMAIN}/hermes/mcp`. See
+[MCP catalog](/reference/mcp-tool-catalog).
 
 **mode flags** — `signal_action_mode`, `state_mutator_mode`,
 `auto_task_create_mode`. Live | shadow | off. Default `live`. See
@@ -214,9 +217,10 @@ each Hermes profile: `alfred-ctrl` (HTTP), and six stdio apps (`alfred`,
 
 ## N
 
-**needs_attention card** — the historical name for what shows up on `/desk`.
-Newer code uses `decision/<ts>.md` cards via `POST /api/v1/decisions`; the
-legacy `/admin/needs-attention/:id/*` routes survive as compatibility shims.
+**needs_attention card** — an alternate name for what shows up on `/desk`.
+The canonical write path is `decision/<ts>.md` via `POST /api/v1/decisions`;
+the `/admin/needs-attention/:id/*` routes are an additional compatibility
+surface available to older integrations.
 
 **notify_principal** — the Alfred tool that the agent calls to speak to the
 principal. Now a thin wrapper over `/api/v1/alfred-deliver`.
@@ -240,10 +244,6 @@ recent journal context as authoritative continuity.
 a new principal walks once. Behind it: Gmail OAuth, Composio account
 creation, ~100-day email backfill, fact extraction, pattern discovery,
 personalisation, pack materialisation, day-one Desk seeding, first Brief.
-
-**OpenClaw** — the previous-generation runtime that Hermes replaces.
-References in code (e.g. `OPENCLAW_GATEWAY_URL`) survive as historical
-aliases.
 
 **OpenRouter** — the LLM router. Alfred Black requires `OPENROUTER_API_KEY`;
 `ANTHROPIC_API_KEY` is optional and used directly for some heavy paths.
@@ -279,8 +279,8 @@ Editable from `/household`.
 **SaaS — single-VM** — Alfred Black's deployment model. One Linux VM,
 `docker compose up`, no multi-tenant control plane.
 
-**settings (page)** — `/settings`. Formerly `/study`; the rename happened in
-the 2026-05-24 release. `/study` redirects.
+**settings (page)** — `/settings`. The unified back-office surface — agent
+config, workspace files, API keys, audit, theme.
 
 **signal** — a row in `alfred-state.db.signal` (never a vault record).
 Statuses: `unrouted | routed_human | routed_agent | routed_suppressed |

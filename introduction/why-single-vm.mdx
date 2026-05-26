@@ -1,11 +1,9 @@
 ---
 title: "Why a single VM"
-description: "What you give up moving from SaaS to one box, and what you get."
+description: "What you get from running Alfred on one box, and what you give up."
 ---
 
-Alfred Black is the **single-VM reframing** of an older multi-tenant platform. The previous build (`alfred-platform`) provisioned Hetzner servers per tenant, knitted them together with Tailscale, automated Cloudflare DNS, ran a SaaS control plane on top, and billed users on a Stripe metered plan. The new build throws all of that out. One repo, one VM, one `docker compose up`, one principal *(CLAUDE.md §1)*.
-
-That move was a deliberate trade. It's worth being honest about both sides.
+Alfred Black is a single-VM stack: one git repo, one `.env` file, one `docker compose up`, one principal *(CLAUDE.md §1)*. That's a deliberate shape, with real trade-offs against any hosted alternative. It's worth being honest about both sides before you decide whether to self-host or use [Alfred Cloud](/alfred-cloud/overview).
 
 ## What you give up
 
@@ -26,18 +24,18 @@ Single-VM deployments are not high-availability. If the VM goes down, Alfred is 
 - **A small attack surface.** Caddy fronts everything with automatic Let's Encrypt TLS *(caddy/Caddyfile)*. No inbound ports beyond 80/443. The webhook surface is path-prefixed and individually authenticated.
 - **Reproducible builds.** `docker compose up` never builds — it pulls `:latest` of every image. CI in the upstream repo is the only path that publishes images, and you can pin tags in the compose file if you want to control updates *(.github/workflows/)*.
 
-## When to choose Alfred Black
+## When self-host fits
 
-Pick the single-VM build when:
+Self-host Alfred Black when:
 
-- You're one person (or a small household) and the data feels personal enough that you'd rather host it yourself.
+- You're one person (or a small household) and the data feels personal enough that you'd rather hold it yourself.
 - You're comfortable running a Linux VM, watching `docker compose logs`, and reading SQLite when something looks off.
 - You want to be able to read every line of code your butler runs.
 
-Pick a hosted product instead when:
+Consider [Alfred Cloud](/alfred-cloud/overview) — the hosted, private-beta option — when:
 
-- HA matters more than control.
+- High availability matters more than control.
 - You'd rather pay a single subscription than juggle four upstream API keys.
 - Standing up a Linux VM and pointing DNS records is not how you want to spend an afternoon.
 
-Both are reasonable. Alfred Black is the build for the first group.
+Both paths run the same software. The difference is who operates the box.

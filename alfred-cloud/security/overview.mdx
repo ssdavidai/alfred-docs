@@ -1,0 +1,70 @@
+---
+title: "Security overview"
+description: "How Alfred Cloud protects your tenant — dedicated EU VPS, LUKS2 at rest, Tailscale-only ingress, per-tenant Composio / AgentMail / Vaultwarden isolation."
+icon: "shield-check"
+---
+
+<Note>
+Alfred Cloud is the hosted, **private-beta** form of Alfred Black. Every paying subscriber gets a dedicated EU VPS — no shared compute, no shared storage, no shared database. This page is the short-version map; each row links to a deep-dive.
+</Note>
+
+## The short version
+
+| Layer | How it's protected |
+|---|---|
+| **Infrastructure** | Dedicated `cx53` Hetzner Cloud VPS in the EU per tenant. No shared servers, no multi-tenancy. *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:17`)* |
+| **Data at rest** | LUKS2 (AES-256-XTS) full-disk encryption with a per-instance auto-generated passphrase. *(`/Users/ssd/dev/alfred/packages/ctrl/src/templates/cloud-init.yaml.njk`)* |
+| **Network ingress** | Hetzner Cloud Firewall allows only SSH (22), ICMP, and Tailscale UDP 41641. All Alfred services bind to `127.0.0.1`. *(`/Users/ssd/dev/alfred/docker-compose.yaml:50–536`)* |
+| **External access** | Tailscale tailnet (WireGuard mesh) and Cloudflare Tunnel only. No public IP exposure of services. |
+| **API auth** | Per-tenant Bearer token (`AAS_API_KEY`), timing-safe constant-time comparison, SHA-256 hashed at rest, AES-256-GCM internal credentials. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/auth.ts:22,77`)* |
+| **Third-party credentials** | Composio holds OAuth tokens server-side. The subscriber tenant only stores connection IDs. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:257–291`)* |
+| **Per-tenant isolation** | `COMPOSIO_USER_ID` enforced server-side; explicit ownership verification on every connection lookup. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/integrations.ts:109,1965,3251`)* |
+| **Audit** | Every authenticated API call logged. Every main-agent session captured to a queryable stream (`system-hermes-sessions`). *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/admin.ts:660`)* |
+| **Data residency** | EU only — Hetzner Germany (Falkenstein, Nuremberg) or Finland (Helsinki) depending on capacity at provision time. *(`/tmp/alfred-doc-old/guides/security.mdx:127`)* |
+
+## The one-paragraph version
+
+Every paying subscriber gets a **dedicated Hetzner Cloud `cx53` VPS** in the EU — not a container, not a namespace on a shared host, an entire VM. Everything that matters is on a **LUKS2-encrypted volume** mounted at `/mnt/encrypted`. The Hetzner Cloud Firewall denies every inbound port except SSH (22), ICMP for liveness checks, and WireGuard (UDP 41641) for Tailscale — every Alfred service binds to `127.0.0.1` behind that. The three shared dependencies — **Composio** (OAuth), **AgentMail** (inbound email), and the Twilio account (phone) — each have per-tenant scoping enforced server-side and re-checked on every read. The principal's password manager is a per-tenant **Vaultwarden** running inside the tenant's own Docker stack — there is no shared Vaultwarden, no shared org, no shared collection.
+
+## What "dedicated VPS per tenant" actually means
+
+- **Compute is yours.** A 16-vCPU, 32–64 GB `cx53` is provisioned at signup and joined to the operator's Tailscale tailnet. Your workloads never share a kernel with another tenant.
+- **Storage is yours.** A Hetzner volume is created, attached, formatted with LUKS2, and mounted at `/mnt/encrypted`. The passphrase is generated post-boot via SSH (never written to Hetzner's cloud-init `user_data`, which is readable through the metadata API). *(`/tmp/alfred-doc-old/architecture/infrastructure.mdx:42`)*
+- **Database is yours.** SQLite for `alfred-state.db`, `ingest.db`, Temporal, and Vaultwarden — all on `/mnt/encrypted`. Postgres for the optional Plane / Sure / Vexa sidecar stacks — all on `/mnt/encrypted`. None of these are shared.
+- **Vault is yours.** The principal's Markdown vault at `/mnt/encrypted/vault` is bind-mounted into every container that needs it and never copied off-host except as a `restic` snapshot encrypted with your own key.
+
+## Deep dives
+
+<CardGroup cols={2}>
+  <Card title="Infrastructure isolation" icon="server" href="/alfred-cloud/security/infrastructure-isolation">
+    Dedicated `cx53` VPS per tenant; the four shared dependencies and what isolates each.
+  </Card>
+  <Card title="Encryption at rest" icon="hard-drive" href="/alfred-cloud/security/encryption-at-rest">
+    LUKS2 (AES-256-XTS), per-instance passphrase, the `/mnt/encrypted/*` directory list, key lifecycle.
+  </Card>
+  <Card title="Network model" icon="network" href="/alfred-cloud/security/network-model">
+    The three ways in (Tailscale, Cloudflare Tunnel, SSH). Inbound port table. `127.0.0.1` bindings.
+  </Card>
+  <Card title="Authentication" icon="key" href="/alfred-cloud/security/authentication">
+    `AAS_API_KEY` Bearer, timing-safe compare, SHA-256 at rest, AES-256-GCM SaaS encryption, rotation.
+  </Card>
+  <Card title="Per-tenant isolation" icon="users" href="/alfred-cloud/security/per-tenant-isolation">
+    How Composio, AgentMail, and Vaultwarden each keep your tenant separate from every other.
+  </Card>
+  <Card title="Data residency" icon="globe" href="/alfred-cloud/security/data-residency">
+    EU-only hosting, GDPR rights, the 30-day grace period, third-party data scope.
+  </Card>
+  <Card title="Backups and recovery" icon="archive" href="/alfred-cloud/security/backups-and-recovery">
+    Daily restic at 03:00 host-local, quiesce + snapshot + restart, retention, LUKS keyfile backup.
+  </Card>
+  <Card title="Agent sandboxing" icon="lock" href="/alfred-cloud/security/agent-sandboxing">
+    The seven layers of tool scoping that bound what Hermes-driven agents can do.
+  </Card>
+  <Card title="Audit and logging" icon="clipboard-list" href="/alfred-cloud/security/audit-and-logging">
+    Activity log, `system-hermes-sessions` stream, forensic queryability, vulnerability reporting.
+  </Card>
+</CardGroup>
+
+<Tip>
+Reporting a security concern? Email **security@alfred.black** with details. Please don't post sensitive findings publicly until we've had a chance to patch — see [Audit and logging](/alfred-cloud/security/audit-and-logging) for the disclosure policy.
+</Tip>

@@ -1,0 +1,72 @@
+---
+title: "Private beta status"
+description: "Where Alfred Cloud is right now — invite-only, small cohort, hands-on onboarding."
+---
+
+<Warning>
+Alfred Cloud is in **private beta**. There is no self-serve checkout. The signup form drops you onto a waitlist; access is granted in small batches and requires an onboarding conversation first.
+</Warning>
+
+## Where things stand
+
+Currently **fewer than 50 invited tenants** are running on Alfred Cloud. The cohort is intentionally small — every new tenant gets the operator's direct attention during the first week, and that doesn't scale to hundreds. Inviting tenants slowly is how we keep the bar high while the software is still moving fast.
+
+The beta exists to find the failure modes a self-hosted README can never surface — Composio quirks, model-provider rate limits, the long tail of "what does Alfred do when the principal asks something we never imagined?" Every tenant in the cohort is, in effect, helping shape the v1 surface.
+
+## How to request access
+
+1. **Email** [hello@alfred.black](mailto:hello@alfred.black) with a short note: who you are, what you'd use Alfred for, and which channels (email, voice, Slack, etc.) matter most to you.
+2. **Or fill the waitlist form** at [alfred.black](https://alfred.black). Same fields, lighter touch.
+3. **We respond within a few days** with one of: "let's schedule a call," "you're on the waitlist — here's where you sit," or "Alfred Cloud probably isn't the right fit, here's why."
+
+We're honest about (3). Alfred is opinionated software. If your use case is fundamentally a CRM or a code-review bot or a customer-support assistant, you'll be happier with a tool that's actually for that.
+
+## What onboarding looks like
+
+<Steps>
+  <Step title="A 30-minute call">
+    The operator walks through how Alfred works, what the principal model means in practice, and what data Alfred will see (your inbox, calendar, optionally drive, optionally voice). You ask whatever you need to. **You decide if you're in or out at the end of the call** — no obligation either way.
+  </Step>
+  <Step title="Provisioning kicks off (within ~24 h)">
+    Assuming you opt in, the operator provisions your dedicated VPS that day or the next. End-to-end provisioning is 3 min from the golden snapshot, 18-20 min from scratch *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:55)* — but the **window from "decision" to "first login"** is typically the same business day. See [Provisioning](/alfred-cloud/provisioning) for the eight-step flow.
+  </Step>
+  <Step title="First week: hands-on">
+    During the first week, the operator is in the loop. You'll have a direct channel (email, Signal, whatever you prefer) for "is Alfred supposed to do this?" questions. Most early friction is *terminology* friction — Alfred uses words like "matter," "instinct," "decision" in specific senses — and that surfaces quickly in real use.
+  </Step>
+  <Step title="Settling in">
+    By week two, most principals are on /desk daily and the operator drops to weekly check-ins. By week four you have a vault that looks like *you* and an instinct layer that's starting to learn your preferences.
+  </Step>
+</Steps>
+
+## What to expect (and what not to)
+
+**Expect:**
+
+- An operator who actually responds during the first week. This is not a ticketing system.
+- Bugs. The software is changing fast — see the [incident history](/troubleshooting/incident-history) for the kind of issues we've shipped through. We'll tell you when a fix is in flight.
+- Honesty about what Alfred can't do yet. There's a backlog and the operator will name it.
+- Real onboarding ritual. Alfred has a sequential `/awaken → /reading-the-room → /verify → /soul → /composing → /preparing → /first-brief → /desk` flow that personalises the agent to you. *(/Users/ssd/dev/alfred/CLAUDE.md:section 14)*
+
+**Don't expect:**
+
+- A polished SaaS dashboard with usage analytics. The dashboard is the principal's surface — Desk, Brief, Matters, Vault — not an admin console.
+- Marketplace integrations beyond Composio's catalogue. If your stack is unusual, ask before you sign up.
+- An SLA. Beta tenants run on a single VPS with daily backups. We aim for uptime, but if Hetzner has a regional outage, you're down.
+- An invoice you can hand to procurement. We don't have public pricing yet — see [Billing](/alfred-cloud/billing).
+
+## When does private beta end?
+
+When the software stops surprising us. Concretely: when a new tenant's first 30 days produces zero incidents the operator hasn't already seen. That's not a calendar date — it's a quality bar. Public-launch pricing, SLAs, and a real signup flow will follow that.
+
+<Note>
+If you're reading this and wondering whether you'd qualify — the rough heuristic is: do you have a job where information from email, calendar, and a few apps lands on you faster than you can triage it? If yes, [send the email](mailto:hello@alfred.black).
+</Note>
+
+<CardGroup cols={2}>
+  <Card title="Overview" icon="circle-info" href="/alfred-cloud/overview">
+    What Alfred Cloud is, vs. self-hosted Alfred Black.
+  </Card>
+  <Card title="Provisioning" icon="play" href="/alfred-cloud/provisioning">
+    What happens between "yes, let's do it" and "your Alfred is online."
+  </Card>
+</CardGroup>

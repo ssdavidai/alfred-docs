@@ -1,0 +1,137 @@
+---
+title: "Authentication"
+description: "Per-tenant `AAS_API_KEY` Bearer token. Timing-safe constant-time comparison. SHA-256 hashed at rest, AES-256-GCM encrypted on the SaaS side. Per-tenant scoping enforced end-to-end."
+icon: "key"
+---
+
+<Note>
+Every authenticated request to Alfred Cloud presents a per-tenant Bearer token. The token authorises exactly one tenant — there is no way to use one subscriber's token to reach another's data.
+</Note>
+
+## The token
+
+The tenant API key is called `AAS_API_KEY` (Alfred API Server key). It is:
+
+- **Provisioned automatically** when the tenant's instance is created.
+- **Stored in the tenant's `.env`** at `/mnt/encrypted/alfred/.env` and read by `ctrl-api` on boot.
+- **Mirrored at the SaaS layer** in the tenant's `Instance` record, encrypted at rest (AES-256-GCM) with a column-encryption key.
+- **A long opaque string** — the dashboard may surface it prefixed (e.g. `alf_<32 hex>`) but both forms work; the comparison is timing-safe and exact. *(`/tmp/alfred-doc-old/api-reference/authentication.mdx:30`)*
+
+## The auth chain
+
+A request from a script or client reaches the tenant via this chain:
+
+<Steps>
+  <Step title="Client sends `Authorization: Bearer ${AAS_API_KEY}` to `alfred.black`">
+    Every endpoint Sir's tenant exposes is reachable at `https://alfred.black/api/...` — the same hostname for every subscriber.
+  </Step>
+  <Step title="SaaS edge looks up the token">
+    The SaaS edge hashes the token (SHA-256) and looks it up in the `ApiKey` table. The row points at exactly one `Instance` record.
+  </Step>
+  <Step title="SaaS edge decrypts the per-tenant routing credentials">
+    The `Instance.apiKey` field (the tenant's internal `AAS_API_KEY`) is AES-256-GCM-encrypted at rest. The SaaS edge decrypts it in-memory just long enough to forward the request.
+  </Step>
+  <Step title="Proxy over Tailscale">
+    The SaaS host opens a connection over its Tailscale tailnet to the tenant's `ctrl-api:3100` (which is bound to `127.0.0.1` and reachable only from within the tailnet). The request is forwarded with the tenant's own `AAS_API_KEY` in the Authorization header.
+  </Step>
+  <Step title="`ctrl-api` performs timing-safe comparison">
+    `ctrl-api` compares the presented token byte-by-byte against the server-side `AAS_API_KEY` using `crypto.timingSafeEqual` so a network attacker cannot time the comparison to recover bytes. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/auth.ts:22,77`)*
+  </Step>
+</Steps>
+
+If any step fails — bad token at the SaaS edge, no `Instance` mapping, decryption failure, mismatched token at the tenant — the response is a generic **401**:
+
+```json
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Invalid API key"
+  }
+}
+```
+
+## The timing-safe comparison
+
+The tenant-side check is in `packages/ctrl/src/api/auth.ts` (live code, applies to both self-host and Cloud):
+
+```ts
+// Path 1 — master key. Grants everything.
+if (
+  tokenBuf.length === apiKeyBuf.length &&
+  crypto.timingSafeEqual(tokenBuf, apiKeyBuf)
+) {
+  return;
+}
+```
+
+`crypto.timingSafeEqual` is Node's constant-time comparator — it processes every byte regardless of where the first mismatch is, so a network attacker cannot use response-time deltas to recover the token byte-by-byte. The length check before it (`tokenBuf.length === apiKeyBuf.length`) is necessary because `timingSafeEqual` throws on length mismatch — and yes, that leaks the **length** of the server-side token. The server-side token is a 32-byte hex string for every tenant, so length is not secret. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/auth.ts:75–80`)*
+
+A second, scoped token is also accepted: the `VOICE_BRIDGE_INTERNAL_TOKEN`, which is **path-allowlisted** to exactly two routes (`GET /api/v1/phone/voice-context` and `POST /api/v1/phone/transcript`). Any other route presented with that token returns 401. This is principle-of-least-privilege for the voice-bridge sibling service — if it's compromised, blast radius is bounded to those two endpoints. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/auth.ts:38–98`)*
+
+## At-rest hashing and encryption
+
+| Layer | Algorithm | Notes |
+|---|---|---|
+| SaaS `ApiKey.tokenHash` | **SHA-256** | The token's plaintext is never stored at the SaaS layer; only its hash. A lookup hashes the inbound token and finds the row by hash. |
+| SaaS `Instance.apiKey` (tenant internal key) | **AES-256-GCM** | Column-encrypted with a master key (`COLUMN_ENCRYPTION_KEY`) loaded from the SaaS host's secret store at startup. |
+| Tenant `.env` | Plain text on LUKS | Tenant `.env` is on the LUKS-encrypted volume (`/mnt/encrypted/alfred/.env`). |
+
+A consequence: **if you lose your `AAS_API_KEY`, there is no recovery flow.** The SaaS host doesn't have the plaintext. Create a new key in the dashboard (Settings → API Keys → Create), copy it once, and revoke the old one.
+
+## Per-tenant scoping
+
+Each token is mapped at the SaaS layer to exactly one tenant `Instance`. There is no way to use one subscriber's token to reach another subscriber's data — the proxy chain only routes a token to the tenant it's bound to. *(`/tmp/alfred-doc-old/api-reference/authentication.mdx:75`)*
+
+The cross-tenant Alfred Prime federation capability is a **separate** auth flow, gated by `ALFRED_PRIME=true` on the peer side and explicit peer listing on the Prime side. It does not use the bearer-token flow described here.
+
+## Rotation
+
+API keys do not expire automatically. They're valid until revoked.
+
+<Steps>
+  <Step title="Create a new key">
+    Settings → API Keys → Create Key. Name it after its purpose (e.g. `home-automation-laptop-2026-05`). Copy the value.
+  </Step>
+  <Step title="Update clients">
+    Switch every script and integration to the new key. Test that everything still works.
+  </Step>
+  <Step title="Verify with the health endpoint">
+    `curl https://alfred.black/api/v1/admin/health -H "Authorization: Bearer ${NEW_KEY}"` should return 200.
+  </Step>
+  <Step title="Revoke the old key">
+    Back in the dashboard, revoke the previous key. Revocation is immediate — any subsequent call with the old key returns 401.
+  </Step>
+</Steps>
+
+You can hold up to **10 keys** per account. If you need more, revoke an unused one first.
+
+## What a token does NOT grant
+
+A token authenticates the holder as the tenant's owner. It does **not** grant:
+
+- **Cross-tenant access** — Prime federation is a separate, explicitly opted-in capability.
+- **Access to the SaaS host's admin endpoints** — those use a separate operator identity.
+- **A bypass of the per-instance Tailscale firewall** — only the SaaS edge can reach the tenant's `:3100`; a token alone is not enough.
+- **Granular scoping** — there is no read-only / write-only / scoped-to-a-route capability today (other than the voice-bridge token, which is internal). Every key has the same permissions as Sir himself does in the dashboard. Use one key per integration and revoke aggressively.
+
+<Warning>
+The most common cause of a `401 Invalid API key` is whitespace or quotes accidentally included around the token when it was set in the environment. Strip both: `AAS_API_KEY=alf_…` not `AAS_API_KEY="alf_…"\n`.
+</Warning>
+
+## Last-used tracking
+
+Every successful API call updates the `lastUsedAt` timestamp on the key. Use this to find keys you've forgotten about — a key whose last use was three months ago is probably safe to revoke. *(`/tmp/alfred-doc-old/guides/api-keys.mdx:88`)*
+
+The update is fire-and-forget so it doesn't slow down your request, and only on successful authentication — a 401 from a bad key doesn't bump anything.
+
+<CardGroup cols={2}>
+  <Card title="Network model" icon="network" href="/alfred-cloud/security/network-model">
+    Why a token alone is not enough — the network layer denies you first.
+  </Card>
+  <Card title="Per-tenant isolation" icon="users" href="/alfred-cloud/security/per-tenant-isolation">
+    What the token authorises across Composio, AgentMail, and Vaultwarden.
+  </Card>
+  <Card title="Audit and logging" icon="clipboard-list" href="/alfred-cloud/security/audit-and-logging">
+    Every authenticated call is logged on the tenant.
+  </Card>
+</CardGroup>

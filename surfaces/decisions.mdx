@@ -22,7 +22,7 @@ Phase I (#897) split the page into two top-level tabs *(DecisionsPage.tsx:28-30,
 
 ## The 30-day stacked-bar chart
 
-A hand-drawn inline SVG (no recharts dependency — the redesign keeps the chart austere). Each bar represents one of the last 30 days; the bar is stacked in three segments — **handled**, **held**, **asked** *(DecisionsPage.tsx:248-291)*.
+A hand-drawn inline SVG (no recharts dependency — the chart is intentionally austere). Each bar represents one of the last 30 days; the bar is stacked in three segments — **handled**, **held**, **asked** *(DecisionsPage.tsx:248-291)*.
 
 - *Handled* = decisions with `intent: done` or `intent: take_mine` (the principal closed the loop, themselves or via Alfred)
 - *Held* = `intent: defer` (decision parked, no agent fired)

@@ -1,0 +1,164 @@
+---
+title: "Audit and logging"
+description: "Every authenticated API call hits the activity log. Every Hermes session is captured to `system-hermes-sessions`. Forensic queryability via `GET /api/v1/admin/activity`. Vulnerability reporting policy."
+icon: "clipboard-list"
+---
+
+<Note>
+Audit is a forensic surface as much as a memory primer. If the principal wants to know what Alfred did between 9pm and midnight last Thursday, it's all there. The audit trail is part of the security posture, not separate from it.
+</Note>
+
+## What is logged
+
+### Every authenticated API call
+
+Every authenticated call to the tenant's `ctrl-api` is recorded. The record includes:
+
+- Timestamp
+- Method + path
+- Caller identity (which `AAS_API_KEY`, distinguished from the scoped voice-bridge token)
+- Response status code
+- A short outcome summary
+
+The log is queryable at `GET /api/v1/admin/activity` and rendered in the dashboard's Activity tab. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/admin.ts:660`)*
+
+```bash
+curl https://alfred.black/api/v1/admin/activity \
+  -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+The response is filterable by:
+
+| Filter | Notes |
+|---|---|
+| `since` / `until` | ISO timestamps for window queries |
+| `status` | Filter by HTTP status (e.g. `status=4xx` to find auth failures) |
+| `path_prefix` | E.g. `path_prefix=/api/v1/vault` for vault-only activity |
+| `actor` | `principal` vs `agent` vs `system` |
+
+### Every Hermes session
+
+The `system-hermes-sessions` stream captures every main-agent session — every chat thread, every voice call, every email reply, every SMS, every channel interaction — with its summary, channel, and tool calls. *(`/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/streams.ts:119`)*
+
+<Note>
+The stream identifier today in the live `alfred-black` codebase is `system-openclaw-sessions` (legacy name from before the OpenClaw → Hermes rename). New writers should write to `system-hermes-sessions`; readers should accept either. This is a transition state — see the contradictions note at the bottom of this section.
+</Note>
+
+Each session record contains:
+
+| Field | What it holds |
+|---|---|
+| `session_id` | Hermes session UUID |
+| `channel` | `chat` / `voice` / `email` / `sms` / `slack` / etc. |
+| `started_at`, `ended_at` | ISO timestamps |
+| `summary` | A few-sentence summary written by the session-distiller |
+| `tool_calls` | The ordered list of tools invoked, with arguments and outcomes |
+| `decisions_minted` | Decision records linked to this session |
+| `vault_writes` | Vault paths written during the session |
+
+Reading the stream:
+
+```bash
+curl https://alfred.black/api/v1/streams/system/hermes-sessions/events \
+  -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+### Every state-machine transition
+
+Every state-machine transition on a canonical vault record (matter, task, decision, instinct, chore, briefing) writes an `audit` row to `alfred-state.db`. *(See [Storage architecture](/architecture/four-store-model).)* The audit row is queryable through `GET /api/v1/audit` and includes:
+
+| Field | What it holds |
+|---|---|
+| `kind` | `signal-action` / `steward-action` / `desk-action` / `state-change` / `auto-task-created` / etc. |
+| `subject_path` | The vault record affected |
+| `before` / `after` | The diff |
+| `actor` | Who or what triggered the transition |
+| `timestamp` | ISO |
+| `decision_ref` | Link to a decision record if one drove this |
+
+This is the layer that lets you reconstruct *why* a matter went from `active` to `dormant` — not just *that* it did.
+
+## What the audit trail does NOT include
+
+Concretely:
+
+- **The full prompt / completion of every LLM call.** Storing every prompt would balloon the disk and frequently contain redundant copies of the vault. The `tool_calls` field captures the agent's effects; the full reasoning chain is in the Hermes session memory until it's compacted.
+- **Composio response bodies in full.** The audit captures `(tool_name, arguments, outcome_summary)`. The full response is in the session memory during the session and is dropped after compaction.
+- **Vault read content.** Read access is logged (path, timestamp), but the read content is not duplicated into the audit log — the vault itself is the canonical record.
+
+## Forensic queries
+
+A few common forensic queries:
+
+<CodeGroup>
+```bash What did the agent do between 9pm and midnight last Thursday?
+curl "https://alfred.black/api/v1/admin/activity?since=2026-05-22T21:00:00Z&until=2026-05-23T00:00:00Z&actor=agent" \
+  -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+```bash Every Vaultwarden read in the last 24h
+curl "https://alfred.black/api/v1/admin/activity?since=$(date -u -v-1d +%FT%TZ)&path_prefix=/api/v1/vaultwarden" \
+  -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+```bash All 401s in the last week
+curl "https://alfred.black/api/v1/admin/activity?since=$(date -u -v-7d +%FT%TZ)&status=401" \
+  -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+
+```bash Every decision the principal took on /desk yesterday
+curl "https://alfred.black/api/v1/audit?kind=desk-action&since=$(date -u -v-1d +%FT%TZ)" \
+  -H "Authorization: Bearer ${AAS_API_KEY}"
+```
+</CodeGroup>
+
+## Retention
+
+| Surface | Retention |
+|---|---|
+| `activity_log` (HTTP audit) | 90 days on tenant, then archived |
+| `system-hermes-sessions` stream | Indefinite (rolled into archived stream after 90 days) |
+| `alfred-state.db.audit` | Indefinite (queryable from disk; cold-archive Phase 3 will lift >90d into DuckDB/Parquet) |
+| Hermes profile SessionStore | Pruned per the `session_reset` block in each profile's `config.yaml` |
+| `ingest.db.stream_event` | **7 days** (raw stream events have a TTL; promoted records persist) |
+
+The 7-day TTL on raw stream events is deliberate — once the signal pipeline has extracted a signal from a stream event and the audit row has been written, the raw event is no longer needed and is rotated.
+
+## Reporting a security issue
+
+Found a security concern? Email **security@alfred.black** with details. *(`/tmp/alfred-doc-old/guides/security.mdx:145`)*
+
+### Responsible disclosure policy
+
+<Steps>
+  <Step title="Email security@alfred.black">
+    Include enough detail to reproduce. Encrypted email is welcome — the operator's PGP key is available on request.
+  </Step>
+  <Step title="Acknowledgement within 72 hours">
+    The operator will acknowledge receipt and assign a severity. Critical issues are triaged same-day.
+  </Step>
+  <Step title="Patch in coordination">
+    For critical issues, the operator will coordinate a patch window. The fix lands as a CI commit, gets baked into `:latest`, and the tenant fleet auto-updates via the 15-minute `alfred-update.timer`.
+  </Step>
+  <Step title="Disclosure">
+    After the fix is fleet-deployed, the operator will publish a CVE-style writeup. Researchers are credited if they want to be.
+  </Step>
+</Steps>
+
+**Please do not post sensitive findings publicly until the patch has rolled.** Coordinated disclosure protects every subscriber.
+
+<Warning>
+**In scope** for the bug bounty: Alfred Cloud tenant code (this repo), the SaaS control plane, the Hermes runtime image, the MCP server bundle, and the per-tenant Composio / AgentMail / Vaultwarden isolation. **Out of scope**: upstream third-party services (Gmail, Notion, Slack — report to them), Hetzner infrastructure (report to them), Cloudflare (report to them).
+</Warning>
+
+<CardGroup cols={2}>
+  <Card title="Agent sandboxing" icon="lock" href="/alfred-cloud/security/agent-sandboxing">
+    What the audit trail catches that the layered scoping doesn't prevent.
+  </Card>
+  <Card title="Authentication" icon="key" href="/alfred-cloud/security/authentication">
+    Which token authenticated each logged request.
+  </Card>
+  <Card title="Per-tenant isolation" icon="users" href="/alfred-cloud/security/per-tenant-isolation">
+    Where every Composio / AgentMail / Vaultwarden call shows up in the log.
+  </Card>
+</CardGroup>

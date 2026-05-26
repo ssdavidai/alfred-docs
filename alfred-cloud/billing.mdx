@@ -1,0 +1,119 @@
+---
+title: "Billing & subscriptions"
+description: "Private-beta pricing is negotiated, not listed. Here's how the lifecycle works, what the 30-day grace period preserves, and what we can tell you about cost."
+---
+
+<Warning>
+**Public pricing is not finalised.** Alfred Cloud is in private beta. There is no checkout button. Pricing is negotiated per tenant during the onboarding call and is held flat for the duration of the beta.
+</Warning>
+
+## What we can say about cost
+
+- **Beta pricing is below cost-recovery in the typical case** for a tenant running the full stack including Vexa, Plane, and Sure sidecars. The operator is eating the gap. This will change at public launch.
+- **No surprise charges.** What we quote on the call is what you pay, monthly, on a card. No usage tiers, no per-message metering during the beta.
+- **The big variable cost is LLM provider spend.** Hermes runs against Anthropic (Claude Opus/Sonnet/Haiku) and optionally OpenRouter. If you bring your own API key (BYOK), Anthropic bills you directly and the Cloud price is lower. If we hold the LLM key, we mark up provider cost modestly to cover billing overhead. Most beta tenants are BYOK.
+- **The VPS bill is fixed.** A Hetzner `cx53` is ~€30/mo + ~€10/mo for the encrypted volume + backup storage. We pass that through transparently.
+
+## What's invoiced (during beta)
+
+| Line item | Frequency | Notes |
+|---|---|---|
+| Cloud subscription | Monthly | The flat operator fee — set on the onboarding call |
+| Hetzner pass-through | Monthly | VPS + encrypted volume + backups + bandwidth |
+| LLM provider | Monthly | **Direct to Anthropic / OpenRouter if BYOK.** Pass-through with small markup if operator-held key. |
+| Sidecar surcharges | Monthly | Vexa adds compute headroom; the call covers whether the VPS bumps to a larger Hetzner SKU. |
+
+## The lifecycle
+
+```
+Onboarding call -> Provisioning -> Running -> (Cancel) -> Suspended -> Decommissioned
+```
+
+### 1. Onboarding call
+
+The signup-equivalent. The operator and the principal agree on plan shape and price. *(See [Private beta](/alfred-cloud/private-beta).)*
+
+### 2. Provisioning
+
+A dedicated `cx53` is provisioned within ~24 h. *(See [Provisioning](/alfred-cloud/provisioning).)*
+
+### 3. Running
+
+Once provisioned, the principal has full access to:
+
+- The dashboard at `https://<tenant>.alfred.black`
+- API access via the per-instance API key (`AAS_API_KEY`)
+- All Hermes profiles (`main` for chat, `workers` for background, `heavy` for reasoning)
+- The full vault specialists set (Curator, Janitor, Distiller, Surveyor, Clerk)
+- Every Connected App via Composio
+- Temporal workflows and scheduled chores
+
+### 4. Cancellation
+
+To cancel, email the operator. Cancellation is processed at the end of the current billing period — the principal keeps full access until then.
+
+### 5. Suspension
+
+Once the billing period ends, the Docker stack is stopped on the VPS but the **encrypted volume is preserved**. The vault, the `alfred-state.db` audit ledger, the instinct library, chore source files, Vaultwarden secrets — all intact.
+
+<Warning>
+A suspended Alfred has a **30-day grace period**. During that window, the data is intact and resubscribing brings everything back. After 30 days, the instance and its volume are decommissioned and the data **cannot** be recovered. *(/tmp/alfred-doc-old/guides/billing.mdx:69-71)*
+</Warning>
+
+### 6. Decommissioning
+
+After the 30-day grace period: the Hetzner server, the LUKS volume, the Tailscale node, and the DNS records are all permanently removed. AgentMail inbox is released back to the pool.
+
+### 7. Reprovisioning
+
+- **Within the 30-day grace window:** the instance is reactivated with everything preserved.
+- **After decommissioning:** a fresh Alfred is provisioned from scratch. The vault starts empty. Previous data is gone.
+
+If preserving data matters and cancellation is permanent, request an **export** before suspension ends — see [Migration](/alfred-cloud/migration). Migrating Cloud → self-hosted during the grace window is fully supported and preserves every byte.
+
+## Subscription states
+
+| State | What it means | Access? |
+|---|---|---|
+| **active** | Subscription is current; Alfred is running | Yes |
+| **cancel_at_period_end** | Cancellation requested; runs out the period | Yes, until period end |
+| **past_due** | Operator's monthly invoice failed to clear | Yes, with a heads-up email |
+| **suspended** | Stack stopped; volume preserved during 30-day grace | No; data preserved |
+| **decommissioned** | VPS + volume destroyed | No; data gone |
+
+## Frequently asked
+
+<AccordionGroup>
+  <Accordion title="Can I see the price before signing up?">
+    Not on a public page, no. The onboarding call is partly a fit check — we want to make sure Cloud is the right tool for what you're trying to do before quoting. If you want a ballpark number before the call, mention it in your email and the operator will share a range.
+  </Accordion>
+
+  <Accordion title="What happens to my data if I cancel?">
+    The encrypted volume is preserved for **30 days** after cancellation. Resubscribing during the grace period restores access to your existing vault. After 30 days, the volume is wiped and the instance is destroyed permanently. Request an export beforehand if you want a copy.
+  </Accordion>
+
+  <Accordion title="Can I get my data back after decommissioning?">
+    No. Once an instance is decommissioned, the volume is destroyed and the data cannot be recovered. If you resubscribe later, a fresh Alfred is provisioned from zero.
+  </Accordion>
+
+  <Accordion title="What if I want to move to self-hosted instead?">
+    Cancel and request a Cloud → self-hosted export during the 30-day grace window. See [Migration](/alfred-cloud/migration). You'll be running on your own VM with your existing vault + instincts in a day or two.
+  </Accordion>
+
+  <Accordion title="Where is my data stored?">
+    Your tenant runs on a dedicated `cx53` Hetzner Cloud VPS in the EU (Germany or Finland, depending on availability at provision time). The data volume is LUKS2-encrypted with a per-instance passphrase. The LUKS keyfile is held by the operator and backed up separately from the data. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:18)*
+  </Accordion>
+
+  <Accordion title="Will pricing change at public launch?">
+    Yes, almost certainly upward — beta pricing is below cost-recovery. We'll honour beta pricing for current tenants for at least 12 months after public launch, and you'll have at least 60 days' notice before any change to your specific contract.
+  </Accordion>
+</AccordionGroup>
+
+<CardGroup cols={2}>
+  <Card title="Private beta" icon="user-lock" href="/alfred-cloud/private-beta">
+    How to request access and what onboarding looks like.
+  </Card>
+  <Card title="Migration" icon="arrow-right-arrow-left" href="/alfred-cloud/migration">
+    Export Cloud → self-hosted within the 30-day grace window.
+  </Card>
+</CardGroup>

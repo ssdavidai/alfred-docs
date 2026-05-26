@@ -445,7 +445,7 @@ Stream catalogue + per-stream pause/resume, plus the event-quarantine queue *(pa
 | POST | `/api/v1/streams/inbox/scan` | Sweep `inbox/` for new items. |
 | POST | `/api/v1/streams/ingest` | Force-ingest a payload. |
 | POST | `/api/v1/streams/prune` | Drop events older than TTL. |
-| POST | `/api/v1/streams/system/openclaw-sessions/report` | Legacy OpenClaw → Hermes session reporter. |
+| POST | `/api/v1/streams/system/openclaw-sessions/report` | Hermes session reporter — appends activity reports to the system session stream. |
 
 </Accordion>
 

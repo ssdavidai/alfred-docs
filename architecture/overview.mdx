@@ -3,7 +3,7 @@ title: "Architecture overview"
 description: "Alfred Black at a glance — one VM, one stack, four stores, three model tiers."
 ---
 
-Alfred Black is the single-VM reframing of the original Alfred SaaS platform. One git repo, one `.env` file, one `docker compose up`. There is no fleet provisioning, no per-tenant database, no shared control plane — every install is the principal's own machine, end to end.
+Alfred Black runs as a single-VM stack: one git repo, one `.env` file, one `docker compose up`. Every install is the principal's own machine, end to end.
 
 The system has three load-bearing layers: a **runtime** (the AI), an **intelligence loop** (the workflows that observe, propose, and learn), and a **storage substrate** (the four-store split that separates the principal's published surface from the machine's working memory). Around them sit a handful of UI surfaces (`web`, Caddy, the sidecar apps) and the operational glue (`init`, `ctrl-api`, the vault daemon).
 

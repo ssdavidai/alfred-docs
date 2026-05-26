@@ -254,7 +254,7 @@ idx_embedding_meta_kind ON embedding_meta(ref_kind, ts DESC)
 
 ### `health_checks` — single-VM liveness log
 
-Repurposed from the old SaaS provisioning schema *(schema.sql:223-239)*. `instance_id` is always `0` on single-VM Alfred Black.
+The instance row carries the deploy identity *(schema.sql:223-239)*. `instance_id` is always `0` on single-VM Alfred Black.
 
 | Column | Type |
 |---|---|

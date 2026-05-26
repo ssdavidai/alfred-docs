@@ -48,9 +48,9 @@ Revoke opens an in-design confirmation modal whose copy changes depending on whe
 
 A connection row shows a small `stream` chip when the source has actually emitted events Alfred has processed (`is_stream_source: true`). It is the difference between "I'm authorised here" and "I'm reading from here" *(ConnectionsPage.tsx:1344-1352)*.
 
-## OpenClaw readiness banner
+## Hermes readiness banner
 
-If `getOpenclawReadiness` reports the gateway is not ready, the page shows a brass-bordered warning above the catalogue: new connections will queue and apply once the gateway settles *(ConnectionsPage.tsx:504-512)*. In practice this only fires immediately after a Hermes restart.
+If the gateway reports it is not ready, the page shows a brass-bordered warning above the catalogue: new connections will queue and apply once the gateway settles *(ConnectionsPage.tsx:504-512)*. In practice this only fires immediately after a Hermes restart.
 
 <Tip>
 Connections feed the [Tools](/surfaces/tools) page — every toolkit you authorise here surfaces as a row under "Connected apps" there, with the exact actions and streams Hermes will let Alfred reach.

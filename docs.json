@@ -34,6 +34,33 @@
             ]
           },
           {
+            "group": "Alfred Cloud",
+            "pages": [
+              "alfred-cloud/overview",
+              "alfred-cloud/private-beta",
+              "alfred-cloud/architecture",
+              "alfred-cloud/provisioning",
+              {
+                "group": "Security profile",
+                "pages": [
+                  "alfred-cloud/security/overview",
+                  "alfred-cloud/security/infrastructure-isolation",
+                  "alfred-cloud/security/encryption-at-rest",
+                  "alfred-cloud/security/network-model",
+                  "alfred-cloud/security/authentication",
+                  "alfred-cloud/security/per-tenant-isolation",
+                  "alfred-cloud/security/data-residency",
+                  "alfred-cloud/security/backups-and-recovery",
+                  "alfred-cloud/security/agent-sandboxing",
+                  "alfred-cloud/security/audit-and-logging"
+                ]
+              },
+              "alfred-cloud/migration",
+              "alfred-cloud/billing",
+              "alfred-cloud/federation"
+            ]
+          },
+          {
             "group": "Architecture",
             "pages": [
               "architecture/overview",

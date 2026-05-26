@@ -1,0 +1,78 @@
+---
+title: "Alfred Cloud overview"
+description: "The hosted, zero-ops version of Alfred Black — same software, we run the box. Currently in private beta."
+---
+
+<Note>
+**Private beta.** Alfred Cloud is invite-only. Onboarding starts with a conversation, not a checkout button. If you'd rather skip the Linux VM, [request access](/alfred-cloud/private-beta).
+</Note>
+
+## What Alfred Cloud is
+
+Alfred Cloud is the hosted version of Alfred Black. **The software is identical** — the same `ctrl-api`, the same Hermes runtime, the same four-store architecture, the same 14 surfaces — but you don't bring the VM. We provision a dedicated Hetzner Cloud VPS for you, attach an encrypted volume, stand up the Docker stack, terminate TLS, run nightly backups, and ship updates as they land in `main`.
+
+If self-hosting Alfred Black is "I want to own the box," Alfred Cloud is "I want Alfred, not a sysadmin job."
+
+## The shape of the offering
+
+- **One tenant, one dedicated VPS.** Not a shared cluster, not a multi-tenant database. Your Alfred runs on his own Hetzner Cloud machine — typically a `cx53` — with an encrypted volume attached. Nothing of yours touches anyone else's compute. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:17)*
+- **Private Tailscale mesh.** No public route into your services. The dashboard reaches your `ctrl-api` over a WireGuard mesh; the Hetzner firewall denies everything except SSH, ICMP, and the Tailscale handshake port. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:19)*
+- **LUKS2 full-disk encryption.** AES-256-XTS with a per-instance key generated at provision time. Even if Hetzner loses the disk, the operator can re-mount from raw bytes plus the backed-up keyfile. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:18)*
+- **Daily restic backups** to Hetzner Object Storage. Retention: 7 daily, 4 weekly, 6 monthly. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:127)*
+- **Same source tree.** Every Cloud tenant runs the same image tags that ship from `main` in [ssdavidai/alfred](https://github.com/ssdavidai/alfred). Nothing is forked. If you outgrow Cloud, you can [migrate to self-hosted](/alfred-cloud/migration) with your vault and machine state intact.
+
+## What you get vs. what you give up
+
+| Concern | Self-hosted Alfred Black | Alfred Cloud |
+|---|---|---|
+| **VM** | You bring it (any Linux box, 48 GB RAM+) | We provision a dedicated Hetzner `cx53` |
+| **TLS / DNS** | You point DNS; Caddy auto-issues via Let's Encrypt | Cloudflare + Tailscale + provisioned subdomain on `alfred.black` |
+| **Updates** | `docker compose pull && up -d` on your schedule | systemd timer pulls `:latest` every 15 minutes |
+| **Backups** | Roll your own (`vault_data`, `state_data`, `caddy_data`) | Nightly `restic` to Hetzner Object Storage |
+| **Onboarding** | `./scripts/bootstrap.sh` then `docker compose up` | 30-min call + ~24 h to a working instance |
+| **You own the VM** | Yes | No — we hold the SSH key, the LUKS key, and the Hetzner account |
+| **Data sovereignty** | Yours, on your box | Yours, on a VPS we operate in EU (Germany or Finland) |
+| **Cost** | VPS bill only (~$40-80/mo) | Negotiated during beta — see [Billing](/alfred-cloud/billing) |
+| **Time to live** | An hour, give or take | 3 min from golden snapshot, ~20 min from scratch |
+| **Federation (Alfred Prime)** | Not available | Available to invited tenants only |
+
+The honest summary: **Cloud trades sovereignty for time**. If you want to inspect every container, run your own backups, and have root on the box, self-host. If you want Alfred working before lunch and don't care who runs the Linux, Cloud.
+
+## Who Cloud is for
+
+- People who'd self-host if it took 20 minutes and zero ongoing maintenance — but it doesn't, so they wouldn't.
+- People who've tried the self-hosted path, hit an OOM or a Caddy cert wall, and decided they'd rather not.
+- People who want [Alfred Prime federation](/alfred-cloud/federation) — Cloud-only today.
+
+## Who Cloud is **not** for
+
+- Anyone who needs strict on-premises hosting (regulated workloads, air-gapped networks). Self-host.
+- Anyone uncomfortable with the operator holding root + LUKS key on the box where the principal's vault lives. Self-host.
+- Anyone who wants the price publicly listed before they talk to a human. Wait for public launch (no date set).
+
+## The rest of this section
+
+<CardGroup cols={2}>
+  <Card title="Private beta status" icon="user-lock" href="/alfred-cloud/private-beta">
+    What invite-only means right now, how to request access, what onboarding looks like.
+  </Card>
+  <Card title="Architecture" icon="server" href="/alfred-cloud/architecture">
+    The dedicated VPS, the encrypted volume, the Tailscale mesh, the Docker stack — how Cloud assembles the same software.
+  </Card>
+  <Card title="Provisioning" icon="play" href="/alfred-cloud/provisioning">
+    The eight-step flow from "you sign up" to "your Alfred answers the door."
+  </Card>
+  <Card title="Migration" icon="arrow-right-arrow-left" href="/alfred-cloud/migration">
+    Moving between Cloud and self-hosted in both directions. Honest about what's manual.
+  </Card>
+  <Card title="Billing" icon="credit-card" href="/alfred-cloud/billing">
+    Private-beta pricing, the 30-day cancellation grace period, what suspension preserves.
+  </Card>
+  <Card title="Alfred Prime federation" icon="users-line" href="/alfred-cloud/federation">
+    Cloud-only: one tenant reaching across the tailnet to consult another tenant's Alfred.
+  </Card>
+</CardGroup>
+
+<Tip>
+If you're not sure which model fits, default to self-hosted — the docs in the rest of this site are written for it. Cloud is the "managed escape hatch" once you've decided you don't want to run the VM.
+</Tip>

@@ -1,0 +1,138 @@
+---
+title: "Provisioning flow"
+description: "What happens between 'I'm in' and 'my Alfred answers the door.' Eight numbered steps, three minutes (or twenty), and a green health check."
+---
+
+<Note>
+This page is the **mechanical** view — the eight steps the operator runs. For the **human** view (the call, the timeline, the first-week support window), see [Private beta status](/alfred-cloud/private-beta).
+</Note>
+
+## End-to-end timing
+
+| Scenario | Time |
+|---|---|
+| From golden snapshot | **~3 minutes** *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:55)* |
+| From scratch (no snapshot) | **18-20 minutes** *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:55)* |
+| From "yes let's do it" to first dashboard login | **Same business day**, typically a few hours after the onboarding call |
+
+The "from snapshot" path is what 99% of new tenants get. The snapshot is a Hetzner Cloud image with Docker, Tailscale, the LUKS tooling, and the systemd units pre-baked. From-scratch only runs when the snapshot is stale or being rebuilt.
+
+## The eight steps, narrated
+
+<Steps>
+  <Step title="Generate an Ed25519 keypair">
+    The fleet CLI creates a fresh SSH keypair scoped to this tenant. Stored locally at `data/ssh_keys/<instance_id>/`. **Never re-used between tenants** — every Cloud tenant has its own SSH identity from the operator's side. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:30)*
+
+    *Operator action.* Automated.
+  </Step>
+  <Step title="Upload the public key + ensure shared firewall">
+    The Ed25519 public key is uploaded to Hetzner Cloud. The shared firewall labelled `managed-by: alfred-ctrl` is verified/created — it allows only inbound SSH (22/tcp) and ICMP. Tailscale handles its own UDP 41641 handshake. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:32)*
+
+    *Operator action.* Automated.
+  </Step>
+  <Step title="Create the encrypted volume + render cloud-init">
+    A Hetzner Cloud Volume is created (sized to the plan). `cloud-init.yaml` is rendered from a Nunjucks template — it embeds:
+
+    - LUKS keyfile generation (`/dev/urandom` → `/opt/alfred/luks.key`, 4096 bytes, root-only)
+    - `cryptsetup luksFormat` on the attached volume with that keyfile
+    - `fail2ban` + UFW install + config (deny inbound except 22/tcp and 41641/udp)
+    - Docker install + Tailscale install
+    - The `alfred-update.timer` systemd unit (pulls `:latest` every 15 min)
+    - The `alfred-luks.service` systemd unit (auto-unlock the volume on boot)
+    - The `alfred-backup.timer` systemd unit (daily restic at 03:00 host-local)
+
+    *Operator action.* Automated.
+  </Step>
+  <Step title="Create the server + wait for cloud-init">
+    A Hetzner `cx53` is created in the EU (Germany or Finland depending on capacity), with Hetzner Cloud Backups enabled and the encrypted volume attached. Cloud-init runs on first boot.
+
+    Cloud-init formats the disk with LUKS2 (AES-256-XTS) and creates the directory tree under `/mnt/encrypted/` — including `vault/`, `hermes/`, `alfred/`, `state/`, `ingest/`, `temporal/`, `vaultwarden/`, `mcp-server/`, plus the sidecar dirs (`vexa/`, `plane/`, `sure/`) **whether the sidecars are enabled or not**. Empty directories are free; flipping a sidecar flag later doesn't require re-running cloud-init. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:38)*
+
+    *Operator waits.* This is the longest single wait — cloud-init typically runs 3-5 min.
+  </Step>
+  <Step title="Upload secrets via SSH (not via cloud-init)">
+    Once the server is reachable on SSH, the operator SFTPs the tenant's `.env` to `/opt/alfred/.env`. This file holds:
+
+    - LLM keys (`ANTHROPIC_API_KEY` and/or `OPENROUTER_API_KEY`)
+    - `AAS_API_KEY` (the tenant API bearer token)
+    - `COMPOSIO_API_KEY` (third-party app surface)
+    - AgentMail / AgentPhone tokens (if voice / email channels are on)
+    - The auto-generated secrets from `bootstrap.sh` (`HERMES_API_SERVER_KEY`, DB passwords, etc.)
+
+    **Why SFTP and not cloud-init `user_data`:** Hetzner's metadata API can read `user_data` from any process inside the VM. Putting secrets there leaks them to any container that opens `169.254.169.254`. SFTP-after-boot is the load-bearing security boundary. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:42)*
+
+    *Operator action.* Automated.
+  </Step>
+  <Step title="Render + upload docker-compose, start containers">
+    The compose file is rendered from `docker-compose.yaml.njk` with the tenant's feature flags (`vexa_enabled`, `plane_enabled`, `sure_enabled`, `vaultwarden_enabled`) substituted in. It's uploaded to `/opt/alfred/docker-compose.yaml`.
+
+    `docker compose up -d` is run. The `init` container scaffolds the vault, renders the three Hermes profile configs (`main`, `workers`, `heavy`) under `$HERMES_HOME/profiles/`, writes `/alfred-data/.gateway-token`, and exits. The supervisor inside the `hermes` container then waits for those profile files and launches the three Hermes gateways. *(/Users/ssd/dev/alfred/packages/hermes/docker/supervisor.sh:88-99)*
+
+    *Operator action.* Automated.
+  </Step>
+  <Step title="Bootstrap Hermes + Tailscale + Cloudflare Tunnel">
+    - A Tailscale auth key is generated on the fly; the instance joins the private mesh and gets a stable MagicDNS hostname like `alfred-<tenant-id>.tail<random>.ts.net`.
+    - A Cloudflare Tunnel is created for this tenant; DNS records for `<tenant>.alfred.black`, `<tenant>-plane.alfred.black`, etc., are added.
+    - The Hermes `main` profile's `auth.json` is generated (one OAuth identity) and propagated to `workers` + `heavy` by the supervisor at startup — idempotent. *(/Users/ssd/dev/alfred/CLAUDE.md:section 9)*
+
+    *Operator action.* Automated.
+  </Step>
+  <Step title="Back up the LUKS key + run health check">
+    The keyfile at `/opt/alfred/luks.key` is downloaded into `data/ssh_keys/<id>/luks.key` on the operator's machine. **This is the disaster-recovery anchor** — if Hetzner loses the disk, the operator can re-mount from raw bytes plus this keyfile. *(/tmp/alfred-doc-old/architecture/infrastructure.mdx:50)*
+
+    A first health probe must return green before the instance is marked `done`:
+
+    - `GET /healthz` on `ctrl-api:3100` returns 200
+    - All three Hermes gateways respond on `:18789`, `:18790`, `:18791`
+    - The Temporal worker is connected
+    - The vault directory has the canonical 12 record-type subdirs
+
+    *Operator action.* Automated. Failures here block the "ready" notification — the operator investigates manually.
+  </Step>
+</Steps>
+
+## Manual vs. automated
+
+| Step | Automated? | Operator touches it? |
+|---|---|---|
+| Generate SSH key | Yes | No |
+| Upload SSH key + firewall | Yes | No |
+| Cloud-init render | Yes | Operator approves the template if it changed |
+| Server creation + cloud-init wait | Yes | Operator watches the dashboard for stuck cloud-init |
+| `.env` SFTP | Yes | **Operator hand-edits `.env` for tenant-specific tokens** (LLM key choice, optional channels) |
+| Compose render + `up -d` | Yes | No |
+| Tailscale + Cloudflare bootstrap | Yes | Operator approves the Cloudflare DNS records |
+| Health check + LUKS backup | Yes | Operator investigates if any health probe is red |
+
+The **`.env` step is the one with the most human judgement** — the operator decides whether the tenant is on Claude or OpenRouter, whether voice is on, whether Vexa is on, and what the Composio scope looks like. The rest is wired up by the CLI.
+
+## Post-provision: the green light
+
+When step 8 returns green, the tenant gets an email with:
+
+- The dashboard URL: `https://<tenant>.alfred.black`
+- A magic link for first login (no password)
+- A short note pointing to the onboarding ritual at `/awaken` — the sequential `/awaken → /reading-the-room → /verify → /soul → /composing → /preparing → /first-brief → /desk` flow that personalises Alfred to the principal. *(/Users/ssd/dev/alfred/CLAUDE.md:section 14)*
+
+Most principals are on `/desk` within 30 minutes of receiving the email.
+
+## What can go wrong
+
+Honest list of things that have failed during provisioning before:
+
+- **Hetzner capacity exhausted in a region.** Operator picks an alternate EU region. Adds ~5 min.
+- **Cloud-init timing out on LUKS format.** Rare on `cx53`; restart of the cloud-init unit fixes it.
+- **Composio user creation rate-limited.** Onboarding ritual hangs at `/composing`; operator retries the activity manually.
+- **Cloudflare DNS propagation slow.** Tenant gets the email but `<tenant>.alfred.black` 404s for 1-5 min.
+- **Tailscale auth key expired before use.** Operator regenerates and re-runs step 7.
+
+None of these are blocking — the operator handles them out of band, and the tenant typically doesn't notice anything beyond a slightly longer "we'll email you when it's ready" window.
+
+<CardGroup cols={2}>
+  <Card title="Cloud architecture" icon="server" href="/alfred-cloud/architecture">
+    The encrypted volume, the Docker stack, the network paths.
+  </Card>
+  <Card title="Migration" icon="arrow-right-arrow-left" href="/alfred-cloud/migration">
+    Cloud ↔ self-hosted in both directions, when you need it.
+  </Card>
+</CardGroup>

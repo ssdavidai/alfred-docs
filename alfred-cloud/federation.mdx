@@ -1,0 +1,160 @@
+---
+title: "Alfred Prime federation"
+description: "How one Cloud tenant can be granted scoped, authenticated access to other tenants' Alfreds over the tailnet. Cloud-only; provisioned, not negotiated."
+---
+
+<Note>
+Federation is **a Cloud-only capability** and is gated on top of normal Cloud access. The plumbing exists in every tenant, but the *tools* only appear in the agent's catalogue when the operator provisions a tenant as Prime. Today **a single tenant** is Prime.
+</Note>
+
+## What Prime is
+
+A **Prime tenant** is one that's been configured, at provisioning time, to talk to a fixed list of other Alfred tenants. When the Prime principal asks his Alfred "what does *Person X* think we should do about *Topic Y*?", his Alfred doesn't guess. He routes the question over the tailnet to *Person X*'s Alfred, lets that Alfred reason over its principal's vault using its principal's tokens, and returns the answer.
+
+A **non-Prime tenant** has none of this. The tools simply don't exist in that agent's tool list — there's no `tenant`, no `ask_alfred`. From the outside, every tenant is a sealed unit; only Prime sees more than one.
+
+Every tenant runs the same MCP server. The asymmetry is in two environment variables — `ALFRED_PRIME` and `CROSS_TENANT_PEERS` — that the operator passes at provision time. *(/Users/ssd/dev/alfred/packages/hermes/mcp/ctrl-server.mjs:34-35)*
+
+## The trust model
+
+Federation is **provisioned, not negotiated.** There is no peer discovery, no mutual TLS handshake, no runtime certificate exchange. The operator writes a JSON list of peer descriptors into Prime's environment, and that list is the entire trust scope. Peers see incoming HTTPS requests on their tailnet endpoint authenticated with a key they issued at install time. *(/tmp/alfred-doc-old/architecture/prime-federation.mdx:21)*
+
+Two layers of trust stack on top of each other:
+
+1. **Tailscale** — the WireGuard mesh. Every Cloud tenant is a node on the tailnet with a stable MagicDNS hostname like `alfred-<tenant-id>.tail<random>.ts.net`. Only authorised nodes can route packets at all. Public internet sees nothing.
+2. **API key per peer** — issued by the peer at install time, stored in Prime's `CROSS_TENANT_PEERS` JSON. Each request carries it as a `Bearer` token. The peer's `ctrl-api` validates it the same way it validates any other call into `/api/v1/*`.
+
+Both layers must succeed. **Without Tailscale, the request never reaches the peer; without the api-key, the peer's `ctrl-api` returns 401 even on a tailnet-local call.** The peer can revoke the key by rotating its own `AAS_API_KEY` — Prime then sees a `401` until the new value is rolled in. *(/tmp/alfred-doc-old/architecture/prime-federation.mdx:28)*
+
+## Configuration
+
+Prime is gated by two environment variables, both passed explicitly by `packages/hermes/init/entrypoint.sh` to the MCP server child process:
+
+```bash
+ALFRED_PRIME=true
+CROSS_TENANT_PEERS='[
+  {
+    "id": "peer-a",
+    "tailscaleHost": "alfred-peer-a-xxx.tailXXX.ts.net",
+    "tailscaleIp":   "100.x.y.z",
+    "apiKey":        "<peer tenant AAS_API_KEY>",
+    "label":         "Peer A (organisation name)"
+  },
+  { "id": "peer-b", "...": "..." }
+]'
+```
+
+The init container only forwards these two variables to the MCP server's `env` block when they're set on the host. On a non-Prime tenant the keys are simply absent — the MCP server reads `process.env.ALFRED_PRIME`, sees `undefined`, and registers a single tool. There is **no runtime flag to flip**; switching a tenant to Prime is a provisioning-time operator change followed by a container restart. *(/Users/ssd/dev/alfred/packages/hermes/mcp/ctrl-server.mjs:68)*
+
+When a new Cloud tenant is provisioned, the fleet CLI **automatically appends** the new peer to Prime's `CROSS_TENANT_PEERS` list and dedupes by `id` — so adding a tenant to the fleet quietly grants Prime visibility into it, by design. *(/tmp/alfred-doc-old/architecture/prime-federation.mdx:52)*
+
+<Warning>
+This auto-append behaviour is a deliberate operator choice in the current beta. It will become opt-in at public launch — a new tenant will need to *explicitly* consent to being reachable by Prime before they're added to anyone's peer list.
+</Warning>
+
+## The API surface
+
+The receiving endpoints live in `packages/ctrl/src/api/routes/crossTenant.ts`. **Two routes are registered on every tenant — Prime and non-Prime alike.** The asymmetry is in who calls them, not who hosts them. *(/Users/ssd/dev/alfred/packages/ctrl/src/api/routes/crossTenant.ts:368-391)*
+
+### `POST /api/v1/cross-tenant/ask`
+
+The receiving side. Any tenant exposes this. Request body:
+
+```json
+{
+  "prompt": "What's the principal's top priority this week?",
+  "callerId": "alfred-prime",
+  "timeoutSeconds": 240
+}
+```
+
+The handler spawns a fresh Hermes session against the local `main`-profile gateway, prepends an instruction block telling the agent to read `USER.md`, `SOUL.md`, and `MEMORY.md`, then polls the session until the agent emits a `<final>...</final>` block — or until the deadline expires. The response shape is:
+
+```json
+{
+  "answer": "...",
+  "sessionKey": "sess_...",
+  "durationMs": 18432
+}
+```
+
+`prompt` is hard-capped at 8000 characters; `timeoutSeconds` is clamped to 480.
+
+### `GET /api/v1/cross-tenant/peers`
+
+Lists the peers configured on **this** tenant. On Prime it returns the configured peers; on a non-Prime tenant it returns an empty list because `CROSS_TENANT_PEERS` is unset. The api-key field is **deliberately not in the response** — it's a write-only secret as far as the API surface is concerned.
+
+## Inside the Hermes MCP server
+
+`packages/hermes/mcp/ctrl-server.mjs` is the MCP server that bridges the agent's tool calls to `ctrl-api`. It registers **either one tool or three**, based on `ALFRED_PRIME`:
+
+| Tool | Available on | Whose tokens it uses | What it does |
+|---|---|---|---|
+| `self` | All tenants | This tenant | Generic HTTP proxy to this tenant's own `ctrl-api`. The default tool. |
+| `tenant` | Prime only | **Prime's** | Direct CRUD on a named peer's `ctrl-api` over Tailscale. Same endpoint catalogue as `self`. No peer LLM invoked. |
+| `ask_alfred` | Prime only | **Peer's** | Hands a prompt to the peer's Alfred and returns the reasoned reply. |
+
+`assembleTools()` in `ctrl-server.mjs` is the gate: `if (IS_PRIME) tools.push(tenantTool, askAlfredTool)`. *(/Users/ssd/dev/alfred/packages/hermes/mcp/ctrl-server.mjs:406-407)*
+
+On a non-Prime tenant the agent's tool list contains exactly one entry — `self` — so no amount of clever prompting can coax it into a cross-tenant call. **The surface isn't there.**
+
+The companion skill at `packages/hermes/workspace-template/skills/alfred-prime-federation/SKILL.md` teaches the agent when each tool is the right choice; that skill is itself only copied into the workspace when `ALFRED_PRIME=true`.
+
+## Scope and limits
+
+A peer's Alfred **decides what to share.** The receiving endpoint spawns the peer's normal `main` agent — same persona, same tools, same vault, same auth filters that apply to the peer principal's own conversational reads. Prime's prompt is just text; nothing about it bypasses the peer's permissions.
+
+In practice:
+
+- The **`tenant`** tool gives Prime the full read/write surface of a peer's `ctrl-api` (it's authenticated as a normal admin call).
+- The **`ask_alfred`** tool only ever returns whatever the peer's agent chooses to write.
+
+Neither tool exfiltrates raw secrets — `ctrl-api` doesn't expose `.env` files, LUKS keys, or device tokens through any `/api/v1/*` route.
+
+<Warning>
+**Cross-tenant writes are possible through `tenant` and have caused real damage before.** The `alfred-prime-federation` skill carries an explicit rule to **never** write to a peer's vault without per-call principal approval. That's a discipline encoded in the skill prompt, not a database constraint. It exists because of one specific past incident. *(/tmp/alfred-doc-old/architecture/prime-federation.mdx:112)*
+</Warning>
+
+## Why on the tailnet
+
+Tailscale gives every peer a stable hostname (MagicDNS) and an authenticated WireGuard route. Prime resolves the peer's MagicDNS name, gets a tailnet IP, and the connection is encrypted before any application traffic flows. The peer's `ctrl-api` binds to localhost; only Tailscale Serve exposes it on `:3100` to other tailnet nodes.
+
+There is **no public route to test against, no DNS record to enumerate, no port to portscan from the open internet.** The api-key is the application-layer secondary check; even a compromised tailnet node would still need a valid bearer token to reach `/api/v1/cross-tenant/ask`.
+
+The two layers are independently revokable:
+
+- Pull a peer off the tailnet → Prime sees connection refused.
+- Rotate the peer's `AAS_API_KEY` → Prime sees `401`.
+
+## Failure modes
+
+Cross-tenant calls fail in predictable, non-blocking ways. The receiving code (`spawnAndPoll` in `crossTenant.ts`) handles each explicitly:
+
+- **Peer offline** — Tailscale returns no route; Prime's fetch raises a network error and `ask_alfred` returns `error: true`.
+- **Peer api-key revoked** — `ctrl-api` returns `401`; surfaces as a tool error with status code.
+- **Peer Alfred busy / timeout** — `spawnAndPoll` returns a structured timeout reply with whatever partial content the peer agent produced; a tagless fallback after 4 substantive turns ensures a peer that forgets to wrap in `<final>` tags still answers.
+- **Peer LLM out of credits** — detected by pattern-matching the assistant text for "billing error" / "402"; returns a plain-language explanation rather than a hung session.
+
+Errors are surfaced to the principal verbatim. The skill prompt instructs the agent never to retry silently; **cross-tenant failures are visible.**
+
+## The deciding logic
+
+When can the Prime principal's Alfred answer locally, and when does he reach across? There's no separate routing workflow. The decision lives in the main agent's tool catalogue and the `alfred-prime-federation` skill prompt.
+
+- "What's on my afternoon?" — answered with `self`.
+- "What's on *Peer X*'s afternoon?" — answered with `tenant` (structured data) or `ask_alfred` (reasoned synthesis), depending on what's wanted.
+
+The skill teaches the heuristic; **the agent decides.** There is no router service, no separate Temporal workflow, no classifier — just the agent reading the room and picking the right tool from the three (or one) it has. *(/tmp/alfred-doc-old/architecture/prime-federation.mdx:133-135)*
+
+## How to become Prime
+
+Today: **you don't**. Prime is operator-provisioned and the cohort is currently one tenant. If federation is the reason you're interested in Cloud — say so during the onboarding call and the operator will let you know whether and when Prime invitations open up.
+
+<CardGroup cols={2}>
+  <Card title="Cloud architecture" icon="server" href="/alfred-cloud/architecture">
+    The Tailscale mesh that makes federation safe.
+  </Card>
+  <Card title="Private beta" icon="user-lock" href="/alfred-cloud/private-beta">
+    Request access — mention federation interest if it's load-bearing.
+  </Card>
+</CardGroup>
