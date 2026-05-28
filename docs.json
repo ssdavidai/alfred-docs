@@ -845,7 +845,8 @@
               "operations/redeploy",
               "operations/hermes-profiles",
               "operations/ssh-access",
-              "operations/backup-restore"
+              "operations/backup-restore",
+              "operations/paperclip-evidence-loop"
             ]
           },
           {
