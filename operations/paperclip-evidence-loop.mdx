@@ -1,0 +1,38 @@
+---
+title: Paperclip evidence loop
+description: How Alfred Black turns Paperclip work into verifiable GitHub artifacts.
+---
+
+# Paperclip evidence loop
+
+Alfred Black uses Paperclip as the operating ledger for agent work. For engineering and documentation tasks, a Paperclip issue is not considered complete until it has a verifiable artifact.
+
+## Standard flow
+
+1. Create or select a Paperclip issue with a narrow scope.
+2. Create a GitHub branch named for the issue, for example `paperclip/alfa-23-github-loop-smoke`.
+3. Make the smallest useful change.
+4. Run the relevant checks.
+5. Open a pull request and link it back to the Paperclip issue.
+6. Ask a reviewer to confirm scope, safety, and evidence.
+7. Mark the Paperclip issue done only after the artifact and evidence exist.
+
+## Evidence required
+
+A documentation issue should include:
+
+- the pull request URL;
+- the files changed;
+- the docs or link check that was run;
+- any risk or follow-up work;
+- the review decision.
+
+An engineering issue should include the same evidence plus tests, migration notes, and rollback notes when relevant.
+
+## Approval boundary
+
+Agents may create branches, drafts, pull requests, comments, and review packets. They must not merge, deploy, rotate credentials, publish public material, or send customer-facing commitments without the configured approval gate.
+
+## Why this matters
+
+This loop keeps Paperclip from becoming a place where agents merely close tasks with polished prose. Work counts when it leaves an inspectable trail: issue, branch, pull request, checks, review, and final decision.
