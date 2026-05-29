@@ -23,7 +23,7 @@ Before you `docker compose up -d`, point seven A-records at the VM's public IP. 
 | `voice` | Twilio Media Streams WebSocket | `voice-bridge:9000` |
 
 <Note>
-That's seven A-records for eight hostnames — the apex doubles as both the dashboard and a small set of public webhook paths (OMI, Plane, Vexa, AgentMail inbound email). The apex block in `Caddyfile` routes those paths directly to `ctrl-api`; everything else falls through to the SPA *(`caddy/Caddyfile:34-67`)*.
+That's seven A-records for eight hostnames — the apex doubles as both the dashboard and a small set of public webhook paths (OMI, Plane, Recall.ai, AgentMail inbound email). The apex block in `Caddyfile` routes those paths directly to `ctrl-api`; everything else falls through to the SPA *(`caddy/Caddyfile:34-67`)*.
 </Note>
 
 For a CDN or DNS provider that supports wildcards, a single `*.${DOMAIN}` plus apex A-record covers all seven names.
@@ -63,7 +63,7 @@ The apex block isn't a single `reverse_proxy` — it has path-level handlers bec
 | `/api/v1/streams/omi/*` | `ctrl-api:3100` | OMI ambient-wearable webhook |
 | `/api/v1/plane/webhook` | `ctrl-api:3100` | Plane → Alfred sync |
 | `/api/v1/webhooks/plane/steward` | `ctrl-api:3100` | Steward feedback from Plane |
-| `/api/v1/webhooks/vexa` | `ctrl-api:3100` | Vexa meeting transcript hook |
+| `/api/v1/webhooks/recall` | `ctrl-api:3100` | Recall.ai meeting bot event hook (Svix-signed) |
 | `/api/v1/webhooks/in/*` | `ctrl-api:3100` | Generic inbound webhook |
 | `/api/v1/channels/email/inbound` | `ctrl-api:3100` | AgentMail inbound email *(token-validated)* |
 | `/webhooks/agentmail` *(legacy)* | rewritten to `/api/v1/channels/email/inbound` | Backwards compat for old AgentMail console configs *(`caddy/Caddyfile:52-61`)* |

@@ -30,7 +30,7 @@ Every paying subscriber gets a **dedicated Hetzner Cloud `cx53` VPS** in the EU 
 
 - **Compute is yours.** A 16-vCPU, 32–64 GB `cx53` is provisioned at signup and joined to the operator's Tailscale tailnet. Your workloads never share a kernel with another tenant.
 - **Storage is yours.** A Hetzner volume is created, attached, formatted with LUKS2, and mounted at `/mnt/encrypted`. The passphrase is generated post-boot via SSH (never written to Hetzner's cloud-init `user_data`, which is readable through the metadata API).
-- **Database is yours.** SQLite for `alfred-state.db`, `ingest.db`, Temporal, and Vaultwarden — all on `/mnt/encrypted`. Postgres for the optional Plane / Sure / Vexa sidecar stacks — all on `/mnt/encrypted`. None of these are shared.
+- **Database is yours.** SQLite for `alfred-state.db`, `ingest.db`, Temporal, and Vaultwarden — all on `/mnt/encrypted`. Postgres for the optional Plane / Sure sidecar stacks — all on `/mnt/encrypted`. None of these are shared.
 - **Vault is yours.** The principal's Markdown vault at `/mnt/encrypted/vault` is bind-mounted into every container that needs it and never copied off-host except as a `restic` snapshot encrypted with your own key.
 
 ## Deep dives

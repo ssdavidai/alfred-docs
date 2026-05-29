@@ -7,7 +7,7 @@ description: "Every Temporal workflow + activity in alfred-learn — 36 workflow
 
 There are **36 workflow classes** registered at boot *(packages/learn/src/worker.py)* and ~70 activity modules under `packages/learn/src/activities/`. Schedules are created by `scripts/register_schedules.py` on container first boot.
 
-<Note>The package's `SPEC.md` and CLAUDE.md describe six canonical workflows (event processor, session tracker, briefing, learning, reflection, judgment). The live worker registers 36 — those six plus the signal pipeline, decision routing, narrative composition, Plane two-way sync, Vexa meeting capture, Omi audio, chore promotion, decay watcher, reversal calibration, stream sweep, and more.</Note>
+<Note>The package's `SPEC.md` and CLAUDE.md describe six canonical workflows (event processor, session tracker, briefing, learning, reflection, judgment). The live worker registers 36 — those six plus the signal pipeline, decision routing, narrative composition, Plane two-way sync, Recall.ai meeting dispatch, Omi audio, chore promotion, decay watcher, reversal calibration, stream sweep, and more.</Note>
 
 ## Schedule taxonomy
 
@@ -15,7 +15,7 @@ Schedules are declared in three places *(packages/learn/scripts/register_schedul
 
 - **Interval schedules** — fire every N seconds/minutes/hours. Most live in `INTERVAL_SCHEDULES` *(packages/learn/scripts/register_schedules.py:165-287)*.
 - **Calendar schedules** — fire at specific clock times (cron-equivalent). Live in `CALENDAR_SCHEDULES` *(packages/learn/scripts/register_schedules.py:289-372)*.
-- **Conditionally registered** — Plane sync, Vexa intake, signal extract/router, reversal calibration are only registered if their gate env var is true.
+- **Conditionally registered** — Plane sync, the legacy `VEXA_ENABLED` meeting workflows (vestigial — see Domain 7), signal extract/router, reversal calibration are only registered if their gate env var is true.
 
 | Workflow | Schedule id | Cadence | Gate flag |
 |----------|-------------|---------|-----------|
@@ -47,8 +47,9 @@ Schedules are declared in three places *(packages/learn/scripts/register_schedul
 | StreamSweepWorkflow | `al-stream-sweep` | 2 min | — |
 | StewardSweepWorkflow | `al-steward-sweep` | 30 min | — |
 | FleetAuditWorkflow | `al-fleet-audit` | daily 02:00 UTC | `FLEET_AUDIT_ENABLED` |
-| MeetingCaptureWorkflow | `al-meeting-capture` | 60 s | `VEXA_ENABLED` |
-| TranscriptIntakeWorkflow | `al-transcript-intake` | 60 s | `VEXA_ENABLED` |
+| RecallDispatcherWorkflow | `al-recall-dispatcher` | 5 min | — |
+| MeetingCaptureWorkflow *(vestigial — Vexa-era)* | `al-meeting-capture` | 60 s | `VEXA_ENABLED` (default off; profile retired) |
+| TranscriptIntakeWorkflow *(vestigial — Vexa-era)* | `al-transcript-intake` | 60 s | `VEXA_ENABLED` (default off; profile retired) |
 | PlaneSyncWorkflow | `al-plane-sync` | 15 s, overlap=SKIP | `PLANE_SYNC_ENABLED` |
 | PlaneReverseSyncWorkflow | `al-plane-reverse-sync` | 10 s, overlap=SKIP | `PLANE_SYNC_ENABLED` |
 | PlaneReconciliationWorkflow | `al-plane-reconciliation` | 1 h | `PLANE_SYNC_ENABLED` |
@@ -379,26 +380,20 @@ Plane 1.3.0 emits `issue.deleted` webhooks only for UI-driven deletions. This sw
 
 ---
 
-## Domain 7 — Meeting capture (Vexa)
+## Domain 7 — Meeting capture (Recall.ai)
 
-The 9-container Vexa profile that joins meetings as a bot, transcribes, and feeds actions back to the signal pipeline.
+The hosted [Recall.ai](/integrations/recall) bot replaces the retired self-hosted Vexa profile. ctrl-api owns the API key + Svix-signed webhook; alfred-learn runs the dispatcher that decides which calendar events get a bot.
 
-<Accordion title="MeetingCaptureWorkflow">
-**Schedule**: every 60 s (`al-meeting-capture`) *(packages/learn/scripts/register_schedules.py:109-111)*.
+<Accordion title="RecallDispatcherWorkflow">
+**Schedule**: every 5 min (`al-recall-dispatcher`) *(packages/learn/scripts/register_schedules.py)*.
 
-**Gate**: `VEXA_ENABLED=true` at the docker compose profile level.
+Reads the existing `composio-googlecalendar.jsonl` stream — no second OAuth. Applies the `/channels` Recall card's auto-join policy + per-meeting cap + monthly hours ceiling, then dispatches a bot per matching event. The fan-out is per-event with per-event try/except so one bad meeting doesn't poison the rest.
 
-Polls the gcal stream for upcoming Meet events, dispatches the Vexa bot to join. Bot pre-joins ~5 minutes before start time.
-
-**Activities**: `list_upcoming_meet_events`, `dispatch_vexa_bot`, `mark_meeting_dispatched`.
+**Activities**: see `packages/learn/src/activities/recall_dispatcher.py`.
 </Accordion>
 
-<Accordion title="TranscriptIntakeWorkflow">
-**Schedule**: every 60 s (`al-transcript-intake`) *(packages/learn/scripts/register_schedules.py:113-115)*.
-
-Polls Vexa's webhook stream for completed transcripts. Extracts action candidates, writes them as stream events, and the signal pipeline picks them up from there.
-
-**Activities**: `list_pending_transcripts`, `extract_action_candidates`, `write_transcript_signals`, `mark_transcript_processed`.
+<Accordion title="MeetingCaptureWorkflow / TranscriptIntakeWorkflow (vestigial — Vexa-era)">
+The two `VEXA_ENABLED`-gated workflows still exist in `packages/learn/src/workflows/{meeting_capture,transcript_intake}.py` and would be registered if `VEXA_ENABLED=true`, but the nine-container `profiles: ["vexa"]` stack they call was retired in PR #126 and is no longer present in `docker-compose.yaml`. There is nothing for the activities to reach; leave `VEXA_ENABLED` at its default `false`. The workflows will be deleted in a follow-up PR after the Recall.ai migration settles. See [Vexa (retired)](/integrations/vexa).
 </Accordion>
 
 ---

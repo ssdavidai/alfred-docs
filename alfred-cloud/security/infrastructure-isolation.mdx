@@ -20,7 +20,7 @@ When a tenant signs up, the SaaS control plane provisions a fresh Hetzner Cloud 
 | Mesh | Private Tailscale tailnet on WireGuard. The tenant's node, the SaaS host, the operator's laptop, and any devices the principal explicitly paired. |
 | Provisioner | `packages/ctrl/src/infra/provisioner.ts` — the same fleet TUI/CLI walks the same numbered steps for every new instance. |
 
-A bare-bones tenant runs **12 long-running containers** (the 9 Alfred-core services plus the Vaultwarden trio). A fully-loaded tenant — Alfred core + Vaultwarden + Plane + Sure + Vexa — is in the **mid-thirties**. All of them on the subscriber's own VM, all of them bound to `127.0.0.1`.
+A bare-bones tenant runs **12 long-running containers** (the 9 Alfred-core services plus the Vaultwarden trio). A fully-loaded tenant — Alfred core + Vaultwarden + Plane + Sure — is in the **mid-twenties**; the hosted [Recall.ai](/integrations/recall) meeting bot adds zero containers. All of them on the subscriber's own VM, all of them bound to `127.0.0.1`.
 
 ## What is NOT shared between tenants
 

@@ -55,7 +55,7 @@ Every persisted store lives in a Docker named volume mounted under `/var/lib/doc
 
 ### Sidecar datastores
 
-The Plane, Sure, and Vexa stacks each own a small fleet of their own volumes — see [volumes](/operations/volumes) for the full catalog. They live under the same `/var/lib/docker/volumes/alfred-black_*` prefix.
+The Plane and Sure stacks each own a small fleet of their own volumes — see [volumes](/operations/volumes) for the full catalog. They live under the same `/var/lib/docker/volumes/alfred-black_*` prefix.
 
 ---
 
@@ -65,11 +65,10 @@ A small number of services bind-mount host paths so they can interact with the h
 
 | Bind | Service | Why |
 |------|---------|-----|
-| `/opt/alfred:/srv/alfred-black:rw` | `ctrl-api` *(`docker-compose.yaml:393`)* | The API needs to read `.env` (to read provider keys / vexa toggle), write credential updates back to it, and shell out to `docker compose` for stack control. |
+| `/opt/alfred:/srv/alfred-black:rw` | `ctrl-api` *(`docker-compose.yaml:393`)* | The API needs to read `.env` (to read provider keys + feature toggles), write credential updates back to it, and shell out to `docker compose` for stack control. |
 | `/var/run/docker.sock:/var/run/docker.sock:rw` | `ctrl-api` *(`docker-compose.yaml:394`)* | Same — `ctrl-api` triggers compose pulls/restarts when the dashboard asks. |
 | `/root/.ssh/authorized_keys:/root/.ssh/authorized_keys:ro` | `ctrl-api` *(`docker-compose.yaml:397`)* | Read-only — `GET /api/v1/system/ssh-info` surfaces the host's authorised public key on the `/channels` Terminal card so the principal can `ssh` into the box. |
 | `./caddy/Caddyfile:/etc/caddy/Caddyfile:ro` | `caddy` *(`docker-compose.yaml:42`)* | Edit the Caddyfile in the repo, `docker compose restart caddy`, and Caddy reloads. |
-| `/var/run/docker.sock` (vexa-runtime-api) | `vexa-runtime-api` *(`docker-compose.yaml:1376`)*; profile `vexa` only | Vexa spawns transcription-bot containers as Docker children. |
 
 ---
 

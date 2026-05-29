@@ -9,7 +9,7 @@ description: "Private-beta pricing is negotiated, not listed. Here's how the lif
 
 ## What we can say about cost
 
-- **Beta pricing is negotiated with each subscriber on the onboarding call.** The number reflects the stack you actually want to run — Alfred core only, or with Vexa, Plane, or Sure sidecars enabled.
+- **Beta pricing is negotiated with each subscriber on the onboarding call.** The number reflects the stack you actually want to run — Alfred core only, or with Plane / Sure sidecars enabled, and whether the hosted [Recall.ai](/integrations/recall) meeting bot is in use.
 - **No surprise charges.** What we quote on the call is what you pay, monthly, on a card. No usage tiers, no per-message metering during the beta.
 - **The big variable cost is LLM provider spend.** Hermes runs against Anthropic (Claude Opus/Sonnet/Haiku) and optionally OpenRouter. If you bring your own API key (BYOK), Anthropic bills you directly and the Cloud price is lower. If we hold the LLM key, we mark up provider cost modestly to cover billing overhead. Most beta subscribers are BYOK.
 - **The VPS bill is fixed.** A Hetzner `cx53` is ~€30/mo + ~€10/mo for the encrypted volume + backup storage. We pass that through transparently.
@@ -21,7 +21,7 @@ description: "Private-beta pricing is negotiated, not listed. Here's how the lif
 | Cloud subscription | Monthly | The flat operator fee — set on the onboarding call |
 | Hetzner pass-through | Monthly | VPS + encrypted volume + backups + bandwidth |
 | LLM provider | Monthly | **Direct to Anthropic / OpenRouter if BYOK.** Pass-through with small markup if operator-held key. |
-| Sidecar surcharges | Monthly | Vexa adds compute headroom; the call covers whether the VPS bumps to a larger Hetzner SKU. |
+| Sidecar surcharges | Monthly | Plane and Sure each add compute headroom; the call covers whether the VPS bumps to a larger Hetzner SKU. The Recall.ai meeting bot is hosted (no VM cost) but bills its own per-hour rate. |
 
 ## The lifecycle
 

@@ -31,9 +31,8 @@ The data volume on every tenant is encrypted with **LUKS2** (Linux Unified Key S
 | `/mnt/encrypted/vault/.auth/authorized_senders.json` | Allowlist for inbound email senders. |
 | `/mnt/encrypted/plane` | Plane PM stack volumes (`pgdata/`, `redis/`, `rabbitmq/`, `uploads/`) — when `plane_enabled` is on. |
 | `/mnt/encrypted/sure` | Sure personal-finance stack volumes (`pgdata/`, `redis/`) — when `sure_enabled` is on. |
-| `/mnt/encrypted/vexa` | Vexa transcript-bot stack data (Postgres, Redis, MinIO) — when `vexa_enabled` is on. |
 
-The `/mnt/encrypted/{plane,sure,vexa,mcp-server,vaultwarden}` directories are created **unconditionally** at provision time. The cost of an empty directory is zero, and creating them lazily would mean flipping a sidecar feature flag (e.g. `vexa_enabled`) would also need re-running cloud-init before the corresponding stack could start.
+The `/mnt/encrypted/{plane,sure,mcp-server,vaultwarden}` directories are created **unconditionally** at provision time. The cost of an empty directory is zero, and creating them lazily would mean flipping a sidecar feature flag (e.g. `sure_enabled`) would also need re-running cloud-init before the corresponding stack could start.
 
 At rest, the volume content is **unreadable without the LUKS passphrase**. Even Hetzner staff with physical access to the disk see only ciphertext.
 

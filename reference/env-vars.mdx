@@ -30,7 +30,7 @@ The sections below enumerate every variable, what reads it, and what happens if 
 
 | Variable | Purpose | Consuming service(s) |
 |----------|---------|----------------------|
-| **`DOMAIN`** | The apex domain Alfred is served on. Dashboard at `https://${DOMAIN}`; sidecars at `api.`, `plane.`, `sure.`, `vault.`, `mcp.`, `sms.`, `voice.` subdomains. Point those seven A-records at the VM before `up`. | caddy, web, web-client, ctrl-api, mcp-server, vaultwarden, plane-api, sure-web, vexa-dashboard |
+| **`DOMAIN`** | The apex domain Alfred is served on. Dashboard at `https://${DOMAIN}`; sidecars at `api.`, `plane.`, `sure.`, `vault.`, `mcp.`, `sms.`, `voice.` subdomains. Point those seven A-records at the VM before `up`. | caddy, web, web-client, ctrl-api, mcp-server, vaultwarden, plane-api, sure-web |
 | **`ACME_EMAIL`** | Contact email for Let's Encrypt certificate registration. ACME notices (renewal failures, revocations) go here. | caddy |
 | **`OWNER_NAME`** | The principal's display name (shown across the dashboard and brief). | init, mcp-server, web |
 | **`OPENROUTER_API_KEY`** | Primary model routing for Hermes and alfred-learn (model IDs in `HERMES_*_MODEL`). | hermes, alfred-learn |
@@ -42,7 +42,7 @@ The sections below enumerate every variable, what reads it, and what happens if 
 
 | Variable | Purpose | Consequence if unset |
 |----------|---------|----------------------|
-| **`OWNER_EMAIL`** | The principal's primary email address. Load-bearing for: first-brief email sender + sender-allowlist, cross-tenant ingest guard, Sure's first-boot owner account, Vexa attendee matching *(.env.example:81-87)*. The code also mirrors it to `ALFRED_OWNER_EMAIL` for `transcript.py`. | First-brief email never reaches the inbox; ingest guard fails open. `bootstrap.sh:107-111` warns. |
+| **`OWNER_EMAIL`** | The principal's primary email address. Load-bearing for: first-brief email sender + sender-allowlist, cross-tenant ingest guard, Sure's first-boot owner account, Recall.ai attendee matching *(.env.example:81-87)*. The code also mirrors it to `ALFRED_OWNER_EMAIL` for `transcript.py`. | First-brief email never reaches the inbox; ingest guard fails open. `bootstrap.sh:107-111` warns. |
 
 ---
 
@@ -88,16 +88,9 @@ The sections below enumerate every variable, what reads it, and what happens if 
 | `SURE_REDIS_PASSWORD` | Sure Valkey (Redis) password. | sure-redis, sure-web, sure-worker, sure-init |
 | `SURE_API_KEY` | 64-char hex (Sure's `SecureRandom.hex(32)` format). `sure-init` seeds this exact value into Sure's DB and ctrl-api reads it from env so the REST proxy stops returning `NOT_CONFIGURED`. | sure-init, ctrl-api |
 
-### Vexa — generated unconditionally (4)
-
-These are generated even when `VEXA_ENABLED=false` so flipping the profile on later "just works." Only consumed when `docker compose --profile vexa up` is run.
-
-| Variable | Purpose | Consuming service(s) (profile: vexa) |
-|----------|---------|--------------------------------------|
-| `VEXA_POSTGRES_PASSWORD` | Vexa Postgres password. | vexa-postgres, vexa-admin-api, vexa-runtime-api, vexa-meeting-api |
-| `VEXA_MINIO_PASSWORD` | Vexa MinIO root password. | vexa-minio, vexa-runtime-api, vexa-meeting-api |
-| `VEXA_ADMIN_API_TOKEN` | Vexa admin-api bearer token. | vexa-admin-api, vexa-dashboard |
-| `VEXA_INTERNAL_API_SECRET` | Vexa internal-API secret (admin ↔ runtime ↔ meeting ↔ gateway). | vexa-admin-api, vexa-runtime-api, vexa-meeting-api, vexa-api-gateway |
+<Note>
+Older `.env.example` revisions generated `VEXA_POSTGRES_PASSWORD` / `VEXA_MINIO_PASSWORD` / `VEXA_ADMIN_API_TOKEN` / `VEXA_INTERNAL_API_SECRET` unconditionally. The Vexa stack was retired in PR #126; these are no longer generated. The meeting bot is now [Recall.ai](/integrations/recall) — paste the API key on the `/channels` Recall card.
+</Note>
 
 ---
 
@@ -165,15 +158,15 @@ The ctrl-api side enforces a per-route allowlist for `VOICE_BRIDGE_INTERNAL_TOKE
 
 Both lists are read-only by design. Writes intentionally go through MCP (`alfred__act_on_decision`, `alfred__notify_principal`, `alfred__create_vault_record`, …) so a compromise of voice-bridge bounds blast radius to observable state.
 
-### Transcription — Vexa + OMI
+### Transcription — OMI
 
 | Variable | Purpose | Default | Consumer |
 |----------|---------|---------|----------|
-| `VEXA_ENABLED` | Set to `true` to enable the 9-container Vexa transcript stack. Also run with `docker compose --profile vexa up -d`. | `false` | docker-compose, alfred-learn |
-| `VEXA_TRANSCRIPTION_URL` | Whisper-compatible transcription endpoint (Groq Whisper by default). Only consumed under `VEXA_ENABLED=true`. | `https://api.groq.com/openai/v1/audio/transcriptions` | vexa-meeting-api, alfred-learn |
-| `VEXA_TRANSCRIPTION_TOKEN` | Bearer token for the transcription endpoint. | — | vexa-meeting-api, alfred-learn |
-| `VEXA_BOT_DISPLAY_NAME` | Display name the Vexa bot uses when joining a meeting. | — | vexa-runtime-api |
-| `GROQ_API_KEY` | Groq Whisper key for the **OMI** ambient-wearable transcription path (distinct from `VEXA_TRANSCRIPTION_TOKEN`). Without it every audio group is discarded as "empty transcription" and OMI capture is dead. | — | alfred-learn (OmiAudioProcessorWorkflow) |
+| `GROQ_API_KEY` | Groq Whisper key for the **OMI** ambient-wearable transcription path. Without it every audio group is discarded as "empty transcription" and OMI capture is dead. | — | alfred-learn (OmiAudioProcessorWorkflow) |
+
+<Note>
+Meeting transcripts are now produced by the hosted [Recall.ai](/integrations/recall) bot, not by an in-stack transcription endpoint. The API key is configured from `/channels`, not from `.env`. The legacy `VEXA_ENABLED` / `VEXA_TRANSCRIPTION_*` / `VEXA_BOT_DISPLAY_NAME` variables are no longer consumed — the Vexa profile was retired in PR #126. The `VEXA_ENABLED`-gated `MeetingCaptureWorkflow` and `TranscriptIntakeWorkflow` still appear in `packages/learn/` for one release as a vestigial gate (default off, no Vexa container to reach); they will be deleted in a follow-up PR.
+</Note>
 
 ### Paperclip channel
 

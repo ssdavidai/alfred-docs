@@ -71,7 +71,7 @@ The restic password is **never** stored at the SaaS host, never at Hetzner, and 
 | `/mnt/encrypted/vaultwarden` | Yes | Vaultwarden DB + attachments |
 | `/mnt/encrypted/ollama` | Yes | Embedding model cache — re-downloadable but slow |
 | `/mnt/encrypted/mcp-server` | Yes | Claude Custom Connector OAuth state |
-| `/mnt/encrypted/plane`, `sure`, `vexa` | Yes (when enabled) | Sidecar Postgres / Redis / MinIO data |
+| `/mnt/encrypted/plane`, `sure` | Yes (when enabled) | Sidecar Postgres / Redis / MinIO data |
 | `/mnt/encrypted/temporal` | **No** | Excluded — workflows resume from last completed step |
 | `/opt/alfred/luks.key` | **No** | Backed up separately at provision time (see below) |
 | `/var/lib/docker` | No | Images are re-pullable from the registry |

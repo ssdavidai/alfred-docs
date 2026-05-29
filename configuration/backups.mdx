@@ -37,7 +37,7 @@ These hold data Alfred can regenerate or that you can rebuild from upstream, but
 
 ## Tier 3 — sidecar datastores
 
-These hold the data of the third-party sidecars (Plane, Sure, Vexa). Back them up only if you rely on the sidecar's own data — most of them re-bootstrap from `alfred_data` and from the auto-generated secrets in `.env`.
+These hold the data of the third-party sidecars (Plane, Sure). Back them up only if you rely on the sidecar's own data — most of them re-bootstrap from `alfred_data` and from the auto-generated secrets in `.env`.
 
 | Volume | Owner | Notes |
 |--------|-------|-------|
@@ -48,7 +48,6 @@ These hold the data of the third-party sidecars (Plane, Sure, Vexa). Back them u
 | `mcp_server_data` | MCP server runtime state *(`docker-compose.yaml:1501`)* | Tiny; OAuth scope state. |
 | `plane_pgdata`, `plane_redis`, `plane_rabbitmq`, `plane_uploads` | Plane stack | Project management data. Back up only if you depend on Plane history. |
 | `sure_pgdata`, `sure_redis` | Sure stack | Personal-finance history. Back up if you rely on the Sure data. |
-| `vexa_redis`, `vexa_postgres`, `vexa_minio`, `vexa_recordings` | Vexa stack (profile `vexa` only) | Meeting transcripts + audio. Back up if you care about meeting history. |
 
 ---
 

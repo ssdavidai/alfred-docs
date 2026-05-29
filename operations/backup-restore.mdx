@@ -43,7 +43,7 @@ docker run --rm \
 | `state_data`, `ingest_data` | Risky | SQLite WAL-mode tolerates a `cp` most of the time but is not guaranteed consistent. Either stop `ctrl-api` first or use SQLite's `.backup` command. |
 | `hermes_data` | Yes | Mostly config + small session SQLite files. |
 | `alfred_data` | Yes | Plain JSON/text files. |
-| `web_db_data`, `plane_pgdata`, `sure_pgdata`, `vexa_postgres` | No | Postgres needs `pg_dump` for a consistent backup or a stopped server. |
+| `web_db_data`, `plane_pgdata`, `sure_pgdata` | No | Postgres needs `pg_dump` for a consistent backup or a stopped server. |
 | `temporal_data` | Risky | SQLite — same caveat as state_data. |
 
 The safe blanket strategy: `docker compose stop`, snapshot the volumes you care about, `docker compose start`. About 30 seconds of downtime per night is usually acceptable.
@@ -160,7 +160,7 @@ When restoring from a full set of snapshots into a clean VM:
  Optional — restore if you want in-flight workflows to resume. Otherwise they restart from their schedules.
  </Step>
  <Step title="Sidecar volumes">
- `vaultwarden_data`, `plane_*`, `sure_*`, `vexa_*` as needed. None of these block the rest of the stack from booting.
+ `vaultwarden_data`, `plane_*`, `sure_*` as needed. None of these block the rest of the stack from booting.
  </Step>
  <Step title="docker compose up -d">
  Run `bootstrap.sh` first to ensure `.env` matches the volume snapshots' generation (the auto-secrets must align), then `up -d`.

@@ -792,9 +792,7 @@
               "api-reference/admin/temporal-cluster",
               "api-reference/admin/temporal-task-queue",
               "api-reference/admin/trigger-backup",
-              "api-reference/admin/update-env",
-              "api-reference/admin/vexa-auto-join-create",
-              "api-reference/admin/vexa-auto-join-get"
+              "api-reference/admin/update-env"
             ]
           }
         ]

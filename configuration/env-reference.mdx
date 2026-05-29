@@ -23,7 +23,7 @@ Run `./scripts/bootstrap.sh` **once**, after filling the Required block, and **b
 
 | Variable | Purpose | Consumed by |
 |----------|---------|-------------|
-| `DOMAIN` | Apex domain the stack is served on (e.g. `home.example.com`). All sidecars live at subdomains of this name — the dashboard at `https://${DOMAIN}`, the API at `api.${DOMAIN}`, etc. Point seven A-records at the VM before `docker compose up` *(`.env.example:14-17`, `caddy/Caddyfile:34-121`)*. | `caddy`, `web`, `web-client`, `ctrl-api`, `mcp-server`, `sure-web`, `plane-api`, `vaultwarden`, `vexa-dashboard` |
+| `DOMAIN` | Apex domain the stack is served on (e.g. `home.example.com`). All sidecars live at subdomains of this name — the dashboard at `https://${DOMAIN}`, the API at `api.${DOMAIN}`, etc. Point seven A-records at the VM before `docker compose up` *(`.env.example:14-17`, `caddy/Caddyfile:34-121`)*. | `caddy`, `web`, `web-client`, `ctrl-api`, `mcp-server`, `sure-web`, `plane-api`, `vaultwarden` |
 | `ACME_EMAIL` | Contact address for Let's Encrypt cert registration. Caddy uses HTTP-01 to issue one cert per host *(`caddy/Caddyfile:17-19`)*. | `caddy` |
 | `OWNER_NAME` | The principal's display name. Shown across the dashboard, embedded in the MCP server's tenant label *(`.env.example:22-23`)*. | `init`, `mcp-server` |
 | `OPENROUTER_API_KEY` | API key for OpenRouter. Default model routing for all three Hermes profiles goes through OpenRouter *(`packages/hermes/render_hermes.py:338-340`)*. | `hermes`, `alfred-learn` |
@@ -39,7 +39,7 @@ Run `./scripts/bootstrap.sh` **once**, after filling the Required block, and **b
 
 | Variable | Purpose | Consumed by |
 |----------|---------|-------------|
-| `OWNER_EMAIL` | The principal's primary email — load-bearing for the first-brief email sender, the cross-tenant ingest guard, Sure's first-boot owner account, and Vexa attendee matching *(`.env.example:81-87`, `scripts/bootstrap.sh:101-111`)*. Blank passes bootstrap with a loud warning but disables the first-brief email and lets the ingest guard fail open. | `init`, `alfred-learn`, `sure-init`, `plane-init`, `ctrl-api` |
+| `OWNER_EMAIL` | The principal's primary email — load-bearing for the first-brief email sender, the cross-tenant ingest guard, Sure's first-boot owner account, and Recall.ai attendee matching *(`.env.example:81-87`, `scripts/bootstrap.sh:101-111`)*. Blank passes bootstrap with a loud warning but disables the first-brief email and lets the ingest guard fail open. | `init`, `alfred-learn`, `sure-init`, `plane-init`, `ctrl-api` |
 
 ---
 
@@ -75,10 +75,7 @@ OpenRouter model IDs for each of the three Hermes profiles. Defaults are sane cu
 | Variable | Purpose | Default |
 |----------|---------|---------|
 | `SURE_ENABLED` | Run the Sure personal-finance sidecar | `true` *(`.env.example:72-75`)* |
-| `VEXA_ENABLED` | Run the Vexa meeting-transcription stack (9 extra containers, profile `vexa`) | `false` *(`.env.example:77-79`)* |
-| `VEXA_TRANSCRIPTION_URL` | Whisper endpoint for Vexa | `https://api.groq.com/openai/v1/audio/transcriptions` *(`.env.example:113`)* |
-| `VEXA_TRANSCRIPTION_TOKEN` | Bearer for the above | Required when `VEXA_ENABLED=true` |
-| `GROQ_API_KEY` | OMI ambient-wearable transcription via Groq Whisper | Distinct from `VEXA_TRANSCRIPTION_TOKEN` — without it every OMI audio group is discarded as empty *(`.env.example:116-121`)*. |
+| `GROQ_API_KEY` | OMI ambient-wearable transcription via Groq Whisper. Without it every OMI audio group is discarded as empty *(`.env.example:116-121`)*. | — |
 | `STEWARD_SIGNAL_EXTRACT_ENABLED` | Registration-time gate for `SignalExtractWorkflow` (signal pipeline stage 1) | `true` *(`.env.example:128`, `packages/learn/src/workflows/signals.py`)* |
 | `STEWARD_SIGNAL_ROUTER_ENABLED` | Registration-time gate for `SignalRouterWorkflow` (signal pipeline stage 2) | `true` *(`.env.example:129`)* |
 
@@ -120,12 +117,10 @@ The two `STEWARD_*` flags above gate **schedule registration** at worker boot. T
 | `SURE_POSTGRES_PASSWORD` | 64-char hex | `sure-db` + Sure containers |
 | `SURE_REDIS_PASSWORD` | 64-char hex | `sure-redis` + Sure containers |
 | `SURE_API_KEY` | 64-char hex (matches Sure's `SecureRandom.hex(32)` shape) | `sure-init` seeds it into Sure's DB; `ctrl-api` reads it for the REST proxy *(`.env.example:195-198`)* |
-| `VEXA_POSTGRES_PASSWORD` | 64-char hex | Vexa Postgres + clients (profile `vexa`) |
-| `VEXA_MINIO_PASSWORD` | 64-char hex | Vexa MinIO + clients |
-| `VEXA_ADMIN_API_TOKEN` | 64-char hex | `vexa-admin-api`, `vexa-dashboard` |
-| `VEXA_INTERNAL_API_SECRET` | 64-char hex | `vexa-admin-api`, `vexa-runtime-api`, `vexa-meeting-api`, `vexa-api-gateway` |
 
-The Vexa secrets are generated unconditionally even if `VEXA_ENABLED=false`, so flipping the profile on later works without re-running bootstrap.
+<Note>
+Older `.env.example` revisions emitted `VEXA_POSTGRES_PASSWORD` / `VEXA_MINIO_PASSWORD` / `VEXA_ADMIN_API_TOKEN` / `VEXA_INTERNAL_API_SECRET`. The Vexa stack was retired in PR #126; these secrets are no longer generated or consumed. The meeting bot is now [Recall.ai](/integrations/recall) — paste the API key on the `/channels` Recall card, no `.env` field. Existing `VEXA_*` lines in a pre-retirement `.env` are harmless and can be deleted at leisure.
+</Note>
 
 ---
 

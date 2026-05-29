@@ -9,18 +9,18 @@ Alfred Black is a single-VM deploy. Before you run `bootstrap.sh`, you need thre
 
 The stack runs roughly thirty containers in its default configuration *(docker-compose.yaml)*. RAM is the binding constraint — under load the default profile sits around 37 GB of allocated container ceilings, and 32 GB will OOM the heavy reasoning path.
 
-| Resource | Minimum | Recommended | With Vexa profile |
-|---|---|---|---|
-| **RAM** | 48 GB | 48 GB | 56–64 GB |
-| **vCPU** | 4 | 4+ | 4+ |
-| **Disk** | 80 GB | 80+ GB | 100+ GB |
-| **OS** | Linux with `docker` and `docker compose` v2 | Same | Same |
+| Resource | Minimum | Recommended |
+|---|---|---|
+| **RAM** | 48 GB | 48 GB |
+| **vCPU** | 4 | 4+ |
+| **Disk** | 80 GB | 80+ GB |
+| **OS** | Linux with `docker` and `docker compose` v2 | Same |
 
 <Note>
-The Vexa transcript profile adds nine more containers — Postgres, Redis, MinIO, four Vexa services, a bot runtime, and a dashboard *(docker-compose.yaml, profiles: ["vexa"] at lines 1251–1489)*. Skip it on first deploy unless you need meeting transcription right away.
+Meeting transcription is now handled by the hosted [Recall.ai](/integrations/recall) bot — no extra containers, configured entirely from `/channels`. The earlier nine-container self-hosted Vexa profile was retired in PR #126; see [Vexa (retired)](/integrations/vexa) for the historical record.
 </Note>
 
-A Hetzner CCX33 (8 vCPU / 32 GB RAM) is too small. A CCX43 (16 vCPU / 64 GB RAM) handles default and Vexa comfortably. Any cloud provider with equivalent specs works — the stack contains no provider-specific code.
+A Hetzner CCX33 (8 vCPU / 32 GB RAM) is too small. A CCX43 (16 vCPU / 64 GB RAM) handles the default stack comfortably. Any cloud provider with equivalent specs works — the stack contains no provider-specific code.
 
 ## DNS records
 
@@ -63,12 +63,11 @@ The bootstrap script will succeed without these, but several features stay dark 
 | Variable | Enables |
 |---|---|
 | `ANTHROPIC_API_KEY` | A direct Anthropic route. Hermes routes through OpenRouter by default, so this is purely optional *(scripts/bootstrap.sh:78–79)*. |
-| `OWNER_EMAIL` | The first-brief sender, the cross-tenant ingest guard, the Sure first-boot owner, the Vexa attendee match. Loud warning at bootstrap if blank *(scripts/bootstrap.sh:107–111)*. |
+| `OWNER_EMAIL` | The first-brief sender, the cross-tenant ingest guard, the Sure first-boot owner, and the Recall.ai attendee match. Loud warning at bootstrap if blank *(scripts/bootstrap.sh:107–111)*. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | The cosmetic "Sign in with Google" login button. Onboarding's Gmail connect uses Composio regardless *(.env.example:46–60)*. |
 | `SENDGRID_API_KEY` / `MAILGUN_API_KEY` | Transactional email — email verification, password reset. |
-| `GROQ_API_KEY` | OMI ambient-wearable transcription (separate from Vexa's Whisper token) *(.env.example:116–121)*. |
+| `GROQ_API_KEY` | OMI ambient-wearable transcription *(.env.example:116–121)*. |
 | `AGENTMAIL_API_KEY` / `AGENTMAIL_INBOX_ID` | Outbound email for the first brief and the `self` email tool *(.env.example:89–100)*. |
-| `VEXA_ENABLED=true` + `VEXA_TRANSCRIPTION_TOKEN` | The meeting-transcript stack. Requires the `--profile vexa` flag at compose time. |
 
 Every other secret — encryption keys, JWT signing, database passwords, internal API tokens — is generated locally by `bootstrap.sh` and appended to `.env`. There are 21 of these. You never fill them by hand.
 
