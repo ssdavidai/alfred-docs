@@ -1,15 +1,17 @@
 ---
 title: "Home Assistant"
-description: "Alfred as Home Assistant's conversation agent + Tier 4 autonomy, wired through a HACS integration and 26 dedicated MCP tools."
+description: "Alfred as Home Assistant's conversation agent + Tier 4 autonomy, wired through a HACS integration and 85 dedicated MCP tools."
 ---
 
 Alfred Black integrates with [Home Assistant](https://www.home-assistant.io)
 on three independent layers:
 
-1. **Alfred reads and writes HA** — through 26 `ha__*` MCP tools loaded into
+1. **Alfred reads and writes HA** — through 85 `ha__*` MCP tools loaded into
    Hermes-main, gated by a one-time LLAT paste on `/channels`. Alfred can
    answer "is the kitchen window open?", set the thermostat, author scenes,
-   and (with approval) install integrations.
+   install integrations and HACS repos, manage Supervisor addons, drive
+   core lifecycle + backups, and mint per-user LLATs — all behind
+   `decision_ref` gates + auto-snapshots on irreversible verbs.
 2. **HA reaches Alfred** — through a HACS-installed integration
    (`ssdavidai/alfred-ha`) that registers Alfred as a `ConversationEntity`
    so HA's Assist routes typed and voice turns to your tenant.
@@ -18,10 +20,10 @@ on three independent layers:
    forward to Supervisor REST under HA's auto-injected `SUPERVISOR_TOKEN`,
    so any LLAT-bearing caller gains Supervisor scope without SSH.
 
-This page is the user-facing writeup. The 35-tool, eight-PR Tier 4 spec
-lives in [`docs/specs/issue-115-ha-tier4-autonomy.md`](https://github.com/ssdavidai/alfred/blob/main/docs/specs/issue-115-ha-tier4-autonomy.md);
-26 of those tools are shipping today (11 reads + 5 PR3-stubbed writes +
-10 PR3 CRUD), with the remaining ~9 deferred to PR4-PR8.
+This page is the user-facing writeup. The full Tier 4 spec — Sir's three
+locked defaults (gates / snapshots / daybook) and the per-tool gate
+matrix — lives in [`docs/specs/issue-115-ha-tier4-autonomy.md`](https://github.com/ssdavidai/alfred/blob/main/docs/specs/issue-115-ha-tier4-autonomy.md).
+All 85 tools are live as of 2026-05-29.
 
 ## The /channels Home Assistant card
 
@@ -54,13 +56,15 @@ Mint your LLAT under HA's *Profile → Long-Lived Access Tokens*. Use a
 dedicated token labelled `alfred` so you can revoke per-caller; treat the
 LLAT the same way you'd treat root SSH access.
 
-## The `hass` MCP server — 26 tools today
+## The `hass` MCP server — 85 tools
 
 Hermes-main loads `hass` as the **7th** stdio MCP app
 *(packages/hermes/hermes-config.yaml.njk)*. The full catalogue groups into
-three tiers:
+nine PR waves — two from issue #110 (reads + loop-guarded writes) and
+seven from issue #115 (the Tier 4 autonomy fan-out). Per-tool descriptions
+and gate matrices live in the [`hass` MCP reference](/mcp-reference/hass).
 
-### Tier 1 — 11 read tools (PR #128)
+### Reads — 11 tools ([PR #128](https://github.com/ssdavidai/alfred/pull/128) / #110 PR2)
 
 | Tool | What it does |
 |---|---|
@@ -76,7 +80,7 @@ three tiers:
 | `ha__get_calendars` | HA-side calendars (read-only views) |
 | `ha__resolve_entity` | Fuzzy match "kitchen light" → `light.kitchen_main` |
 
-### Tier 2 — 5 write tools (PR #143)
+### Writes — 5 loop-guarded tools ([PR #143](https://github.com/ssdavidai/alfred/pull/143) / #110 PR4)
 
 | Tool | Gate | Notes |
 |---|---|---|
@@ -86,7 +90,7 @@ three tiers:
 | `ha__rollback_snapshot` | `decision_ref` | One-shot — `restored_at` flips to non-null |
 | `ha__subscribe_events` | none | Narrow follow-up subscriptions; the household watcher already runs in `alfred-learn` |
 
-### Tier 3 — 10 CRUD tools (PR #161 / PR3 of #115)
+### Automations / scenes / scripts CRUD — 10 tools ([PR #161](https://github.com/ssdavidai/alfred/pull/161) / #115 PR3)
 
 | Family | Tools | Gate |
 |---|---|---|
@@ -94,12 +98,97 @@ three tiers:
 | Scenes | `ha__create_scene`, `ha__update_scene`, `ha__delete_scene` | none |
 | Scripts | `ha__create_script`, `ha__update_script`, `ha__delete_script` | none |
 
+### Integrations (config_flow) — 7 tools ([PR #165](https://github.com/ssdavidai/alfred/pull/165) / #115 PR4)
+
+| Tool | Gate | Auto-snapshot |
+|---|---|---|
+| `ha__list_integrations` | none | no |
+| `ha__list_available_integrations` | none | no |
+| `ha__integration_info` | none | no |
+| `ha__integration_discover` | none | no |
+| `ha__integration_configure` | `decision_ref` | yes (each step) |
+| `ha__integration_reload` | none | no |
+| `ha__integration_remove` | `decision_ref` | yes |
+
+Multi-step `config_flow` — discover → configure (loop until
+`step.type === 'create_entry'`) → done. Each `configure` step takes its
+own auto-snapshot; the `ha_integration_ref` ledger row carries
+`installed_by='alfred'` + `decision_ref` so the audit trail survives.
+
+### HACS — 8 tools ([PR #166](https://github.com/ssdavidai/alfred/pull/166) / #115 PR5)
+
+| Tool | Gate | Auto-snapshot |
+|---|---|---|
+| `ha__hacs_info`, `ha__hacs_search`, `ha__hacs_repo_info`, `ha__hacs_refresh`, `ha__hacs_pending_updates`, `ha__hacs_add_custom_repo` | none | no |
+| `ha__hacs_install` | `decision_ref` | yes |
+| `ha__hacs_remove` | `decision_ref` | yes |
+
+`add_custom_repo` is free — registering a URL doesn't install
+anything. The install / remove pair is where files land in `/config`,
+so those are the gated steps.
+
+### Supervisor addons — 10 tools ([PR #162](https://github.com/ssdavidai/alfred/pull/162) / #115 PR6)
+
+**HAOS-only.** On Container HA / Core HA / Supervised installs every
+addon tool returns `501 supervisor_not_available` with an
+`installation_type` field.
+
+| Tool | Gate | Auto-snapshot |
+|---|---|---|
+| `ha__list_addons`, `ha__addon_info`, `ha__addon_start`, `ha__addon_stop`, `ha__addon_restart`, `ha__addon_logs` | none | no |
+| `ha__addon_install` | `decision_ref` | yes |
+| `ha__addon_uninstall` | `decision_ref` | yes |
+| `ha__addon_configure` | `decision_ref` | no |
+| `ha__addon_update` | `decision_ref` | yes |
+
+### Core lifecycle + backups — 10 tools ([PR #164](https://github.com/ssdavidai/alfred/pull/164) / #115 PR7)
+
+| Tool | Gate | Auto-snapshot |
+|---|---|---|
+| `ha__core_version`, `ha__core_check_config`, `ha__core_reload_yaml`, `ha__list_backups`, `ha__backup_info`, `ha__create_backup` | none | n/a |
+| `ha__core_restart` | `decision_ref` | yes |
+| `ha__core_update` | `decision_ref` | yes |
+| `ha__delete_backup` | `decision_ref` | no |
+| `ha__restore_backup` | `decision_ref` | no (restoring IS the recovery) |
+
+`core_restart` / `core_update` trigger a real HA backup via
+`backup/generate` BEFORE the upstream call and surface
+`backup_ref_id` + `ha_backup_id` in the response. `delete_backup` and
+`restore_backup` are gated but un-snapshotted: backups are how Alfred
+rolls back; snapshotting the broken state we're about to overwrite
+would be backwards.
+
+### Users + LLATs — 8 tools ([PR #167](https://github.com/ssdavidai/alfred/pull/167) / #115 PR8)
+
+| Tool | Gate | Notes |
+|---|---|---|
+| `ha__list_users`, `ha__user_info`, `ha__list_user_llats` | none | metadata only — never returns token values |
+| `ha__create_user`, `ha__update_user`, `ha__delete_user` | `decision_ref` | delete drops the Vaultwarden item Alfred minted for this user |
+| `ha__mint_llat` | `decision_ref` | stores the token in Vaultwarden; MCP response carries `llat_vw_id`, never the raw value |
+| `ha__revoke_llat` | `decision_ref` | drops the per-user Vaultwarden item if it points at this user's most recent mint |
+
+### Area / device / entity / label CRUD — 16 tools ([PR #168](https://github.com/ssdavidai/alfred/pull/168) / #115 PR2)
+
+WS-only registry CRUD. NONE gated, NONE auto-snapshot — every verb here
+is reversible in <2 minutes through HA's own UI.
+
+| Family | Tools |
+|---|---|
+| Areas | `ha__area_create`, `ha__area_update`, `ha__area_delete` |
+| Devices | `ha__device_set_area`, `ha__device_set_name`, `ha__device_disable`, `ha__device_label` |
+| Entities | `ha__entity_rename`, `ha__entity_set_area`, `ha__entity_hide`, `ha__entity_disable`, `ha__entity_label` |
+| Labels | `ha__label_create`, `ha__label_update`, `ha__label_delete`, `ha__label_apply` |
+
+The `device_label` / `entity_label` verbs do a FULL REPLACE of the
+labels array; the `label_apply` convenience wrapper also replaces. For
+APPEND-not-replace, read current labels first and ship the merged set.
+
 ### The loop-guard contract
 
 A naive flow — Alfred toggles the kitchen light → HA emits a
 `state_changed` event → Alfred's `LearningWorkflow` ingests it as a signal
 → proposes a chore → calls `ha__call_service` again — would close a loop.
-Every Tier 2 write therefore:
+Every loop-guarded write therefore:
 
 1. Takes a `decision_ref` (vault path or ulid) in its input;
 2. Has ctrl-api persist an `ha_run` row keyed
@@ -114,19 +203,15 @@ within `HA_LOOP_GUARD_COOLDOWN_MS` (default 60 s) returns
 `409 LOOP_GUARD`. A different `decision_ref` always passes — that means
 Alfred re-derived a decision from a new signal.
 
-### Tier 4 — deferred
-
-The remaining ~9 tools (`ha__integration_discover`/`configure`/`remove`,
-`ha__hacs_search`/`install`/`remove`, `ha__addon_install`/`uninstall`,
-`ha__core_restart`/`update`, `ha__backup_create`/`restore`,
-`ha__user_create`/`mint_llat`, registry CRUD) are designed in the spec
-and ship in PR4-PR8 of #115. The defaults Sir locked on 2026-05-29:
+### Sir's locked defaults (2026-05-29)
 
 - **Approval gates** — anything whose effect isn't trivially reversible
   through HA's UI in <2 minutes is gated by `decision_ref`. Cheap entity
-  CRUD (scenes, scripts, automation create/update) runs free.
-- **Auto-snapshots** — `addon_install`, `integration_add`, `core_restart`,
-  `core_update` take a snapshot first. Always.
+  CRUD (scenes, scripts, automation create/update, registries) runs free.
+- **Auto-snapshots** — `addon_install` / `addon_uninstall` /
+  `addon_update`, `integration_configure` (per step) / `integration_remove`,
+  `hacs_install` / `hacs_remove`, `core_restart` / `core_update` take a
+  snapshot first. Always.
 - **Daybook entries** — cheap reversible writes are silent; everything
   else lands in the principal's daybook.
 

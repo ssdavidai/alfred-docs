@@ -1,6 +1,6 @@
 ---
 title: "MCP reference"
-description: "How Alfred exposes its capability surface to LLMs over Model Context Protocol — nine apps, ~240 tools, one bundle."
+description: "How Alfred exposes its capability surface to LLMs over Model Context Protocol — nine apps, ~299 tools, one bundle."
 ---
 
 Model Context Protocol (MCP) is the standard that lets a language model call tools published by a server. Alfred publishes its entire operational surface — vault reads, vault writes, finance, projects, secrets, scheduling, third-party app execution, Home Assistant, the file store — as MCP tools, then exposes the same catalogue over two transports: stdio (for the in-tenant Hermes runtime) and HTTP (for remote LLMs like claude.ai).
@@ -17,10 +17,10 @@ Nine apps live in the registry *(packages/mcp-server/src/tools/registry.ts)*:
 | [`vaultwarden`](/mcp-reference/vaultwarden) | 14 | `bw serve` sidecar → Vaultwarden REST |
 | [`execute`](/mcp-reference/execute) | 6 | Composio v3 platform |
 | [`hermes`](/mcp-reference/hermes) | 7 | Hermes `:18789` / `:18790` HTTP + `hermes cron` CLI |
-| [`hass`](/mcp-reference/hass) | 26 | ctrl-api → Home Assistant REST + WS (`/api/v1/channels/ha/*`) |
+| [`hass`](/mcp-reference/hass) | 85 | ctrl-api → Home Assistant REST + WS (`/api/v1/channels/ha/*`) |
 | [`files`](/mcp-reference/files) | 9 | ctrl-api `/api/v1/files/*` over Store 5 named volumes |
 | `paperclip` | 48 | Upstream `@paperclipai/mcp-server` baked into the Hermes image; loaded only on `main` |
-| **Total** | **~240** | |
+| **Total** | **~299** | |
 
 The in-house apps compile from a single TypeScript bundle (`packages/mcp-server`) and share one transport-agnostic dispatch layer: every tool defines `inputSchema` (Zod) plus `buildRequest`, which returns the HTTP method and path *(packages/mcp-server/src/tools/types.ts:43-51)*. The same definitions serve both the stdio child processes spawned by Hermes and the HTTP server reached over Cloudflare Tunnel. The `paperclip` app is the upstream npm package; see [Paperclip integration](/integrations/paperclip) for its load story.
 
