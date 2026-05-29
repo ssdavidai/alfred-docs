@@ -1,23 +1,24 @@
 ---
 title: "The Hermes runtime"
-description: "Three profiles, three model tiers, six MCP servers per profile, one bearer token."
+description: "Four profiles, four model tiers, six MCP servers per profile, one bearer token."
 ---
 
-Alfred Black's AI runtime is **Hermes Agent** (`NousResearch/hermes-agent`), packaged into a single Docker image that supervises three independent gateway processes. The split exists because user-facing chat, background workers, and Opus-class reasoning have wildly different concurrency, memory, and cost profiles — running them in one process would mean either undersizing the chat or over-spending on the workers.
+Alfred Black's AI runtime is **Hermes Agent** (`NousResearch/hermes-agent`), packaged into a single Docker image that supervises four independent gateway processes (three always-on + one sealed sandbox). The split exists because user-facing chat, background workers, Opus-class reasoning, and autonomous engineering have wildly different concurrency, memory, cost, and isolation profiles — running them in one process would mean either undersizing the chat, over-spending on the workers, or running autonomous code edits in the same uid as the principal's vault.
 
-## Three profiles, three ports
+## Four profiles, four ports
 
-A `supervisor.sh` wrapper launches three Hermes Gateway processes inside the same container, each pointing at its own profile directory under `$HERMES_HOME/profiles/` *(packages/hermes/docker/supervisor.sh:1-342)*:
+A `supervisor.sh` wrapper launches the Hermes Gateway processes inside the same container, each pointing at its own profile directory under `$HERMES_HOME/profiles/` *(packages/hermes/docker/supervisor.sh:1-522)*:
 
 | Profile | Port | Default model | Memory | Concurrency | Purpose |
 |---|---|---|---|---|---|
 | **main** | `:18789` | `x-ai/grok-4.3` | enabled | 3 concurrent children | User-facing chat, messaging, scheduled tasks |
 | **workers** | `:18790` | `openai/gpt-4.1-nano` | disabled | 1 concurrent child | Background agents (clerk, curator, janitor, distiller, ephemeral runs) |
 | **heavy** | `:18791` | `anthropic/claude-opus-4-6` | disabled | 1 concurrent child | Opus-class reasoning for onboarding and Reflection |
+| **codex-builder** | `:18793` | `openai-codex` (ChatGPT Plus/Pro) | disabled | 1 concurrent run | Sealed sandbox for autonomous engineering tasks — see [Codex builder](/architecture/codex-builder) |
 
 Models are defaults — every value is overridable via `HERMES_MAIN_MODEL`, `HERMES_WORKERS_MODEL`, `HERMES_HEAVY_MODEL` in `.env` *(packages/hermes/render_hermes.py:338-340)*. All three route through OpenRouter (`provider: openrouter`, `base_url: https://openrouter.ai/api/v1`) so a single `OPENROUTER_API_KEY` covers the whole runtime; `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` are optional fallbacks.
 
-The heavy profile is **not exposed to the host** — only the compose network can reach it, because Opus calls are expensive and shouldn't be reachable from outside the VM *(Dockerfile EXPOSE 18789 18790)*.
+The heavy profile is **not exposed to the host** — only the compose network can reach it, because Opus calls are expensive and shouldn't be reachable from outside the VM *(Dockerfile EXPOSE 18789 18790)*. The codex-builder profile is also compose-only and additionally **idle by default**: the supervisor only launches the fourth gateway when `ENABLE_CODEX_BUILDER=1` is set in the tenant's `/opt/alfred/.env` *(supervisor.sh:45-49, 425-485)*. When enabled, the codex-builder gateway runs under `setpriv --reuid=10001 --regid=10001 --clear-groups --reset-env`, dropping privileges and clearing the inherited environment before exec; it sits inside a dedicated iptables OUTPUT-chain egress jail scoped to its uid, plus filesystem deny ACLs that keep it off `/vault` and the other profiles' state. See the dedicated [codex-builder sandbox](/architecture/codex-builder) page for the full story; the rest of this page covers the three always-on profiles.
 
 ```mermaid
 flowchart LR
@@ -26,26 +27,32 @@ flowchart LR
  Main[main :18789<br/>Grok-4.3<br/>memory · 3 children]
  Workers[workers :18790<br/>GPT-4.1-nano<br/>1 child · hard-stop]
  Heavy[heavy :18791<br/>Opus-4.6<br/>1 child · compose-only]
+ CodexBuilder[codex-builder :18793<br/>codex CLI<br/>uid 10001 · sealed]
  Sup --> Main
  Sup --> Workers
  Sup --> Heavy
+ Sup -. ENABLE_CODEX_BUILDER=1 .-> CodexBuilder
  end
 
  Web[web · ctrl-api · principal] -->|/v1/responses| Main
  Learn[alfred-learn] -->|/v1/runs| Workers
  Learn -->|/v1/responses| Heavy
  Ctrl[ctrl-api delegation] -->|/v1/runs| Workers
+ Paperclip[paperclip adapter] -->|/v1/responses<br/>agent=codex-feature-builder| CodexBuilder
 ```
 
 ## The OpenAI Responses API
 
-Hermes speaks the **OpenAI Responses API natively** — there is no shim *(packages/hermes/docker/supervisor.sh:284-304)*:
+Hermes speaks the **OpenAI Responses API natively** — there is no shim *(packages/hermes/docker/supervisor.sh:397-481)*:
 
 - `POST http://hermes:18789/v1/responses` — main (synchronous chat)
 - `POST http://hermes:18790/v1/runs` — workers (ephemeral background runs)
 - `POST http://hermes:18791/v1/responses` — heavy
+- `POST http://hermes:18793/v1/responses` — codex-builder (sealed sandbox; paperclip adapter only)
 
-Every call carries `Authorization: Bearer ${HERMES_API_SERVER_KEY}`. The bearer is a single 32-byte URL-safe random value generated by the `init` container at first boot and written to `/alfred-data/.gateway-token` *(packages/hermes/init/entrypoint.sh:327-352)*. `render_hermes.py` reads that file and bakes it into each profile's `.env` as `API_SERVER_KEY`. Same token for all three profiles — callers authenticate once.
+Every call carries `Authorization: Bearer ${HERMES_API_SERVER_KEY}`. For main / workers / heavy the bearer is a single 32-byte URL-safe random value generated by the `init` container at first boot and written to `/alfred-data/.gateway-token` *(packages/hermes/init/entrypoint.sh:327-352)*. `render_hermes.py` reads that file and bakes it into each profile's `.env` as `API_SERVER_KEY`. Same token for all three always-on profiles — callers authenticate once.
+
+`codex-builder` is the exception: its `API_SERVER_KEY` is **per-profile** — independently rendered into `/hermes-state/profiles/codex-builder/.env` by the init container, not shared with the others. The paperclip-hermes adapter reads the right key via `readHermesProfileApiKey(profile)`, where `profile` is whichever name `pickGatewayUrlForAgent` returned *(packages/paperclip/adapter/src/server/hermes-http.ts; execute.ts:65-88)*. main's key 401s against `:18793`, and vice versa.
 
 Healthchecks hit `GET /health` on main and workers (no auth); model and tool introspection use `GET /v1/models` and `GET /v1/tools` (bearer required) *(supervisor.sh:222-264)*.
 

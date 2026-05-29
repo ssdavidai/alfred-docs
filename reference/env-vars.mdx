@@ -143,15 +143,27 @@ The voice-bridge service connects Twilio Media Streams to OpenAI's gpt-realtime 
 | Variable | Purpose | Default | Consumer |
 |----------|---------|---------|----------|
 | `OPENAI_API_KEY` | OpenAI API key (separate from the OpenRouter routing). Required for the realtime voice bridge. | — | voice-bridge |
-| `OPENAI_REALTIME_MODEL` | OpenAI realtime model id. | (compose default) | voice-bridge |
-| `OPENAI_REALTIME_VOICE` | OpenAI realtime voice name. | (compose default) | voice-bridge |
+| `OPENAI_REALTIME_MODEL` | OpenAI realtime model id. | `gpt-realtime-2` *(packages/voice-bridge/src/config.ts:46)* | voice-bridge |
+| `OPENAI_REALTIME_VOICE` | OpenAI realtime voice name. | `cedar` *(packages/voice-bridge/src/config.ts:47)* | voice-bridge |
+| `OPENAI_REALTIME_BASE_URL` | Override for the OpenAI Realtime WebSocket base URL. Production leaves this empty and points at `wss://api.openai.com/v1/realtime`; tests set it to a local mock server emulating `session.created` / `session.updated` to validate the connect-handshake. | `wss://api.openai.com/v1/realtime` *(packages/voice-bridge/src/config.ts:52)* | voice-bridge |
 | `TWILIO_PHONE_NUMBER` | The Twilio phone number routed to `voice.${DOMAIN}/twilio`. | — | voice-bridge |
 | `TWILIO_AUTH_TOKEN` | Twilio auth token (validates inbound webhook signatures). | — | voice-bridge |
-| `VOICE_BRIDGE_INTERNAL_TOKEN` | Internal bearer between voice-bridge and ctrl-api. | — | voice-bridge |
+| `VOICE_BRIDGE_INTERNAL_TOKEN` | Internal bearer between voice-bridge and ctrl-api. Path-allowlisted on the ctrl-api side to a read-only catalogue plus the two phone routes and the Composio dispatch — see `VOICE_BRIDGE_ALLOWLIST` / `VOICE_BRIDGE_PATTERN_ALLOWLIST` below. | — | voice-bridge, ctrl-api |
+| `VOICE_BRIDGE_DEBUG` | Set `1` to log verbose realtime-socket breadcrumbs (`session.update` shape, ACK timings, etc.). | `0` *(packages/voice-bridge/src/openai-realtime.ts:71)* | voice-bridge |
 | `VOICE_ALLOWED_CALLERS` | Comma-separated allowlist of caller numbers (E.164). | — | voice-bridge |
 | `VOICE_ALLOW_ALL_CALLERS` | Set `1` to bypass the allowlist (development only). | — | voice-bridge |
+| `MCP_EXTERNAL_SERVERS` | Optional comma-separated `name=url[=bearer]` pairs wiring extra MCP servers into voice-bridge alongside the six baked-in ones (e.g. tenant-specific surfaces like `cdsk=https://joe.ngrok.pizza/mcp/mcp`). External servers are passed through unfiltered to the realtime tool catalog — the curated allowlist below applies only to the six built-in apps. | — | voice-bridge |
 
 The voice service has hardcoded operational limits: `MAX_CALL_SECONDS=1800`, `IDLE_HANGUP_SECONDS=60` *(docker-compose.yaml:607-608)*.
+
+The realtime agent's MCP tool surface is curated by `VOICE_ALLOWED_MCP_TOOLS`, a tight allowlist of 22 entries baked into `packages/voice-bridge/src/mcp-clients.ts:253-279` (alfred read/write + hermes scheduling + execute list-connections). This keeps `session.instructions + tools` under OpenAI Realtime's ~16,384-token ceiling, which a full 157-tool surface would silently truncate. To change the curated set, edit the constant directly; it is not an environment variable today.
+
+The ctrl-api side enforces a per-route allowlist for `VOICE_BRIDGE_INTERNAL_TOKEN`:
+
+- **`VOICE_BRIDGE_ALLOWLIST`** — exact-match `METHOD:/path` pairs *(packages/ctrl/src/api/auth.ts:67-114)*. Today: the two phone routes (`/phone/voice-context`, `/phone/transcript`), the Composio dispatch (`/integrations/execute`), and the parameterless read surface (`/briefings`, `/vault/context`, `/vault/search`, `/vault/index`, `/vault/schema`, `/vault/inbox`, `/vault/graph`, `/vault/nebula-data`, `/decisions`, `/decisions/in-flight`, `/matters`, `/chores`, `/chore-actions`, `/workflows`, `/schedules`, `/state/signals`, `/state/observations`, `/admin/needs-attention`, `/learning/{status,observations,instincts,reflections,sessions}`).
+- **`VOICE_BRIDGE_PATTERN_ALLOWLIST`** — anchored regexes for `:id`-style routes (`/briefings/:slugDate`, `/decisions/:id`, `/vault/list/:type`, `/vault/records/*`, `/matters/:id`, `/chores/:slug{,/runs,/source}`, `/workflows/:wfId{,/history}`, `/schedules/:schId`, `/state/{signals,observations}/:id`, `/learning/{observations,instincts}/:id`) *(packages/ctrl/src/api/auth.ts:126-161)*. No prefix inheritance, no wildcard between segments.
+
+Both lists are read-only by design. Writes intentionally go through MCP (`alfred__act_on_decision`, `alfred__notify_principal`, `alfred__create_vault_record`, …) so a compromise of voice-bridge bounds blast radius to observable state.
 
 ### Transcription — Vexa + OMI
 
@@ -162,6 +174,21 @@ The voice service has hardcoded operational limits: `MAX_CALL_SECONDS=1800`, `ID
 | `VEXA_TRANSCRIPTION_TOKEN` | Bearer token for the transcription endpoint. | — | vexa-meeting-api, alfred-learn |
 | `VEXA_BOT_DISPLAY_NAME` | Display name the Vexa bot uses when joining a meeting. | — | vexa-runtime-api |
 | `GROQ_API_KEY` | Groq Whisper key for the **OMI** ambient-wearable transcription path (distinct from `VEXA_TRANSCRIPTION_TOKEN`). Without it every audio group is discarded as "empty transcription" and OMI capture is dead. | — | alfred-learn (OmiAudioProcessorWorkflow) |
+
+### Paperclip channel
+
+The Paperclip sidecar (`paperclip.{$DOMAIN}`) reaches inward through ctrl-api's `/api/v1/channels/paperclip/*` surface — heartbeats, agent registration, and outbound dispatches from Alfred back into Paperclip companies. Two env vars wire it:
+
+| Variable | Purpose | Default | Consumer |
+|----------|---------|---------|----------|
+| `PAPERCLIP_API_KEY` | Outbound Paperclip board key. Minted by `paperclip_board_key.py` via the cli-auth challenge flow (or seeded into the DB on hot-fix) and written into each Hermes profile's `.env`. The `paperclipMCP` server picks this up from process env at stdio startup *(packages/ctrl/src/api/routes/channels_paperclip.ts:755-1022)*. | — | ctrl-api, hermes (paperclip MCP) |
+| `PAPERCLIP_HEARTBEAT_SECRET` | HMAC secret on the inbound `POST /api/v1/channels/paperclip/heartbeat` route (5-minute replay window). Auto-generated by `bootstrap.sh`; ctrl-api refuses to accept heartbeats with HTTP 503 when this is unset *(packages/ctrl/src/api/routes/channels_paperclip.ts:22-1053)*. | — | ctrl-api |
+
+### Codex builder profile
+
+| Variable | Purpose | Default | Consumer |
+|----------|---------|---------|----------|
+| `ENABLE_CODEX_BUILDER` | Set to `true` to activate the sealed `codex-builder` 4th Hermes profile (port `:18793`, uid 10001, terminal+file tools only, egress allowlisted). Off by default; design lives in `docs/codex-builder-runtime.md`. | `false` *(docker-compose.yaml:176, 310)* | ctrl-api, hermes |
 
 ### Sure toggle
 

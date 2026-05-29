@@ -224,6 +224,29 @@ identity.
  </Tab>
 </Tabs>
 
+## Build-time upstream patches
+
+Two idempotent monkey-patches run at image-build time against the pip-installed
+Hermes (and openai) packages. Both are tripwire'd — they fail the Docker build
+loudly with exit 2 if the upstream source has shifted under them, rather than
+silently baking an unpatched image.
+
+- **`patch_upstream_hermes.py`** — teaches Hermes' Slack adapter to accept
+ `.html` / `.htm` attachments *(packages/hermes/patch_upstream_hermes.py)*.
+ Upstream `gateway/platforms/base.py` drops anything not in
+ `SUPPORTED_DOCUMENT_TYPES`, so HTML uploads silently `continue` past the
+ adapter with no log line above DEBUG — the LLM never sees the attachment.
+ The patch adds `.html` / `.htm` to that whitelist (which fixes Slack,
+ Telegram, and Discord by inheritance from `base.py`) and to Slack's
+ `TEXT_INJECT_EXTENSIONS` so small HTML files (`<=100 KB`) are inlined as
+ text into the prompt — useful for saved emails and articles.
+- **`patch_openai_sdk.py`** — repairs the openai SDK's streaming-response
+ accumulator against OpenAI's Codex shape, where `response.output_item.added`
+ events arrive with `output=None` and the unpatched accumulator crashes with
+ "NoneType is not iterable" *(packages/hermes/patch_openai_sdk.py)*. Without
+ the patch every Hermes-main turn fails on every channel the first time
+ OpenAI streams that shape.
+
 ## Where to look next
 
 - The MCP bundle Hermes loads: [Package — mcp-server](/development/packages-mcp-server)

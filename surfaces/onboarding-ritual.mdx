@@ -18,6 +18,8 @@ The ritual lives under `packages/web/src/onboarding/`, with routes declared in `
  </Step>
  <Step title="/verify — the correctness gate">
  A verification step that proves the right account is wired before any persona work begins. If the Composio connection or OAuth scope is wrong, the ritual stops here. *(packages/web/src/onboarding/VerifyPage.tsx, main.wasp:203-206)*
+
+ The page distinguishes two terminal states the backend can land in: `waiting` (the workflow is still extracting facts) and `empty` (the workflow finished and produced zero facts). The branch reads `progress.stage` from the backend and routes through `verifyViewState({stage, factsCount})` so the wedge behaviour is unit-tested at the contract rather than buried in render flags *(packages/web/src/onboarding/VerifyPage.tsx:43-52)*. Before this split, a backend that settled-but-empty looked indistinguishable from one that was still running, and the principal sat on "A moment — Alfred is sorting his observations" forever.
  </Step>
  <Step title="/soul — choose the preset">
  A small preset chooser for the persona archetype — formal-British, plainspoken-American, terse-technical, etc. The choice is a seed for the next step, not a final state. *(packages/web/src/onboarding/SoulPresetPage.tsx, main.wasp:210-213)*
@@ -27,6 +29,8 @@ The ritual lives under `packages/web/src/onboarding/`, with routes declared in `
  </Step>
  <Step title="/preparing — the heavy lift">
  The final backfill before the first brief: chunked fact extraction (`extract_facts_opus`), pattern discovery (`discover_patterns_opus`), personalization writing `USER.md`, `RULES.md`, and the Hermes memory files. Pack materialisation runs here too — `generate_matter_pack_opus` and `generate_errand_pack_opus` seed the vault with the principal's first matters, tasks, and chores. *(packages/web/src/onboarding/PreparingPage.tsx, main.wasp:222-225)*
+
+ `extract_facts_opus` persists per-chunk results incrementally. Each chunk's LLM result is keyed by `_chunk_fingerprint(chunk)` — a SHA-256 over the chunk's per-email `from` / `to` / `subject` / `date` — and written into `onboard["facts_partial"]` via `_write_onboard` the moment the chunk returns *(packages/learn/src/activities/onboarding_v3.py:893-1163)*. On a Temporal retry, already-fingerprinted chunks short-circuit (zero LLM cost); failed chunks are intentionally **not** persisted, so the retry reattempts them. The map is cleared at the end of the stage so a re-onboarding with a different email corpus doesn't carry stale chunks forward. Before this design, a single chunk timing out inside the one wrapping activity timeout discarded every other chunk's work and the principal saw `/verify` wedged at "A moment — Alfred is sorting his observations" with no path forward except restarting the workflow.
  </Step>
  <Step title="/first-brief — witness the composition">
  The first run of `write_brief_opus` renders inside the ritual itself. The principal reads their first letterpress missive — intro paragraph plus the "This week, on your plate" actionable list pulled from matters with `next_action_due`, open chores, and any payment-failure signals already detected. *(packages/web/src/onboarding/FirstBriefPage.tsx, main.wasp:228-231)*

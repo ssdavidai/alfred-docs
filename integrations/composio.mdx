@@ -55,6 +55,21 @@ Clicking **Disconnect** calls the dashboard's revoke action, which runs `disconn
 
 The same surface is reachable from claude.ai conversations through the `create_connection` / `reconnect_connection` / `delete_connection` tools, so an agent can suggest *"connect Gmail"* and have the principal complete the flow without leaving chat.
 
+## INITIATED → ACTIVE: the lifecycle webhook
+
+A connection starts at `INITIATED` the moment `create_connection` returns its `redirect_url`. It only flips to `ACTIVE` once Composio has captured the OAuth callback. Two paths now reach that flip:
+
+- **Webhook (preferred).** ctrl-api exposes `POST /api/v1/composio/webhook` to receive Composio's `connected_account.updated` event *(packages/ctrl/src/api/routes/composioWebhook.ts:1-79)*. Caddy's `@public_webhooks` matcher passes the path through to ctrl-api unauthenticated — Composio's POST never sees the SPA, which previously returned 405 for non-matched paths *(caddy/Caddyfile:47-59)*. On a `data.status === "ACTIVE"` event the route hops one container over to the web side's internal `POST /webhook/composio/finalize` (authenticated with the shared `AAS_API_KEY`) to flip the Prisma `ComposioConnection` row in real time.
+- **Reconciler fallback.** Tenants with no webhook configured at Composio (the live fleet today) still converge: the 1-minute reconciler now picks up `INITIATED` rows whose Composio-side state is already `ACTIVE`. Before this fix, the reconciler only acted on rows already marked `ACTIVE`, so a missed webhook meant the row sat at `INITIATED` indefinitely — `joe.alfred.black` 2026-05-27 sat at `INITIATED` for ~36 minutes for exactly this reason.
+
+The webhook supports two HMAC schemes: Composio's documented Standard Webhooks scheme (`webhook-id` / `webhook-timestamp` / `webhook-signature`, signing string `<id>.<ts>.<body>`, HMAC-SHA-256, base64) and the older simple SHA-256-over-body shape in `x-composio-signature` *(packages/ctrl/src/api/routes/composioWebhook.ts:42-58)*. Either secret is read from `COMPOSIO_WEBHOOK_SECRET`; when unset, the route accepts the body with a loud `WARN` log so deploys without a configured secret still unblock.
+
+Composio's webhook trigger authenticates with `X-AAS-API-Key`. Wasp's web auth middleware rejects `Authorization: Bearer` for service tokens, so the internal finalize hop uses a header that survives the Wasp auth pipeline.
+
+## Gmail stream ingest
+
+The signal pipeline reads Gmail JSONL streams written by Composio. The selector was historically a filename glob (`composio-gmail*.jsonl`), which silently dropped UUID-id streams written by non-auto-config paths — a connection minted directly through `create_connection` instead of the dashboard wrote a UUID-named file the steward never read, and the pipeline kept reading a stale legacy `composio-gmail*` JSONL that hadn't been updated in days. The selector now walks `<streams_dir>/configs/` and picks any config whose `composio_action == "GMAIL_FETCH_EMAILS"` *(packages/learn/src/activities/steward.py:1102-1167)*. Legacy filename globs remain as a fallback for compatibility.
+
 ## Connections are per-tenant, per-user
 
 Composio scopes connections by `COMPOSIO_USER_ID`, which `bootstrap.sh` sets to `alfred-owner-<4-byte-hex>` on first run *(scripts/bootstrap.sh:174–193)*. The script enforces a non-empty, non-`default` value — two installs on the same Composio account stay isolated. The user id is added to `.env`; never change it after install, or the connections become unreachable.
