@@ -111,7 +111,7 @@ A single layer failing is not catastrophic. **No single tool in the surface lets
 
 Honest scope of what's still possible:
 
-- **The agent can send email to attacker.example via the Gmail MCP.** Gmail is in the allowlist; the email tool is by-design. Mitigation: the per-instinct discretion gate (the agent doesn't send the email autonomously unless the instinct is at "Acting" tier with high confidence) — see [Agent autonomy](/configuration/agent-autonomy).
+- **The agent can send email to attacker.example via the Gmail MCP.** Gmail is in the allowlist; the email tool is by-design. Mitigation: the per-instinct discretion gate (the agent doesn't send the email autonomously unless the instinct is at "Acting" tier with high confidence) — see [Agent autonomy](/configuration/mode-flags).
 - **The agent can write a vault record summarising secrets the principal pasted.** Mitigation: vault writes are visible in the activity log and the `system-hermes-sessions` stream.
 - **The agent can run a chore that calls Composio with attacker-supplied parameters.** Mitigation: chore code is principal-authored Markdown + Python; the agent doesn't write chores autonomously.
 - **The agent can hallucinate a wrong tool call.** Mitigation: idempotency keys on side-effectful routes; confirm-before-destruct on destructive ones.

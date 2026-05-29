@@ -12,7 +12,7 @@ by topic; this page is the comprehensive list.
 **alfred-deliver** — the single butler-voiced outbound endpoint
 (`POST /api/v1/alfred-deliver`). Every Alfred-spoken message goes through it
 so each one is journaled and voiced consistently across channels. See
-[Continuity → One-Alfred](/architecture/one-alfred).
+[Continuity → One-Alfred](/surfaces/channels).
 
 **alfred-journal** — an append-only table in `alfred-state.db` that records
 every outbound Alfred message and every inbound principal turn, keyed by
@@ -22,7 +22,7 @@ recent entries to inject continuity into each new turn.
 **alfred-state.db** — Store 2 of the four-store model. SQLite with WAL +
 `sqlite-vec`, holds the machine's working memory: signals, observations,
 audit, settings, instinct counts. **Sole writer is ctrl-api**. See
-[Architecture → Storage](/architecture/storage).
+[Architecture → Storage](/architecture/four-store-model).
 
 **alfred-vault** — the Python daemon (`packages/alfred-vault/`) that owns
 curator / janitor / distiller / surveyor logic over the vault. Also the
@@ -55,7 +55,7 @@ tenant-local cron (typically morning 05:00 + evening 17:00).
 
 **Caddy** — the reverse proxy that handles ingress for all seven Alfred
 hostnames and auto-issues Let's Encrypt certificates. Config at
-`caddy/Caddyfile`. See [Deployment → Caddy](/deployment/caddy).
+`caddy/Caddyfile`. See [Deployment → Caddy](/configuration/domain-and-tls).
 
 **canonical vault types** — the twelve record types ctrl-api allows in the
 vault: matter, task, note, person, org, place, asset, chore, instinct,
@@ -103,7 +103,7 @@ audit ledger.
 
 **discretion** — the per-instinct threshold (computed from `observation_count`)
 that gates autonomous fire. High threshold for low-observation_count
-instincts. See [Architecture → instincts](/architecture/instincts).
+instincts. See [Architecture → instincts](/surfaces/instincts).
 
 **dispatching** — a transient signal status that signals are flipped to
 during the agent dispatch round-trip, then to `agent_responded` on success.
@@ -132,7 +132,7 @@ files, `FIX-*` docs, `scripts/hooks/**`, `CLAUDE.md`.
 
 **four-store model** — Alfred's storage architecture: vault (markdown),
 `alfred-state.db` (SQLite), `cold.db` (SQLite zstd), `ingest.db` (SQLite,
-7-day TTL). See [Architecture → Storage](/architecture/storage).
+7-day TTL). See [Architecture → Storage](/architecture/four-store-model).
 
 ## H
 
@@ -209,7 +209,7 @@ Hermes profile. Six are wired in the profile template today: `alfred-ctrl`
 `execute`). A sixth stdio app (`hermes`) ships in the bundle but isn't yet
 wired into the profile template; it is reachable through the HTTP MCP
 server at `mcp.{$DOMAIN}/hermes/mcp`. See
-[MCP catalog](/reference/mcp-tool-catalog).
+[MCP catalog](/mcp-reference/overview).
 
 **mode flags** — `signal_action_mode`, `state_mutator_mode`,
 `auto_task_create_mode`. Live | shadow | off. Default `live`. See

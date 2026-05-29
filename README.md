@@ -17,7 +17,15 @@ Then open `http://localhost:3000`.
 
 - `docs.json` — site configuration and navigation
 - `introduction/`, `quickstart/`, `architecture/`, `surfaces/`, `configuration/`, `integrations/`, `operations/`, `development/`, `reference/`, `troubleshooting/`, `contributing/`, `appendices/` — content trees, one `.mdx` per page
-- `images/` — figures and screenshots
+- `scripts/check-links.py` — lightweight local navigation and internal-link check
+
+## Validation
+
+```sh
+python3 scripts/check-links.py
+```
+
+Run this before opening a PR. It verifies every `docs.json` navigation page exists and that local Markdown/MDX links point to files in this repository.
 
 ## Contributing
 

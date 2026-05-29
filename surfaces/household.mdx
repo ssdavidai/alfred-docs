@@ -49,7 +49,7 @@ On a fresh tenant the file doesn't exist yet — the onboarding pipeline writes 
 
 ## Why standing rules matter for instincts
 
-Every time the [signal pipeline](/architecture/signals) routes work, it weights the principal's instincts against the situation at hand. Standing rules cut through the discretion gate: a rule like *"never reply to recruiters"* will keep the recruiter signal from ever auto-firing the reply instinct, even if observation_count is high. The clerk reads RULES.md as part of every prompt construction; instinct application reads it as a hard filter. Editing here updates both, on the next turn.
+Every time the [signal pipeline](/architecture/signal-pipeline) routes work, it weights the principal's instincts against the situation at hand. Standing rules cut through the discretion gate: a rule like *"never reply to recruiters"* will keep the recruiter signal from ever auto-firing the reply instinct, even if observation_count is high. The clerk reads RULES.md as part of every prompt construction; instinct application reads it as a hard filter. Editing here updates both, on the next turn.
 
 ## On chores
 

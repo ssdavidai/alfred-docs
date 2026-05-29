@@ -20,7 +20,7 @@ docker compose up -d
 That's the whole deploy. `docker compose up -d` is *idempotent*: it diffs the running containers against the compose spec and only restarts the ones whose image tag changed (or whose env/volume config changed). Containers whose image didn't change are left running.
 
 <Note>
-Because compose is pull-only on this stack, there is no `build:` key anywhere in `docker-compose.yaml` *(`docker-compose.yaml`)*. The only way to publish a new version is to merge to `main` and let the relevant CI workflow rebuild and push `:latest`. See [CI workflows](/contributing/ci) for what triggers what.
+Because compose is pull-only on this stack, there is no `build:` key anywhere in `docker-compose.yaml` *(`docker-compose.yaml`)*. The only way to publish a new version is to merge to `main` and let the relevant CI workflow rebuild and push `:latest`. See [CI workflows](/development/ci-workflows) for what triggers what.
 </Note>
 
 ---

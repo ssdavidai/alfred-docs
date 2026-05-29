@@ -6,7 +6,7 @@ description: "Every named volume in docker-compose.yaml, its writer, its content
 `docker-compose.yaml` declares 23 named volumes in the default profile and 4 more when the Vexa profile is enabled *(`docker-compose.yaml:1491-1514`)*. They're created on first `docker compose up` and persist across container restarts. This page maps each one to the service that owns it, what's inside, and how urgently you should back it up.
 
 <Note>
-**Single-writer discipline.** Most volumes have exactly one container with a write mount. The few exceptions (`alfred_data`, `hermes_data`, `vault_data`) are coordinated through `init` doing the scaffold once and `ctrl-api` doing all subsequent writes through HTTP endpoints, with other readers mounted read-only or write-coordinated. See [storage architecture](/architecture/storage-architecture).
+**Single-writer discipline.** Most volumes have exactly one container with a write mount. The few exceptions (`alfred_data`, `hermes_data`, `vault_data`) are coordinated through `init` doing the scaffold once and `ctrl-api` doing all subsequent writes through HTTP endpoints, with other readers mounted read-only or write-coordinated. See [storage architecture](/architecture/four-store-model).
 </Note>
 
 ---

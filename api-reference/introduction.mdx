@@ -9,7 +9,7 @@ icon: "code"
 Every operation Alfred performs is exposed as an HTTP endpoint on the `ctrl-api`. The dashboard, the channels, the workflows, and the agent itself all use the same surface. This is the same API your own scripts and integrations should use.
 
 <Note>
- Base URL: `https://<your-domain>/api/v1/...`. Authenticate every request with `Authorization: Bearer ${AAS_API_KEY}`.
+ Base URL: `https://<your-domain>/api/v1/...`. Authenticate every request with `Authorization: Bearer <token>`.
 </Note>
 
 ## Request path
@@ -38,7 +38,7 @@ Every request requires a Bearer token. The token is your tenant API key (`AAS_AP
 
 ```bash
 curl https://<your-domain>/api/v1/vault/context \
- -H "Authorization: Bearer ${AAS_API_KEY}"
+ -H "Authorization: Bearer <token>"
 ```
 
 A 401 is returned for missing, malformed, or wrong tokens. See [Authentication](/api-reference/authentication) for the full flow.
@@ -53,7 +53,7 @@ All requests sending data must use `Content-Type: application/json`:
 
 ```bash
 curl -X POST https://<your-domain>/api/v1/vault/inbox \
- -H "Authorization: Bearer ${AAS_API_KEY}" \
+ -H "Authorization: Bearer <token>" \
  -H "Content-Type: application/json" \
  -d '{"filename": "meeting-note.md", "content": "..."}'
 ```
@@ -107,7 +107,7 @@ The API is organised into groups by capability:
  <Card title="Devices" icon="mobile" href="/api-reference/devices/list">
  Device pairing for Obsidian sync and direct vault access
  </Card>
- <Card title="Hermes" icon="claw-marks" href="/api-reference/openclaw/health">
+ <Card title="Hermes" icon="claw-marks" href="/api-reference/admin/health">
  Gateway control — health, sessions, agents, skills, plugins, hooks
  </Card>
  <Card title="Integrations" icon="puzzle-piece" href="/api-reference/admin/health">
@@ -122,7 +122,7 @@ The API is organised into groups by capability:
  <Card title="Streams" icon="wave-pulse" href="/api-reference/admin/health">
  Stream config, ingest, polling, sync state
  </Card>
- <Card title="Learning" icon="brain" href="/api-reference/learning/status">
+ <Card title="Learning" icon="brain" href="/api-reference/workers/status">
  Observations, instincts, reflection, judgment, discretion
  </Card>
  <Card title="Logs" icon="scroll" href="/api-reference/logs/stream">
