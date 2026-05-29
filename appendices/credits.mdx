@@ -57,14 +57,22 @@ the projects below. Deep thanks to their authors and maintainers.
 
 ## Optional capabilities
 
-- **[Vexa](https://github.com/Vexa-ai/vexa)** — the meeting bot that joins
- Google Meet / Zoom / Teams calls and produces transcripts. Enabled via
- `docker compose --profile vexa up -d` and a Groq Whisper transcription key.
+- **[Recall.ai](https://recall.ai)** — hosted meeting bot that joins Zoom /
+ Google Meet / Microsoft Teams / Cisco Webex calls, streams transcript via
+ webhook, and supports outbound audio so Alfred can speak in meetings.
+ Replaced the retired self-hosted Vexa stack in PR #126; see
+ [Recall.ai](/integrations/recall).
 - **[Twilio](https://twilio.com)** — programmable voice + SMS. Alfred Black's
  voice channel uses Twilio Media Streams bridged to OpenAI's `gpt-realtime`
  endpoint via `voice-bridge`.
 - **[OMI](https://omi.me)** — the always-on wearable that streams ambient
  audio into Alfred's `/channels` OMI card.
+
+## Historical
+
+- **[Vexa](https://github.com/Vexa-ai/vexa)** — the nine-container
+ self-hosted meeting bot that shipped through 2026-05-29. Retired in PR #126
+ and replaced by Recall.ai.
 
 ## Storage
 

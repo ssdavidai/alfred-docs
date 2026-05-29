@@ -29,7 +29,7 @@ A fresh deploy stands up roughly thirty containers. The ones a principal actuall
  Temporal-backed intelligence layer. Signal extract, signal router, decision router, briefing, reflection, judgment — roughly thirty workflows on schedules from 2 min to nightly *(packages/learn/CONTRACT.md)*.
  </Card>
  <Card title="Sidecars" icon="cubes">
- Plane (project management), Sure (personal finance), Vaultwarden (secrets), and an optional Vexa profile for meeting transcripts *(docker-compose.yaml)*.
+ Plane (project management), Sure (personal finance), Vaultwarden (secrets), Paperclip (managed-employee agent surface), and an optional Tailscale profile *(docker-compose.yaml)*. The meeting bot is the hosted [Recall.ai](/integrations/recall) — no extra containers.
  </Card>
  <Card title="MCP server" icon="plug">
  A bundle of six stdio MCP apps (alfred, sure, plane, vaultwarden, execute, hermes) plus an HTTP `alfred-ctrl` proxy. Each Hermes profile registers six MCP servers — five stdio plus the HTTP proxy *(packages/mcp-server/src/)*.

@@ -89,8 +89,7 @@ in parallel *(ci-check.yml:24-98)*:
  </Tab>
  <Tab title="compose-lint">
  Synthesises a dummy `.env` (real values are unnecessary for
- `compose config`) and runs `docker compose config --quiet` for
- both the default profile and `--profile vexa`
+ `compose config`) and runs `docker compose config --quiet`
  *(ci-check.yml:58-91)*. This is what catches a syntactically
  broken compose file or an unresolvable `${VAR}` interpolation
  before a deploy.

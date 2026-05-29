@@ -102,8 +102,7 @@ Every PR must pass `ci-check.yml` before merge. That workflow runs:
 
 - `build-ctrl`: `npm ci` + esbuild bundle of `dist/api.mjs`.
 - `pytest-learn`: `pytest` on `packages/learn/tests/` excluding slow tests.
-- `compose-lint`: synthesize a dummy `.env`, run `docker compose config`
- (default and `--profile vexa`).
+- `compose-lint`: synthesize a dummy `.env`, run `docker compose config`.
 - `bootstrap-lint`: `shellcheck scripts/bootstrap.sh`.
 - `gitleaks`: secret scanning.
 

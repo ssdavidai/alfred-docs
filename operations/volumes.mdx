@@ -3,7 +3,7 @@ title: "Volumes"
 description: "Every named volume in docker-compose.yaml, its writer, its contents, and its backup priority."
 ---
 
-`docker-compose.yaml` declares 23 named volumes in the default profile and 4 more when the Vexa profile is enabled *(`docker-compose.yaml:1491-1514`)*. They're created on first `docker compose up` and persist across container restarts. This page maps each one to the service that owns it, what's inside, and how urgently you should back it up.
+`docker-compose.yaml` declares ~23 named volumes in the default profile *(`docker-compose.yaml:1491-1514`)*. They're created on first `docker compose up` and persist across container restarts. This page maps each one to the service that owns it, what's inside, and how urgently you should back it up.
 
 <Note>
 **Single-writer discipline.** Most volumes have exactly one container with a write mount. The few exceptions (`alfred_data`, `hermes_data`, `vault_data`) are coordinated through `init` doing the scaffold once and `ctrl-api` doing all subsequent writes through HTTP endpoints, with other readers mounted read-only or write-coordinated. See [storage architecture](/architecture/storage-architecture).
@@ -54,21 +54,6 @@ Back up if you depend on Plane history; otherwise let them rebootstrap.
 | `sure_redis` | `sure-redis` | Valkey 7.2 — Sidekiq queue |
 
 Back up if you've imported financial data; otherwise the `sure-init` one-shot re-seeds the API key and the rest re-builds on first run.
-
----
-
-## Vexa stack (profile `vexa` only)
-
-These four are created only when `docker compose --profile vexa up -d` is used; otherwise they're dormant declarations.
-
-| Volume | Sole writer | Contents |
-|--------|-------------|----------|
-| `vexa_postgres` | `vexa-postgres` | Postgres 17 — Vexa admin + meeting state *(`docker-compose.yaml:1512`)* |
-| `vexa_redis` | `vexa-redis` | Valkey — Vexa's cache *(`docker-compose.yaml:1511`)* |
-| `vexa_minio` | `vexa-minio` | MinIO bucket metadata *(`docker-compose.yaml:1513`)* |
-| `vexa_recordings` | `vexa-meeting-api` | Recorded audio + transcripts *(`docker-compose.yaml:1514`)* |
-
-Back these up if you keep meeting transcripts; they're large.
 
 ---
 

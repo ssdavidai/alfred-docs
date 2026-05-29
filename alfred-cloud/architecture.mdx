@@ -35,7 +35,7 @@ The fleet CLI walks the same numbered steps for every new instance:
  Cloud-init includes LUKS keyfile generation, `fail2ban` + UFW setup, Docker install, Tailscale install, and the systemd timer that pulls fresh container images every 15 minutes.
  </Step>
  <Step title="Create the server + wait for cloud-init">
- Hetzner backups are enabled. The volume is attached. Cloud-init formats the disk with LUKS2 and creates `/mnt/encrypted/{vault,hermes,alfred,temporal,vaultwarden,mcp-server,vexa}`. The latter three are created unconditionally — the cost of an empty directory is zero, and creating them lazily would mean a tenant flag flip (e.g. `vexa_enabled`) would also need a re-run of cloud-init.
+ Hetzner backups are enabled. The volume is attached. Cloud-init formats the disk with LUKS2 and creates `/mnt/encrypted/{vault,hermes,alfred,temporal,vaultwarden,mcp-server,plane,sure}`. The sidecar dirs are created unconditionally — the cost of an empty directory is zero, and creating them lazily would mean a tenant flag flip (e.g. `sure_enabled`) would also need a re-run of cloud-init.
  </Step>
  <Step title="Upload secrets via SSH (not via cloud-init)">
  `.env` (LLM keys, `AAS_API_KEY`, Composio creds, AgentMail/AgentPhone tokens) is SFTP'd post-boot. Cloud-init `user_data` is readable through Hetzner's metadata API, so secrets never go there.
@@ -67,7 +67,6 @@ Everything that matters is on `/mnt/encrypted` — the LUKS2 volume — and noth
 | `/mnt/encrypted/temporal` | Temporal SQLite database (workflow state). |
 | `/mnt/encrypted/vaultwarden` | Per-tenant Vaultwarden SQLite + attachments. Every secret currently in `.env` plus future credentials. |
 | `/mnt/encrypted/mcp-server` | Per-tenant MCP HTTP server data (Claude Custom Connector OAuth state). |
-| `/mnt/encrypted/vexa` | Vexa transcript-bot stack data (Postgres, Redis, MinIO) when `vexa_enabled` is on. |
 | `/mnt/encrypted/plane` | Plane PM stack volumes when `plane_enabled` is on. |
 | `/mnt/encrypted/sure` | Sure personal-finance stack volumes when `sure_enabled` is on. |
 
@@ -75,7 +74,7 @@ The LUKS keyfile lives at `/opt/alfred/luks.key` on the host — readable only b
 
 ## The Docker stack
 
-A fully-loaded Cloud tenant runs the **Alfred core** containers plus optional sidecar stacks (Plane, Sure, Vexa). All built from a Nunjucks-templated compose file; image tags are `:latest` because the `alfred-update.timer` systemd unit pulls fresh images every fifteen minutes — the same images CI publishes from `main`. *(CLAUDE.md:section 12)*
+A fully-loaded Cloud tenant runs the **Alfred core** containers plus optional sidecar stacks (Plane, Sure). All built from a Nunjucks-templated compose file; image tags are `:latest` because the `alfred-update.timer` systemd unit pulls fresh images every fifteen minutes — the same images CI publishes from `main`. *(CLAUDE.md:section 12)*
 
 ### Alfred core (always on)
 
@@ -106,9 +105,9 @@ Each is gated behind a `{% if <flag>_enabled %}` block in the compose template. 
 |---|---|---|
 | **Plane** | 13 (12 long-running + 1 one-shot migrator) | Self-hosted project management; cloudflared routes `<sub>-plane.<domain>` to it. |
 | **Sure** | 4 (+ one-shot init) | Self-hosted personal-finance (we-promise/sure); web on `:3001`, public reach-in via cloudflared. |
-| **Vexa** | 9 | Transcript bot that joins Google Meet calls as "Alfred", transcribes via Groq Whisper, POSTs `meeting.completed` webhooks back to `ctrl-api`. |
+| **Tailscale** | 1 | Off-by-default sidecar that joins the VM to the tenant's tailnet via an auth-URL flow. See [Tailscale](/integrations/tailscale). |
 
-A bare-bones Cloud tenant is roughly twelve long-running containers plus the `init` one-shot. A fully-loaded tenant with all three sidecars is in the mid-thirties.
+A bare-bones Cloud tenant is roughly twelve long-running containers plus the `init` one-shot. A fully-loaded tenant with both Plane and Sure enabled is in the mid-twenties; the hosted [Recall.ai](/integrations/recall) meeting bot adds zero containers.
 
 ## Network paths
 

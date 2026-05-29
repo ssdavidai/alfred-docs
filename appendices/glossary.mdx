@@ -353,8 +353,10 @@ on every read" cost.
 **verify** — the regression command each lane runs at pre-commit. Mirrors
 CI; see [PR conventions → CI requirements](/contributing/pr-conventions#ci-requirements).
 
-**Vexa** — the optional meeting-transcription stack. Off by default; enable
-with `docker compose --profile vexa up -d`.
+**Vexa** — the nine-container self-hosted meeting-transcription stack that
+shipped through 2026-05-29. Retired in PR #126; replaced by
+[Recall.ai](/integrations/recall). See [Vexa (retired)](/integrations/vexa)
+for the historical record.
 
 **voice-bridge** — the Twilio Media Streams ↔ OpenAI gpt-realtime bridge at
 `voice.{$DOMAIN}`. Provides Alfred's phone-call surface.

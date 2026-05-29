@@ -71,7 +71,7 @@ The promotion contract (`assertCanonicalVaultPath`) enforces this at the API gat
 
 The dashboard is two containers: `web` (Wasp server, auth + operations) and `web-client` (nginx static SPA). UI changes need both rebuilt *(docker-compose.yaml:80-137)*. The vault daemon (`alfred`) handles markdown validation and indexing as a separate process — ctrl-api delegates writes to it via `docker exec` and a per-path mutex *(packages/ctrl/src/api/routes/vault.ts:120-136)*.
 
-Four **sidecar apps** ship in the default profile — Plane (project management, ~11 sub-containers), Sure (personal finance, 3 sub-containers), Vaultwarden (secrets), and the MCP HTTP server for Claude Custom Connectors. The optional `--profile vexa` adds a 9-service meeting-transcription stack. See [Sidecars](/architecture/sidecars) for the full graph.
+Four **sidecar apps** ship in the default profile — Plane (project management, ~11 sub-containers), Sure (personal finance, 3 sub-containers), Vaultwarden (secrets), and the MCP HTTP server for Claude Custom Connectors. Meeting transcription is now handled by the hosted [Recall.ai](/integrations/recall) bot — no extra containers. See [Sidecars](/architecture/sidecars) for the full graph.
 
 ## What's on each page
 
@@ -79,4 +79,4 @@ Four **sidecar apps** ship in the default profile — Plane (project management,
 - [The signal pipeline](/architecture/signal-pipeline) — how an inbound event becomes a learned instinct.
 - [State machines](/architecture/state-machines) — matters, tasks, decisions, signals, chores, instincts.
 - [The Hermes runtime](/architecture/hermes-runtime) — the three profiles, the MCP registrations.
-- [Sidecars](/architecture/sidecars) — Plane, Sure, Vaultwarden, Vexa.
+- [Sidecars](/architecture/sidecars) — Plane, Sure, Vaultwarden, Paperclip, Tailscale.

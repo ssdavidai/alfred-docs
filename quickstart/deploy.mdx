@@ -51,7 +51,7 @@ These five are non-negotiable; `bootstrap.sh` exits with a clear error if any ar
 
 These don't block the deploy but are load-bearing for real use *(.env.example:81–87)*:
 
-- `OWNER_EMAIL` — the principal's email. Used by the first-brief sender, the ingest guard, Sure, and Vexa. `bootstrap.sh` prints a loud warning if blank.
+- `OWNER_EMAIL` — the principal's email. Used by the first-brief sender, the ingest guard, Sure, and Recall.ai attendee matching. `bootstrap.sh` prints a loud warning if blank.
 - `ANTHROPIC_API_KEY` — optional. Hermes routes through OpenRouter by default; set this only if you want a direct Anthropic route.
 
  </Tab>
@@ -62,7 +62,8 @@ Each unlocks one feature:
 - `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` — the "Sign in with Google" button.
 - `SENDGRID_API_KEY` / `MAILGUN_API_KEY` — transactional email.
 - `GROQ_API_KEY` — OMI ambient-wearable transcription.
-- `VEXA_ENABLED=true` + `VEXA_TRANSCRIPTION_TOKEN` — meeting transcripts.
+
+Meeting transcripts are handled by the hosted [Recall.ai](/integrations/recall) bot — paste an API key on the `/channels` Recall card after the dashboard is up; no `.env` field is required.
 
  </Tab>
 </Tabs>
@@ -82,7 +83,7 @@ Each unlocks one feature:
 This script does two things *(scripts/bootstrap.sh:11–17)*:
 
 1. **Validates** every required field — exits 1 if any is missing or whitespace-only *(scripts/bootstrap.sh:70–98)*.
-2. **Generates 21 auto-secrets** via `openssl rand -hex 32` and appends them to `.env`: the AAS API key, JWT signing secret, Hermes gateway token, Vaultwarden admin token, MCP approval secret, Sure/Plane/Vexa database passwords, and more *(scripts/bootstrap.sh:115–137)*.
+2. **Generates auto-secrets** via `openssl rand -hex 32` and appends them to `.env`: the AAS API key, JWT signing secret, Hermes gateway token, Vaultwarden admin token, MCP approval secret, Sure/Plane database passwords, and more *(scripts/bootstrap.sh:115–137)*.
 
 The script is **idempotent** — re-running never overwrites an existing non-empty value *(scripts/bootstrap.sh:148–172)*. If you ever need to rotate one secret, blank just that line and re-run.
 
@@ -102,26 +103,11 @@ Bootstrap complete. Next: docker compose up -d
 
 <Step title="Bring up the stack">
 
-<Tabs>
- <Tab title="Default profile">
-
 ```bash
 docker compose up -d
 ```
 
-This pulls every image (`docker-compose.yaml` has no `build:` keys — pull-only by design) and starts the default ~30-container stack. Caddy registers with Let's Encrypt, requests one cert per subdomain, and the `init` container scaffolds the vault, renders the Hermes profile configs, and writes the gateway token to `/alfred-data/.gateway-token` *(docker-compose.yaml:143–162)*.
-
- </Tab>
- <Tab title="With Vexa transcripts">
-
-```bash
-docker compose --profile vexa up -d
-```
-
-Adds nine Vexa containers: Postgres, Redis, MinIO, admin-api, runtime-api, meeting-api, api-gateway, dashboard, and bot orchestration *(docker-compose.yaml:1251–1489)*. Requires 56–64 GB RAM total.
-
- </Tab>
-</Tabs>
+This pulls every image (`docker-compose.yaml` has no `build:` keys — pull-only by design) and starts the default ~28-container stack. Caddy registers with Let's Encrypt, requests one cert per subdomain, and the `init` container scaffolds the vault, renders the Hermes profile configs, and writes the gateway token to `/alfred-data/.gateway-token` *(docker-compose.yaml:143–162)*.
 
 Watch the logs as it comes up:
 
