@@ -30,7 +30,7 @@ description: "Every inbound door — web, email, phone, SMS, voice, Telegram, Sl
  For when the principal is abroad.
  </Card>
  <Card title="Home Assistant" icon="house">
- Alfred reads and writes HA — paste URL + LLAT to wire the 26 `ha__*` MCP tools. See [Home Assistant](/integrations/home-assistant).
+ Alfred reads and writes HA — paste URL + LLAT to wire the 85 `ha__*` MCP tools. See [Home Assistant](/integrations/home-assistant).
  </Card>
  <Card title="HA Conversation" icon="comments">
  Mint a channel token the alfred-ha HACS integration pastes into HA. Alfred becomes a `ConversationEntity` behind HA Assist.
@@ -85,7 +85,7 @@ Every card carries one of: **Connected** (active), **Not connected** (available)
  </Accordion>
 
  <Accordion title="Home Assistant">
- Paste your HA URL + a long-lived access token (LLAT). The LLAT lives in Vaultwarden, never in state.db columns. Five states map to ctrl-api's `/api/v1/channels/ha/status`: `unconfigured` / `connecting` / `connected` (with registry counts) / `error` (verbatim `last_error`) / `disconnected`. Wires the 26 `ha__*` MCP tools into Hermes-main; the loop-guard contract means Alfred's own writes don't echo back as principal-relevant signals. Full writeup: [Home Assistant](/integrations/home-assistant).
+ Paste your HA URL + a long-lived access token (LLAT). The LLAT lives in Vaultwarden, never in state.db columns. Five states map to ctrl-api's `/api/v1/channels/ha/status`: `unconfigured` / `connecting` / `connected` (with registry counts) / `error` (verbatim `last_error`) / `disconnected`. Wires the 85 `ha__*` MCP tools into Hermes-main; the loop-guard contract means Alfred's own writes don't echo back as principal-relevant signals. Full writeup: [Home Assistant](/integrations/home-assistant).
  </Accordion>
 
  <Accordion title="HA Conversation">

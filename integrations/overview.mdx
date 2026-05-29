@@ -23,7 +23,7 @@ The three layers are independent. A fresh install boots with all four sidecars e
  Agent-orchestration plane at `paperclip.{$DOMAIN}`. Alfred runs as a managed employee through the 7th MCP server (48 first-party tools) + HMAC heartbeat inbound channel.
  </Card>
  <Card title="Home Assistant" icon="house" href="/integrations/home-assistant">
- Two-way integration: Alfred reads/writes HA via 26 `ha__*` MCP tools (with loop-guard); HA reaches Alfred as a `ConversationEntity` via the HACS-installed `alfred-ha` integration. Plus a Supervisor bridge that gives any LLAT-bearing caller Supervisor scope.
+ Two-way integration: Alfred reads/writes HA via 85 `ha__*` MCP tools (loop-guarded writes, decision_ref-gated destructive verbs, auto-snapshots on irreversible ones); HA reaches Alfred as a `ConversationEntity` via the HACS-installed `alfred-ha` integration. Plus a Supervisor bridge that gives any LLAT-bearing caller Supervisor scope.
  </Card>
  <Card title="Recall.ai" icon="video" href="/integrations/recall">
  Hosted meeting bot that replaces Vexa. Joins Zoom/Meet/Teams/Webex, streams transcript back via webhook, and (PR6) speaks in the meeting via Output Media. Configured entirely from `/channels`.

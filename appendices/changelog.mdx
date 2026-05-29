@@ -21,13 +21,22 @@ spec lock land here.
 
 **Added — Home Assistant integration (two-way + Supervisor bridge)**
 
-- The 7th `hass` MCP server lands with **26 `ha__*` tools** across three
-  tiers: 11 reads (#128), 5 loop-guarded writes (#143), and 10 CRUD
-  surfaces for automations / scenes / scripts (#161). Loop-guard
-  contract: every write takes a `decision_ref`, ctrl-api persists an
-  `ha_run` row BEFORE issuing the upstream call, and `HaWatcherWorkflow`
-  suppresses `state_changed` echoes inside a 30 s window so Alfred
-  doesn't cycle on his own writes.
+- The 7th `hass` MCP server lands with **85 `ha__*` tools** across nine
+  PR waves: 11 reads (#128), 5 loop-guarded writes (#143), 10 CRUD
+  surfaces for automations / scenes / scripts (#161 / #115 PR3), 7
+  config_flow integrations CRUD (#165 / #115 PR4), 8 HACS tools (#166 /
+  #115 PR5), 10 Supervisor addon tools (#162 / #115 PR6), 10 core
+  lifecycle + backup tools (#164 / #115 PR7), 8 user + LLAT tools (#167
+  / #115 PR8), and 16 area / device / entity / label registry CRUD tools
+  (#168 / #115 PR2). Loop-guard contract: every PR4 write takes a
+  `decision_ref`, ctrl-api persists an `ha_run` row BEFORE issuing the
+  upstream call, and `HaWatcherWorkflow` suppresses `state_changed`
+  echoes inside a 30 s window so Alfred doesn't cycle on his own
+  writes. The Tier 4 fan-out adds `decision_ref` gates on every
+  irreversible verb (addon install / uninstall / update, integration
+  configure / remove, HACS install / remove, core restart / update,
+  backup delete / restore, user / LLAT writes) and auto-snapshots
+  before any verb that can corrupt the HA install.
 - `/channels` Home Assistant card *(packages/web/src/dashboard/HaCard.tsx)*
   — URL + LLAT paste, five states (`unconfigured` / `connecting` /
   `connected` / `error` / `disconnected`), registry summary, Voice
@@ -46,9 +55,10 @@ spec lock land here.
 - Tier 4 spec (`docs/specs/issue-115-ha-tier4-autonomy.md`) locks Sir's
   three defaults: approval gates on irreversible writes, auto-snapshots
   before addon-install / integration-add / core-restart / core-update,
-  daybook entries for everything not silently reversible. Eight more
-  tools (integrations / HACS / addons / core / backups / users) are
-  designed and ship across PR4–PR8.
+  daybook entries for everything not silently reversible. The full
+  Tier 4 fan-out — integrations, HACS, addons, core, backups, users,
+  registries — landed the same day across PRs #161 / #162 / #164 /
+  #165 / #166 / #167 / #168.
 - See [Home Assistant integration](/integrations/home-assistant) and
   [`hass` MCP reference](/mcp-reference/hass).
 
