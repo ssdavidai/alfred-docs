@@ -118,18 +118,70 @@ The release substantially matured the call path:
 
 A `VOICE_BRIDGE_DEBUG=1` env opens a verbose-log breadcrumb on the realtime socket — used during the 2026-05-28 home-call investigation that surfaced the ACK-gate and `self`-allowlist gaps.
 
-## Vexa (optional — meeting transcription)
+## voice-bridge ESPHome + Wyoming listeners
 
-Run with `docker compose --profile vexa up -d`. Adds nine containers *(docker-compose.yaml:1251-1489)*:
+Beyond the Twilio leg, `voice-bridge` runs **two** listeners for HA Voice
+satellites:
 
-- **Datastore**: `vexa-redis`, `vexa-postgres` (17), `vexa-minio` (recording storage), `vexa-minio-init` (one-shot bucket setup)
-- **APIs**: `vexa-admin-api` (admin backend), `vexa-runtime-api` (spawns Vexa-bot child containers via docker.sock RW), `vexa-meeting-api` (recording + transcript ingest)
-- **Edge**: `vexa-api-gateway` (entrypoint for all Vexa HTTP traffic), `vexa-dashboard` (Next.js UI on `vexa.{$DOMAIN}`)
+- **ESPHome Native API server on `:6053`** — the binary HA-internal
+  protocol the satellites speak (varint length prefix + protobuf
+  payload). Makes `voice-bridge` an HA Voice "speaker" the satellite
+  can pair with directly, bypassing HA's own assist pipeline for the
+  latency win *(packages/voice-bridge/src/esphome-server.ts,
+  esphome-protocol.ts)*.
+- **Wyoming fallback** — `packages/voice-bridge/src/wyoming-server.ts`,
+  for satellites that won't pair direct against ESPHome and need the
+  Wyoming addon as an intermediary.
 
-`vexa-runtime-api` mounts the Docker socket read-write to spawn meeting-bot containers as siblings — that's not `cap_drop ALL`'d because the upstream image is unaudited. If you don't need automated meeting capture, leave the profile off; Vexa adds ~7 GB to your memory ceiling.
+PR #141 enables the listener (`ESPHOME_ENABLED=1` in the compose `.env`)
+and combines with Tailscale Serve to expose it tailnet-only. PR4 of
+issue #112 (#152) wires the live HA Voice pipeline through it with
+Wyoming as the fallback.
 
-The transcription backend is configurable via `VEXA_TRANSCRIPTION_URL` and `VEXA_TRANSCRIPTION_TOKEN` (Groq Whisper by default). `OWNER_EMAIL` is load-bearing for matching the principal to meeting attendees.
+A read-only `files` surface (`list/stat/read_text/search`, PR #142)
+sits inside the realtime agent so mid-call the principal can say "read
+me the PDF the accountant sent" and Alfred reaches [Store 5](/surfaces/files).
+
+## Vexa — retired (PR #126)
+
+Vexa was a nine-container `profiles: ["vexa"]` stack from a 2025-era
+self-hosted meeting bot. PR #126 (2026-05-29) retired it: zero live
+tenants had the profile up since the single-VM cutover, and there was no
+historical transcript corpus. The replacement is
+[Recall.ai](/integrations/recall) — hosted SaaS, no extra containers,
+configured entirely from `/channels`, plus an in-meeting voice surface
+Vexa never had. See [Vexa (retired)](/integrations/vexa) for the
+historical record.
+
+## Tailscale (optional sidecar)
+
+Run with `docker compose --profile tailscale up -d`. Adds one container
+(`tailscale/tailscale:stable`) plus a `tailscale_data` named volume that
+holds `tailscaled.state` so the node key survives `docker compose pull`.
+Off by default; bring it up from the `/channels` Tailscale card via the
+auth-URL flow — no API key paste.
+
+The sidecar additionally hosts:
+
+- `tailscale cert <domain>` for Let's Encrypt certs issued through the
+  Tailscale control plane (no port 80 needed). Issued certs land in
+  `caddy/tailscale-certs/`.
+- `tailscale serve` for tailnet-only routes (the dashboard reachable
+  only inside the tailnet).
+- `tailscale funnel` for public routes (used sparingly).
+
+Full writeup: [Tailscale](/integrations/tailscale).
 
 ## Resource ceiling
 
-Default profile sits around **~37 GB memory ceiling** when fully loaded; adding `--profile vexa` pushes it to ~44 GB. The minimum VM spec is 32 GB RAM (with active swapping under load), recommended 48 GB, and Vexa wants 56–64 GB *(deploy/CUTOVER.md)*. Disk: 80+ GB, more if you anticipate large vault histories or many recorded meetings.
+Default profile sits around **~37 GB memory ceiling** when fully loaded.
+Tailscale and ESPHome listeners add a few MB each — negligible. The
+minimum VM spec is 32 GB RAM (with active swapping under load),
+recommended 48 GB *(deploy/CUTOVER.md)*. Disk: 80+ GB, more if you
+anticipate large vault histories or a heavy Files Store 5 (PDFs, audio
+archive).
+
+The retired Vexa ceiling was +7 GB; that's gone. Recall.ai shifts the
+meeting-bot footprint to a third party for ~$0.50/hr of bot time +
+$0.15/hr transcription, with a tenant-side monthly hours cap that
+auto-flips the auto-join policy to `off` at 100 %.

@@ -8,6 +8,187 @@ This page mirrors the in-repo `CHANGELOG.md`. The format follows
 date-based releases, while the `alfred-vault` package follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+<Update label="2026-05-29 (evening)" description="Tier 4 HA, the alfred-ha Supervisor bridge, Recall replaces Vexa, Tailscale, Files store, Wake words">
+
+A second 2026-05-29 release lands the **household integration wave**:
+Home Assistant becomes a first-class principal surface, the meeting bot
+moves from self-hosted Vexa to hosted Recall.ai, the VM can now join the
+principal's tailnet through a sidecar with an auth-URL flow, the file
+store opens as **Store 5**, and HA Voice satellites become reachable —
+with the wake-word constraint enumerated for the first time. Eight
+feature waves spanning issues #109–#115 + PR #143/PR #161 + the Tier 4
+spec lock land here.
+
+**Added — Home Assistant integration (two-way + Supervisor bridge)**
+
+- The 7th `hass` MCP server lands with **26 `ha__*` tools** across three
+  tiers: 11 reads (#128), 5 loop-guarded writes (#143), and 10 CRUD
+  surfaces for automations / scenes / scripts (#161). Loop-guard
+  contract: every write takes a `decision_ref`, ctrl-api persists an
+  `ha_run` row BEFORE issuing the upstream call, and `HaWatcherWorkflow`
+  suppresses `state_changed` echoes inside a 30 s window so Alfred
+  doesn't cycle on his own writes.
+- `/channels` Home Assistant card *(packages/web/src/dashboard/HaCard.tsx)*
+  — URL + LLAT paste, five states (`unconfigured` / `connecting` /
+  `connected` / `error` / `disconnected`), registry summary, Voice
+  surface expander. LLAT lives in Vaultwarden, never echoed by the UI,
+  redacted to the first 8 chars even in toasts.
+- `HaBootstrapWorkflow` Phase A pulls the HA registry on connect + every
+  6 h (#147), Phase B+C detect gaps and propose automation packs (#151)
+  for principal approval at the Desk.
+- `ssdavidai/alfred-ha` HACS integration ships at **v1.1.0** with the
+  **Supervisor bridge** — 9 `alfred.supervisor_*` HA services that
+  forward to Supervisor REST through HA's auto-injected
+  `SUPERVISOR_TOKEN`, giving any LLAT-bearing caller Supervisor scope
+  with no SSH or per-addon credentials. Path safety on `/share/*`
+  rejects traversal, absolute escapes, symlinks-out, and >10 MB
+  payloads.
+- Tier 4 spec (`docs/specs/issue-115-ha-tier4-autonomy.md`) locks Sir's
+  three defaults: approval gates on irreversible writes, auto-snapshots
+  before addon-install / integration-add / core-restart / core-update,
+  daybook entries for everything not silently reversible. Eight more
+  tools (integrations / HACS / addons / core / backups / users) are
+  designed and ship across PR4–PR8.
+- See [Home Assistant integration](/integrations/home-assistant) and
+  [`hass` MCP reference](/mcp-reference/hass).
+
+**Added — HA Conversation channel (Alfred as HA Assist's brain)**
+
+- `POST /api/v1/channels/ha/turn` route + `channel_tokens` table
+  (migration `0004_channel_tokens.sql`, #122). Each typed HA Assist turn
+  posts to ctrl-api with `Authorization: Bearer ha_<token>`, validated
+  against `channel_tokens.channel='ha-conversation'`, rate-limited 30/min
+  per `haInstallId`, forwarded to Hermes-main with session key
+  `ha-<haInstallId>` for continuity.
+- Channel-token mint/list/revoke/rotate surface (#140) on `/study →
+  Channel tokens` — raw token shown exactly once, hashed at rest.
+- `HaConversationSetupCard` on `/channels` shows installation status,
+  conversation throughput, and a "Mint new token" CTA.
+- HA Voice pipeline live wiring + Wyoming fallback (#152, PR5 of #112) —
+  voice satellites paired against `voice-bridge`'s ESPHome listener
+  (PR2 #132) reach Alfred for both typed and voice turns because HA's
+  pipeline picks the conversation agent for both surfaces.
+
+**Added — Recall.ai meeting bot (Vexa replacement)**
+
+- Vexa retired (#126): nine containers, four volumes, 244 LoC,
+  10 env vars, 4 template files, 2 ctrl-api routes (stubbed `410 Gone`),
+  2 Wasp actions, 1 Caddy matcher entry, and ~3 GB resident memory all
+  removed. The 0522 audit found the profile had not been up on a single
+  live tenant since the cutover.
+- Migration `0007_recall.sql` adds `recall_config` / `recall_bot` /
+  `recall_event` tables; `routes/channels_recall.ts` + Svix-signed
+  `webhooks/recall.ts` (#129).
+- `/channels` Recall card (#136) + the API-key persistence path (#153)
+  — paste / validate / persist into Vaultwarden + restart ctrl-api &
+  alfred-learn / dial form (region, bot name, auto-join policy, hours
+  cap, monthly ceiling, wake word, announce-on-join, cost alerts) /
+  active-bots panel with mid-meeting Terminate / Test Webhook.
+- `MeetingCaptureWorkflow` ports to `recall_join_meeting` (#144) reading
+  the existing `composio-googlecalendar.jsonl` stream — no second OAuth.
+- See [Recall.ai integration](/integrations/recall) and
+  [Vexa (retired)](/integrations/vexa).
+
+**Added — Tailscale sidecar (off by default)**
+
+- `profiles: ["tailscale"]` foundation (#121) + migration
+  `0003_tailscale_connection.sql`. `tailscaled.state` on the
+  `tailscale_data` named volume survives `docker compose pull`.
+- Six ctrl-api routes (#127): `GET /status`, `POST /connect` (with
+  auth-URL flow), `POST /disconnect`, `POST /cert` (LE via Tailscale
+  control plane — no port 80), `POST /serve` (tailnet-only), `POST
+  /funnel` (public), `GET /peers`. Every write audited as
+  `tailscale_*`. Probe failures fail-soft to the cached row plus a
+  `reason` field.
+- `/channels` Tailscale card (#134) — Connect → ctrl-api shells
+  `docker compose --profile tailscale up -d`, runs `tailscale up`,
+  captures the one-time auth URL, returns it. Card polls every 3 s,
+  pivots to `connected` once the node is authorised.
+- PR4 (#141) ties it all together: `tailscale cert <domain>` writes LE
+  certs into `caddy/tailscale-certs/`, `tailscale serve` exposes the
+  voice-bridge ESPHome listener on `:6053` tailnet-only.
+- See [Tailscale integration](/integrations/tailscale).
+
+**Added — Files (Store 5)**
+
+- `files_data` named volume (live blobs) + `files_cold_data` (zstd-cold)
+  + `files` and `file_blobs` tables across migrations
+  `0006_files_table.sql` and `0010_files_cold_archive.sql`. Single-writer
+  (ctrl-api); Hermes mounts read-only.
+- `/files` page *(packages/web/src/dashboard/FilesPage.tsx)* — three
+  pane Obsidian-style browser, drag-and-drop upload with live progress,
+  prefix tree, search, preview pane with PDF/image/text/audio/video
+  inline render, quota strip.
+- ctrl-api file surface (#125, #135, #142, #148) — upload, list, stat,
+  blob, label-patch, soft-delete, quota; sha256-keyed `file_blobs`
+  table for **dedup at upload** (two identical uploads = one
+  allocation); **90-day cold archive** (zstd level 19) with transparent
+  decompression on read; force-promote and restore endpoints.
+- 9-tool `files` MCP server (#130) loaded into **both** the main and
+  workers profiles — chores can `files.create()` outputs the principal
+  sees on `/files`. `voice-bridge` reuses the read-only slice
+  (`list/stat/read_text/search`) so the realtime agent can read PDFs
+  mid-call.
+- See [Files surface](/surfaces/files),
+  [`files` MCP reference](/mcp-reference/files),
+  [The five-store model](/architecture/four-store-model).
+
+**Added — Wake words + voice satellites**
+
+- `voice-bridge` ESPHome Native API server on `:6053` (#123, #132) —
+  the binary HA-internal protocol the satellites speak. Makes
+  `voice-bridge` an HA Voice speaker satellites can pair with directly,
+  bypassing HA's assist pipeline for the latency win.
+- Wyoming fallback server (`packages/voice-bridge/src/wyoming-server.ts`)
+  for satellites that won't pair direct against ESPHome.
+- `/channels` Voice satellites + wake-words card (#137) — lists every
+  registered satellite, the wake-word model loaded on each, and the
+  Wyoming gate.
+- Today's wake-word constraint: HA Voice PE ships three stock words
+  (*Hey Jarvis*, *Hey Mycroft*, *Okay Nabu*). For "Hey Alfred" the two
+  paths are (a) firmware-flash microWakeWord on the ESP32 directly
+  (lowest latency, no public Alfred model exists yet), or (b)
+  openWakeWord via the Wyoming addon with the public `alfred.tflite`
+  model uploaded into `/share/openwakeword/` (higher latency, runs
+  satellite-only-fires-with-Wyoming community firmware). See
+  [Wake words](/integrations/home-assistant#wake-words).
+
+**Added — operations & infrastructure**
+
+- `fix(hermes/init)` (#160): mcp-stdio bundle syncs on every init
+  (closes the silent-divergence trap where a new build's tools didn't
+  reach a re-rendered profile); operator-owned `config.yaml` gets the
+  `hass` and `files` apps surgically inserted if missing.
+- `fix(deploy)` (#156): sync `docker-compose.yaml` to fleet on every
+  main push — closes a follow-up gap from #121 where the off-by-default
+  `tailscale` profile block didn't reach existing tenants on `docker
+  compose pull` alone.
+- `fix(deploy)` (#159): caddy `@public_webhooks` matcher gets
+  `/api/v1/channels/paperclip/heartbeat` (and the recall webhook)
+  added; `pids_limit` set on the hermes service; inode-mismatch note
+  pinned in the runbook.
+- `fix(ctrl)` (#157): `channels_ha` vault-cli parse — single-object
+  responses are single-wrapped, not double; fixes a `[object Object]`
+  read on the HA card's LLAT-reveal path.
+- `ci+test(ctrl)` (#146): naming guard + clear baseline ctrl-api
+  failures so the test-glob escape (Wave-C protocol) doesn't reappear.
+
+**Fixed — voice-bridge maturity (in addition to the morning release)**
+
+- `composio_execute` routed through ctrl-api (#95) preserving the
+  one-Alfred / one-token boundary.
+- Catalog curation + guardrails (#93) so the realtime session prefix
+  stays under OpenAI Realtime's `session.instructions + tools` ceiling.
+- `self` allowlist widened (#98) to the read-only catalogue voice
+  actually needs (briefings, vault, decisions, matters, chores,
+  workflows, schedules, state, admin/needs-attention, learning) via
+  exact-match `VOICE_BRIDGE_ALLOWLIST` + anchored-regex
+  `VOICE_BRIDGE_PATTERN_ALLOWLIST` for `:id` routes. Writes intentionally
+  absent — voice writes via MCP (`alfred__act_on_decision`,
+  `alfred__notify_principal`).
+
+</Update>
+
 <Update label="2026-05-29" description="Paperclip, the codex-builder sandbox, and voice maturity">
 
 Alfred Black gains a **company** around itself, a **sealed engineering

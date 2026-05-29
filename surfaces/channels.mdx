@@ -1,36 +1,51 @@
 ---
 title: "Channels"
-description: "Every inbound door — email, phone, SMS, voice, Telegram, Slack, OMI, Vexa, Terminal."
+description: "Every inbound door — web, email, phone, SMS, voice, Telegram, Slack, OMI, Home Assistant, Recall, Paperclip, Tailscale, Terminal."
 ---
 
 `/channels` is one card per door into Alfred. Same Alfred, same memory; the page just lets the principal pick which medium fits the moment *(packages/web/src/dashboard/ChannelsPage.tsx)*. Each card is self-contained: live status from a dedicated `get*ChannelStatus` Wasp query, provisioning form when unconfigured, test-message + disconnect controls when running.
 
-## The ten cards
+## The cards
 
 <CardGroup cols={2}>
  <Card title="Web app" icon="browser">
- `/chat` and `/desk`. Always on; no provisioning *(ChannelsPage.tsx:263-277)*.
+ `/chat` and `/desk`. Always on; no provisioning.
  </Card>
  <Card title="Email" icon="envelope">
- AgentMail-backed inbox at a tenant-scoped address. Forward anything; Alfred reads attachments and PDFs *(ChannelsPage.tsx:280-330)*.
+ AgentMail-backed inbox at a tenant-scoped address. Forward anything; Alfred reads attachments and PDFs.
  </Card>
  <Card title="Phone (SMS + Voice)" icon="phone">
- A two-section card: SMS via Twilio, Voice via the `voice-bridge` compose service reusing the same Twilio credentials *(ChannelsPage.tsx:338-355)*.
+ A two-section card: SMS via Twilio, Voice via the `voice-bridge` compose service reusing the same Twilio credentials.
  </Card>
- <Card title="Meeting bot" icon="video">
- Vexa auto-join for Zoom / Meet / Teams. Gated on `--profile vexa` being up *(ChannelsPage.tsx:357-374)*.
+ <Card title="Meeting bot (Recall.ai)" icon="video">
+ Hosted SaaS bot for Zoom / Meet / Teams / Webex. Replaces the retired Vexa stack. See [Recall.ai](/integrations/recall).
  </Card>
  <Card title="OMI" icon="microphone">
- Wearable audio stream. Four states: unconfigured / needs Groq key / configured / error *(ChannelsPage.tsx:377-382)*.
+ Wearable audio stream. Four states: unconfigured / needs Groq key / configured / error.
  </Card>
  <Card title="Slack" icon="slack">
- DMs and mentions inside the household's workspace *(ChannelsPage.tsx:384-388)*.
+ DMs and mentions inside the household's workspace.
  </Card>
  <Card title="Telegram" icon="telegram">
- For when the principal is abroad *(ChannelsPage.tsx:389-392)*.
+ For when the principal is abroad.
+ </Card>
+ <Card title="Home Assistant" icon="house">
+ Alfred reads and writes HA — paste URL + LLAT to wire the 26 `ha__*` MCP tools. See [Home Assistant](/integrations/home-assistant).
+ </Card>
+ <Card title="HA Conversation" icon="comments">
+ Mint a channel token the alfred-ha HACS integration pastes into HA. Alfred becomes a `ConversationEntity` behind HA Assist.
+ </Card>
+ <Card title="Voice satellites + wake words" icon="microphone-lines">
+ List of registered HA Voice satellites, the wake-word model loaded on each, and Wyoming gating. See [Wake words](/integrations/home-assistant#wake-words).
+ </Card>
+ <Card title="Tailscale" icon="network-wired">
+ Off-by-default sidecar to put the VM on the tenant's tailnet. Auth-URL flow, Serve + Funnel + cert. See [Tailscale](/integrations/tailscale).
+ </Card>
+ <Card title="Paperclip" icon="paperclip">
+ Alfred-as-managed-employee inbound channel. HMAC-signed heartbeats hit `/api/v1/channels/paperclip/heartbeat`. See [Paperclip](/integrations/paperclip).
  </Card>
  <Card title="Terminal" icon="terminal">
- SSH straight into the VM, then `docker exec` into Hermes for the lowest-latency door *(ChannelsPage.tsx:394-396)*.
+ SSH straight into the VM, then `docker exec` into Hermes for the lowest-latency door.
  </Card>
 </CardGroup>
 
@@ -65,8 +80,28 @@ Every card carries one of: **Connected** (active), **Not connected** (available)
  The transcription path needs a Groq API key (stored server-side in Vaultwarden; `alfred-learn` reads it at transcription time). Card states: `unconfigured` (no Groq key) → `needs_groq_key` (key invalid) → `configured` (working) → `error` *(packages/web/src/dashboard/omiCardCore.ts)*. Pair the wearable itself via [Connections](/surfaces/connections) — `alfred-omi` is the synthetic slug that mints the device's audio endpoint.
  </Accordion>
 
- <Accordion title="Vexa (meeting bot)">
- Single toggle. Calls `setVexaAutoJoin({enabled})`; the bot starts/stops auto-joining the principal's standing calendar events. Requires `docker compose --profile vexa up -d` to add the nine transcript containers *(ChannelsPage.tsx:230-240)*.
+ <Accordion title="Recall.ai (meeting bot)">
+ Two-step API key paste: validate against Recall's `/v2/health`, then persist into Vaultwarden + restart ctrl-api/alfred-learn so activities pick up the client. Then a dial form: region / bot name / auto-join policy / per-meeting cap / monthly hours ceiling / wake word / announce-on-join / cost-alert thresholds. Live "active bots" panel with mid-meeting Terminate. Full writeup: [Recall.ai](/integrations/recall). Replaces the retired Vexa stack — see [Vexa (retired)](/integrations/vexa).
+ </Accordion>
+
+ <Accordion title="Home Assistant">
+ Paste your HA URL + a long-lived access token (LLAT). The LLAT lives in Vaultwarden, never in state.db columns. Five states map to ctrl-api's `/api/v1/channels/ha/status`: `unconfigured` / `connecting` / `connected` (with registry counts) / `error` (verbatim `last_error`) / `disconnected`. Wires the 26 `ha__*` MCP tools into Hermes-main; the loop-guard contract means Alfred's own writes don't echo back as principal-relevant signals. Full writeup: [Home Assistant](/integrations/home-assistant).
+ </Accordion>
+
+ <Accordion title="HA Conversation">
+ Mints a tenant-scoped channel token (`ha_<token>`) the HACS-installed `alfred-ha` integration pastes into HA. Once installed, Alfred appears on **Settings → Voice assistants → Conversation agent**. Each HA Assist turn round-trips to `/api/v1/channels/ha/turn` with `Authorization: Bearer ha_…`, rate-limited 30/min per `haInstallId`, forwarded to Hermes-main with session key `ha-<haInstallId>` for continuity.
+ </Accordion>
+
+ <Accordion title="Voice satellites + wake words">
+ Read-only diagnostic card. Lists every voice satellite registered against this tenant, the wake-word model loaded on each, and whether the satellite fires only on Wyoming acknowledgement. Today the production path is openWakeWord via the Wyoming addon with the `alfred.tflite` model in `/share/openwakeword/`; the long-term path is microWakeWord directly on the ESP32 once a model exists.
+ </Accordion>
+
+ <Accordion title="Tailscale">
+ Off-by-default sidecar. Click Connect → ctrl-api shells `docker compose --profile tailscale up -d` and runs `tailscale up`, captures the one-time auth URL, returns it to the card. Visit the URL in your browser; the card polls `/status` every 3 s and pivots to `connected` once the node is authorised. Connected view: MagicDNS hostname, advertised routes, peer count, Disconnect. Full writeup: [Tailscale](/integrations/tailscale).
+ </Accordion>
+
+ <Accordion title="Paperclip">
+ Setup is the one-time API-key paste of a board key from a configured Paperclip company. When the principal sets up Paperclip fresh, the `paperclip-init` container full-seeds the company + CEO agent + redeemed invite, then writes the board key into each Hermes profile's `.env` — the card just verifies. Inbound channel: Paperclip's HTTP adapter HMAC-signs heartbeats to `/api/v1/channels/paperclip/heartbeat`; ctrl-api verifies, journals, forwards to Hermes-main. See [Paperclip](/integrations/paperclip).
  </Accordion>
 
  <Accordion title="Terminal (SSH + Hermes)">

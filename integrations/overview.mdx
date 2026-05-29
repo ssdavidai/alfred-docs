@@ -19,8 +19,17 @@ The three layers are independent. A fresh install boots with all four sidecars e
  <Card title="Vaultwarden" icon="key" href="/integrations/vaultwarden">
  Self-hosted credentials at `vault.{$DOMAIN}`. The `vaultwarden` MCP app exposes 14 tools — and is the only place in the catalogue that returns secret values.
  </Card>
- <Card title="Vexa (optional)" icon="microphone" href="/integrations/vexa">
- Meeting transcription, enabled with `--profile vexa`. Nine extra containers, +7 GB RAM. Turn on once you actually need recordings.
+ <Card title="Paperclip" icon="paperclip" href="/integrations/paperclip">
+ Agent-orchestration plane at `paperclip.{$DOMAIN}`. Alfred runs as a managed employee through the 7th MCP server (48 first-party tools) + HMAC heartbeat inbound channel.
+ </Card>
+ <Card title="Home Assistant" icon="house" href="/integrations/home-assistant">
+ Two-way integration: Alfred reads/writes HA via 26 `ha__*` MCP tools (with loop-guard); HA reaches Alfred as a `ConversationEntity` via the HACS-installed `alfred-ha` integration. Plus a Supervisor bridge that gives any LLAT-bearing caller Supervisor scope.
+ </Card>
+ <Card title="Recall.ai" icon="video" href="/integrations/recall">
+ Hosted meeting bot that replaces Vexa. Joins Zoom/Meet/Teams/Webex, streams transcript back via webhook, and (PR6) speaks in the meeting via Output Media. Configured entirely from `/channels`.
+ </Card>
+ <Card title="Tailscale" icon="network-wired" href="/integrations/tailscale">
+ Off-by-default sidecar that puts the VM on the tenant's tailnet via an auth-URL flow. Tailscale Serve for tailnet-only routes, Funnel for public, plus LE certs issued through the Tailscale control plane.
  </Card>
 </CardGroup>
 
@@ -55,5 +64,5 @@ A **sidecar** is a container (or a cluster of containers) the compose stack runs
 **MCP clients** are how the outside model layer talks back. Hermes registers six MCP servers per profile — five stdio apps plus one HTTP proxy *(packages/hermes/hermes-config.yaml.njk:285–354)*. The MCP catalogue lists a sixth stdio app (`hermes`) that is not yet wired into the profile template; the five stdio apps plus the HTTP `alfred-ctrl` proxy are served externally at `mcp.{$DOMAIN}/<app>/mcp` for claude.ai, Claude Desktop, and Claude Code *(packages/mcp-server/src/index.ts:96–106, 244–334)*. Across all of them you can reach roughly 178 distinct tools.
 
 <Note>
-The headline counts: **4 sidecars** (Plane, Sure, Vaultwarden, Hermes/chat), **5 stdio MCP apps + 1 HTTP `alfred-ctrl` proxy** registered per Hermes profile (the catalogue also contains a stdio `hermes` app that is not yet wired into the profile template), and **~35 containers** total *(docker-compose.yaml)* if you count Plane's 11 sub-services and the optional 9 Vexa containers individually.
+The headline counts after the 2026-05-29 wave: **5 sidecars** (Plane, Sure, Vaultwarden, Paperclip, optional Tailscale), **7 stdio MCP apps + 1 HTTP `alfred-ctrl` proxy** registered per Hermes profile (the original five plus `paperclip`, `hass`, `files` — and the `hermes` catalogue app remains opt-in), and **~28 containers** total *(docker-compose.yaml)* now that Vexa's nine containers are gone. The optional Tailscale profile adds one more.
 </Note>

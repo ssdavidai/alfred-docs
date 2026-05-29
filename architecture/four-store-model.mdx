@@ -1,13 +1,13 @@
 ---
-title: "The four-store model"
-description: "Vault, alfred-state.db, ingest.db, cold archive — and the promotion contract that keeps them honest."
+title: "The five-store model"
+description: "Vault, alfred-state.db, ingest.db, cold archive, files — and the promotion contract that keeps them honest."
 ---
 
 > The vault is the principal's published output, not the system's database.
 
-Alfred Black persists data in **four stores**, each with a different lifecycle, a different access pattern, and a single writer. The split is intentional: markdown is the wrong shape for a high-write firehose, and SQLite is the wrong shape for something the principal is meant to open in Obsidian and edit by hand.
+Alfred Black persists data in **five stores**, each with a different lifecycle, a different access pattern, and a single writer. The split is intentional: markdown is the wrong shape for a high-write firehose, SQLite is the wrong shape for something the principal is meant to open in Obsidian and edit by hand, and neither is the right shape for a 2 GB PDF the accountant just sent.
 
-## The four stores
+## The five stores
 
 | # | Store | Backing | Sole writer | Purpose |
 |---|---|---|---|---|
@@ -15,6 +15,7 @@ Alfred Black persists data in **four stores**, each with a different lifecycle, 
 | 2 | **alfred-state.db** | SQLite + WAL + sqlite-vec | ctrl-api | Working memory — signals, observations, audit, links, embeddings |
 | 3 | **ingest.db** | SQLite (7-day TTL) | ctrl-api | Raw inbound stream events |
 | 4 | **cold.db** | SQLite with zstd-compressed blobs | ctrl-api | Forensic long-tail (>90 days for signals/observations, >365 days for audit/links) |
+| 5 | **files** | `files_data` + `files_cold_data` named volumes; metadata in `alfred-state.db.files` | ctrl-api | Binary blobs — PDFs, images, archives, audio — the principal owns and Alfred can read. See [Files](/surfaces/files) for the surface; dedup at upload (sha256) + 90-day zstd cold archive. |
 
 The operational store is called `alfred-state.db` (not `state.db`) to avoid colliding with Hermes' own gateway-session store at `$HERMES_HOME/state.db`.
 

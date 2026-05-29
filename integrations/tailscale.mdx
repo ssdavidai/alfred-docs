@@ -1,0 +1,131 @@
+---
+title: "Tailscale"
+description: "Off-by-default sidecar that puts the VM on the tenant's tailnet — Tailscale Serve for tailnet-only routes and Funnel for public, all driven from /channels."
+---
+
+Tailscale on alfred-black is an **off-by-default sidecar** that puts the
+host VM on the principal's tailnet. The full lifecycle — auth, serve,
+funnel, cert issuance — is driven from the `/channels` Tailscale card,
+not the `tailscale` CLI. Once up, the same compose stack becomes reachable
+via the tenant's MagicDNS hostname (e.g. `home-vm.tail-xxxx.ts.net`)
+alongside its public `*.alfred.black` hostname.
+
+This is the path Sir uses for tenants that should be reachable from
+inside the tailnet but **not** publicly — household members on personal
+devices, the HA Voice satellite during firmware swap, ad-hoc Codex
+sessions against a hardened host.
+
+## What ships today
+
+Four PRs landed the Tailscale path across compose, ctrl, web, and
+caddy/voice-bridge:
+
+- **PR1 (compose foundation, #121).** `tailscale` service gated by
+  `profiles: ["tailscale"]` so the default `docker compose up` doesn't
+  touch it. State (`tailscaled.state`) on the `tailscale_data` named
+  volume — survives `docker compose pull`. Migration `0003_tailscale_connection.sql`
+  adds the lifecycle singleton.
+- **PR2 (ctrl-api routes, #127).** Six routes that drive the sidecar via
+  `docker exec` + `docker compose`. Live state probed via `tailscale
+  status --json`; probe failures fail-soft to the cached row plus a
+  `reason` field. Every write audited (`action_type=tailscale_*`).
+- **PR3 (web card, #134).** The `/channels` Tailscale card —
+  connect / status / disconnect / peers.
+- **PR4 (cert / serve / funnel + voice-bridge ESPHome enable, #141).**
+  `tailscale cert <domain>` issues a Let's Encrypt cert via the Tailscale
+  control plane (no port 80 needed); the Caddy sidecar reads issued
+  certs from `caddy/tailscale-certs/`. `tailscale serve` exposes
+  tailnet-only routes; `tailscale funnel` exposes public ones.
+
+## The /channels Tailscale card
+
+Three states *(packages/web/src/dashboard/tailscaleCardCore.ts)*:
+
+| State | What you see | Backend |
+|---|---|---|
+| `disconnected` | Connect button → auth-URL flow | `tailscaled` not running OR not logged in |
+| `connecting` | "Visit this Tailscale auth URL to authorise the node" | `tailscale up` issued; awaiting browser auth |
+| `connected` | MagicDNS hostname, advertised routes, peer count, Disconnect | `tailscale status --json` returned OK |
+
+### The auth-URL flow
+
+Clicking Connect on the card:
+
+1. Hits `POST /api/v1/channels/tailscale/connect` — ctrl-api shells
+   `docker compose --profile tailscale up -d` (idempotent), then
+   `docker exec alfred-black-tailscale-1 tailscale up --hostname=<vm-hostname>`.
+2. The Tailscale CLI prints a one-time auth URL to stdout. ctrl-api
+   captures it, persists it on the `tailscale_connection` row's
+   `last_auth_url` column, and returns it to the card.
+3. The principal clicks the URL — Tailscale's web flow authorises the
+   node against their account.
+4. The card polls `GET /api/v1/channels/tailscale/status` every 3 s; on
+   success the status row pivots to `connected`.
+
+No tailnet key paste, no API token requested from the principal — the
+node-auth path is interactive, scoped to that one URL, single-use.
+
+## ctrl-api routes
+
+| Verb | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/v1/channels/tailscale/status` | Live lifecycle + cached fallback |
+| `POST` | `/api/v1/channels/tailscale/connect` | Bring the sidecar up + run `tailscale up` |
+| `POST` | `/api/v1/channels/tailscale/disconnect` | `tailscale logout` + stop the sidecar |
+| `POST` | `/api/v1/channels/tailscale/cert` | `tailscale cert <domain>` → write to `tailscale-certs/` |
+| `POST` | `/api/v1/channels/tailscale/serve` | `tailscale serve` — tailnet-only route |
+| `POST` | `/api/v1/channels/tailscale/funnel` | `tailscale funnel` — public route |
+| `GET` | `/api/v1/channels/tailscale/peers` | Peer list (fail-soft) |
+
+The 8-slot `dockerComposeCmd` semaphore (in `helpers.ts`) gates all of
+these so spammy pollers don't fork-storm.
+
+## ACL considerations
+
+A few load-bearing ACL points:
+
+- **Per-tenant tagging.** Tag the Alfred node with a tenant-specific
+  `tag:alfred-<slug>` (e.g. `tag:alfred-david`). Every household device
+  that should reach Alfred gets a corresponding source tag. Forces
+  household-member-vs-operator separation.
+- **Service-level ACLs.** Tailscale ACLs can constrain which ports each
+  peer reaches. Alfred-side, the canonical surface is
+  `*:443` (Caddy) + `*:6053` (voice-bridge ESPHome listener — see below).
+  Lock the rest down unless you specifically need 22 (SSH) or 18789
+  (Hermes, never recommended).
+- **Funnel discipline.** `funnel` exposes a path *publicly* — it's the
+  override-from-private mechanism. Use it sparingly: today Alfred uses
+  it only for the LE cert issuance flow, never for the dashboard.
+
+## What lights up when Tailscale is connected
+
+Beyond the obvious "the dashboard is now reachable at
+`<vm-hostname>.tail-xxxx.ts.net`":
+
+- **The HA channel can use a tailnet URL.** If HA itself is on the
+  tailnet (run the [Tailscale addon](https://github.com/tailscale/tailscale-hassio/)),
+  the `/channels` HA card accepts a MagicDNS URL instead of a public
+  URL, and the LLAT round-trip never crosses the public internet.
+- **voice-bridge's ESPHome Native API listener on `:6053`** can accept
+  HA Voice satellite connections over the tailnet (PR4, #141). Without
+  Tailscale, the listener is internal-only.
+- **MCP custom connectors (Claude / ChatGPT)** can register the tailnet
+  hostname instead of the public one. Useful if the principal wants
+  Claude reachable but doesn't want the MCP surface on the public
+  internet.
+
+## Where the state lives
+
+| Location | What |
+|---|---|
+| `tailscale_data:` (named volume) | `tailscaled.state` — node key. Survives `docker compose pull`. |
+| `state.db.tailscale_connection` | Lifecycle row — `state`, `last_auth_url`, `last_status_probe_at`, `last_error` |
+| `caddy/tailscale-certs/` | LE certs issued via `tailscale cert` |
+| `caddy/tailscale-snippets/` | Caddy snippets the operator can include for tailnet-only routes |
+
+## Related pages
+
+- [Channels](/surfaces/channels) — the Tailscale card on `/channels`
+- [SSH access](/operations/ssh-access) — the alternative when Tailscale isn't up
+- [Voice bridge](/architecture/sidecars#voice-bridge-twilio-openai-realtime)
+  — ESPHome `:6053` is the tailnet-exposed listener

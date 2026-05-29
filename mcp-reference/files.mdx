@@ -1,0 +1,133 @@
+---
+title: "files MCP server"
+description: "9 tools for Store 5 — the principal's blob store. Both Hermes-main and Hermes-workers load this app; chores can files.create() outputs the principal sees on /files."
+---
+
+The `files` MCP server is the stdio app that exposes Store 5 (the binary
+file store) to Hermes. Loaded into **both** the `main` and `workers`
+profiles *(packages/hermes/hermes-config.yaml.njk)*, so chores can
+`files.create()` outputs that the principal then sees on the `/files`
+page.
+
+For the user-facing surface, see [Files](/surfaces/files).
+
+## The catalogue — 9 tools
+
+| Tool | What it does |
+|---|---|
+| `list` | List live files; filter by `prefix` / `since` / `content_type` |
+| `stat` | One file's metadata |
+| `read_text` | Read text-mode body (up to 256 KB) |
+| `read_base64` | Read binary body as base64 (capped) |
+| `search` | Substring on path + label + extracted text |
+| `create` | Programmatically write a file; uploader becomes the agent id |
+| `delete` | Soft-delete |
+| `usage` | Quota strip — bytes + counts, live vs cold |
+| `describe` | A summary of the catalogue + posture (used by skill docs) |
+
+### list
+
+```json
+{
+  "prefix": "invoices/",
+  "since": "2026-05-01",
+  "content_type": "application/pdf",
+  "limit": 50
+}
+```
+
+Returns `[{file_id, path, principal_label, size_bytes, content_type,
+uploaded_by, uploaded_at, cold_promoted_at}, ...]`. Cold files appear
+with a non-null `cold_promoted_at`.
+
+### stat
+
+`{file_id}` → full metadata for one row.
+
+### read_text
+
+`{file_id, max_bytes?}` → `{text, truncated}`. Max 256 KB. Returns
+`text: null` if the file isn't text-mode (`content_type` doesn't start
+with `text/` or one of the JSON/YAML/Markdown synonyms).
+
+### read_base64
+
+`{file_id, max_bytes?}` → `{base64, truncated, content_type, size_bytes}`.
+For binary files. The cap is the same 256 KB; for larger blobs prefer
+calling out to a side-channel (e.g. dropping a temporary signed URL into
+a notification).
+
+### search
+
+```json
+{ "query": "Q3 invoice", "limit": 20 }
+```
+
+Substring on `principal_label`, `original_filename`, and `path`.
+Extracted text search lands when content extraction (PR4+) ships.
+
+### create
+
+```json
+{
+  "path": "chore-out/daily-brief.pdf",
+  "content_base64": "JVBERi0xLjQK...",
+  "content_type": "application/pdf",
+  "principal_label": "Daily brief — 2026-05-29",
+  "uploaded_by": "chore:daily-brief-pdf"
+}
+```
+
+Returns `{file_id, sha256, deduped: bool}`. If `sha256` matches an
+existing `file_blobs` row, the upload dedupes — no extra bytes on disk;
+`deduped: true` in the response.
+
+### delete
+
+`{file_id}` → soft-delete. Sets `deleted_at = now()`. The underlying
+`file_blobs.ref_count` decrements; on hitting 0 the on-disk blob unlinks.
+
+### usage
+
+Returns the quota strip the `/files` UI renders:
+
+```json
+{
+  "live_bytes": 2147483648,
+  "live_count": 412,
+  "cold_bytes": 536870912,
+  "cold_count": 89,
+  "ceiling_bytes": 10737418240
+}
+```
+
+### describe
+
+Returns the catalogue summary used by the alfred-files-operations
+skill — what the surface is, what it isn't, the dedup + cold-archive
+contract.
+
+## Posture
+
+- **Single-writer:** ctrl-api is the only process with a write handle to
+  `files_data` and `alfred-state.db.files` / `file_blobs`. The MCP app
+  is a thin HTTP client.
+- **Dedup at upload:** sha256-keyed `file_blobs` table; two principal
+  uploads of identical content cost one allocation.
+- **90-day cold archive:** files unaccessed for 90+ days are
+  zstd-compressed to `files_cold_data`; transparent decompression on
+  read. `cold_promoted_at` non-null in the metadata.
+- **Hermes mounts read-only:** `/files` is mounted `ro` into hermes (and
+  alfred); writes only happen via the ctrl-api API. This means a Hermes
+  process that gets compromised can read but not write the file store.
+- **Voice-bridge reuses a sub-slice** — `list/stat/read_text/search`
+  only — wired into the realtime agent's read surface (PR #142, PR4 of
+  #114).
+
+## Related pages
+
+- [Files](/surfaces/files) — the user-facing surface
+- [The five-store model](/architecture/four-store-model) — where files
+  fit alongside vault / state.db / cold / ingest
+- [The Hermes runtime](/architecture/hermes-runtime) — main + workers
+  profile loadout

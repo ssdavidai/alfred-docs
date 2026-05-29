@@ -1,9 +1,15 @@
 ---
 title: "SSH access"
-description: "Connecting to the VM, the 1Password SSH-agent gotcha."
+description: "Connecting to the VM, the 1Password SSH-agent gotcha, the SSH-into-HA-OS path."
 ---
 
-`ssh` into the Alfred Black VM the normal way — there's no Tailscale, no bastion, no custom keyfile location. The VM uses standard OpenSSH and the host operator's `~/.ssh/authorized_keys`.
+`ssh` into the Alfred Black VM the normal way — there's no bastion, no
+custom keyfile location, just standard OpenSSH and the host operator's
+`~/.ssh/authorized_keys`. Optionally the [Tailscale](/integrations/tailscale)
+sidecar makes the same VM reachable via MagicDNS hostname for sessions
+that shouldn't traverse the public internet.
+
+A separate path covers SSH-into-HA-OS — see [SSH into HA OS](#ssh-into-ha-os) below.
 
 ---
 
@@ -72,3 +78,67 @@ The dashboard's Terminal card updates on the next page load.
 When investigating live behaviour (per the bug-fixing protocol), keep your SSH session read-only — no `docker exec` writes, no `curl -X POST`, no editing `.env` from the box. The convention is to add `--dry-run` or use `GET`-only API probes from the SSH session itself, then ship findings back to your laptop for synthesis.
 
 If you must run a probe that has a side effect (e.g. triggering a workflow to observe its log output), call it out in the investigation report so the synthesizer can distinguish observed behaviour from probe-induced behaviour.
+
+---
+
+## SSH into HA OS
+
+A different VM, a different SSH discipline. The principal's Home
+Assistant install (if they're running HA OS or HA Supervised) doesn't
+expose a plain `sshd` on the host — SSH is the Advanced SSH addon's
+domain, and the addon's `authorized_keys` lives inside HA's protected
+`/data/` namespace.
+
+There are three honest paths to SSH-into-HA-OS, in order of preference:
+
+### 1. The alfred-ha Supervisor bridge
+
+If the [`ssdavidai/alfred-ha`](https://github.com/ssdavidai/alfred-ha)
+HACS integration is installed at v1.1+ and you have any LLAT, you can
+add an SSH key without ever touching the HA UI:
+
+```bash
+HA=https://ha.example.com
+LLAT=eyJhbGciOi…
+
+curl -sS -X POST \
+ -H "Authorization: Bearer $LLAT" \
+ -H "Content-Type: application/json" \
+ "$HA/api/services/alfred/supervisor_addon_options_update?return_response=true" \
+ -d '{
+  "slug": "core_ssh",
+  "options": { "authorized_keys": ["ssh-ed25519 AAAA... alfred@..."] },
+  "restart": true
+ }'
+```
+
+The bridge writes through Supervisor; Supervisor restarts the addon;
+SSH access lands. The full integration writeup is at
+[Home Assistant](/integrations/home-assistant#the-supervisor-bridge-v1-1).
+
+### 2. The HA UI (Advanced SSH addon)
+
+`Settings → Add-ons → Advanced SSH & Web Terminal → Configuration →
+authorized_keys`. Paste your public key, hit Save, restart the addon.
+This is the canonical path for a principal who's at their HA tab — but
+it requires browser access to HA's UI, which isn't always available
+during an outage.
+
+### 3. SSH into the Hetzner host (not HA)
+
+Distinct from HA OS — this is the alfred-platform VM, which is a
+separate machine on a separate network. The alfred-platform VM has no
+direct path into HA OS unless the principal explicitly bridges them
+(Tailscale, VPN). Don't conflate the two.
+
+### When to use which
+
+| Goal | Path |
+|---|---|
+| Read entity state, list automations, call a service | `ha__*` MCP tools |
+| Edit `/share/*`, addon options, host info, mint LLATs | `alfred.supervisor_*` HA services (the Supervisor bridge) |
+| Edit Supervisor-protected files outside `/share/`, hot-patch HA core | SSH into HA OS via the Advanced SSH addon |
+
+The first two paths go through HA's auth surface — every action is
+logged, attributable to a specific LLAT, and revocable in 5 seconds.
+SSH bypasses all of that, so reserve it for break-glass.
