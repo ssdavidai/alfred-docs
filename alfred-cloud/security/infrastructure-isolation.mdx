@@ -79,9 +79,9 @@ The Twilio account is shared at the SaaS layer. Per-tenant isolation comes from:
 
 - A **dedicated Twilio sub-number** per tenant — calls and SMS to one number never land on another tenant's inbox.
 - The Voice Bridge runs on the **SaaS host**, not the tenant — Twilio's Media Stream WebSocket lands on `voice.alfred.black` (DNS-only at Cloudflare, because the WAF drops the WebSocket upgrade with error 31920).
-- The Voice Bridge proxies into the tenant's `ctrl-api` over Tailscale using a scoped `VOICE_BRIDGE_INTERNAL_TOKEN` that is allowlisted to exactly **two routes**: `GET /api/v1/phone/voice-context` and `POST /api/v1/phone/transcript`. Any other route with this token returns 401. *(`packages/ctrl/src/api/auth.ts:38–98`)*
+- The Voice Bridge proxies into the tenant's `ctrl-api` over Tailscale using a scoped `VOICE_BRIDGE_INTERNAL_TOKEN`. The token is path-allowlisted to a read-only catalogue (briefings, vault context/search/list/records, decisions, matters, chores, workflows, schedules, state/signals/observations, admin needs-attention, learning) plus the two original phone routes (`GET /api/v1/phone/voice-context`, `POST /api/v1/phone/transcript`) and the proxied `POST /api/v1/integrations/execute` for the realtime agent's `composio_execute` tool. The match is split between an exact-match `VOICE_BRIDGE_ALLOWLIST` and an anchored-regex `VOICE_BRIDGE_PATTERN_ALLOWLIST` for `:id`-style routes — no prefix inheritance. Any other route returns 401. *(`packages/ctrl/src/api/auth.ts:67–161`)*
 
-Even if the voice bridge were compromised, the blast radius is bounded to those two endpoints. The master `AAS_API_KEY` never leaves the tenant. *(`packages/ctrl/src/api/auth.ts:19`)*
+Even if the voice bridge were compromised, the blast radius is bounded to that read-only surface plus the Composio dispatch. Writes go through MCP from the realtime agent (`alfred__act_on_decision`, `alfred__create_vault_record`, `alfred__notify_principal`, etc.), so `VOICE_BRIDGE_INTERNAL_TOKEN` itself cannot mutate vault, state, or Composio connections. The master `AAS_API_KEY` never leaves the tenant. *(`packages/ctrl/src/api/auth.ts:34–45`)*
 
 ### 4. The shared Composio API key (third-party OAuth)
 

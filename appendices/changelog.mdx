@@ -8,6 +8,153 @@ This page mirrors the in-repo `CHANGELOG.md`. The format follows
 date-based releases, while the `alfred-vault` package follows
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+<Update label="2026-05-29" description="Paperclip, the codex-builder sandbox, and voice maturity">
+
+Alfred Black gains a **company** around itself, a **sealed engineering
+compartment** beneath itself, and a much more honest **voice channel** in
+front of itself. The headline integration is **Paperclip** — an
+agent-orchestration plane where Alfred is registered as a managed
+employee, reachable through a 7th MCP server baked into the Hermes image
+and an HMAC-signed inbound heartbeat channel that bridges company tasks
+into Hermes-main sessions. The headline architectural addition is
+**codex-builder** — a fourth Hermes profile, idle by default, that runs
+the OpenAI Codex CLI under uid 10001 inside a three-ring isolation jail
+(setpriv + iptables egress + filesystem ACLs). The headline UX win is
+the **voice bridge** finally behaving like a butler: realtime turn-detection
+swapped to `server_vad`, Twilio playback cleared on barge-in, the
+`session.updated` ACK gated before audio flows, and the `self` allowlist
+widened to cover the read-only surface voice actually needs.
+
+**Added — Paperclip integration**
+
+- New `paperclip` sidecar at `paperclip.{$DOMAIN}` — a single container
+  with embedded Postgres, full-seeded on first boot into a working
+  company + Alfred CEO agent + redeemed invite, zero-CLI from the
+  operator's perspective. The `/channels` Paperclip card replaces the
+  placeholder with a live setup-flow + heartbeat status. *(PRs #63, #73, #76, #84)*
+- The upstream `@paperclipai/mcp-server` package is baked into the
+  Hermes image as the **7th MCP server** — 48 first-party tools wired
+  through the main profile's allowlist. *(PR #67)*
+- **Inbound channel.** Paperclip heartbeats POST to ctrl-api
+  `/api/v1/channels/paperclip/heartbeat` with HMAC signing + 5-minute
+  replay protection. The route bridges into a Hermes-main session
+  keyed by `paperclipAgentId`, so a Paperclip-side assignment to
+  Alfred-the-employee lands as a real agent turn. *(PR #68)*
+- **HTTP-mode `hermes_local` adapter.** Paperclip's per-agent runner
+  no longer spawns a CLI per turn — it calls `hermes:18789` directly
+  over HTTP and reads the right `API_SERVER_KEY` per profile.
+  *(PRs #87, #89)*
+- See [Paperclip](/integrations/paperclip) for the full integration
+  writeup.
+
+**Added — Codex-builder sandbox**
+
+- **Fourth Hermes profile** `codex-builder` on `:18793`, sealed under
+  **uid 10001** with a `setpriv --reuid=10001 --regid=10001
+  --clear-groups --reset-env` chain. Idle by default fleet-wide; the
+  supervisor only launches it when `ENABLE_CODEX_BUILDER=1`.
+  *(PRs #100, #101)*
+- **OpenAI Codex CLI 0.135** is installed in the Hermes image (the
+  always-on profiles never invoke it). *(PR #100)*
+- **Three rings of isolation.** Uid 10001 + an iptables OUTPUT-chain
+  egress jail scoped via `--uid-owner 10001` to a fixed allowlist
+  (GitHub CIDRs, `auth.openai.com`, `chat.openai.com`, npm, pypi) with
+  a stateful fast-path for inbound responses; per-uid filesystem
+  ACL denies that keep the profile off `/vault` and the sibling Hermes
+  profiles' state. *(PRs #104, #106, #107, #108, #115, #116, #117, #118)*
+- **Per-run lifecycle.** The paperclip-adapter routes any agent named
+  `codex-feature-builder` to `:18793`; the gateway invokes a wrapper
+  that does a fresh `git clone` → `codex exec --sandbox
+  workspace-write` → push branch + open PR. *(PRs #103, #105)*
+- See [Codex-builder sandbox](/architecture/codex-builder) for the
+  full story; ops live in `docs/codex-builder-operator-guide.md`.
+
+**Added — MCP tools**
+
+- `alfred__act_on_decision` and `alfred__reverse_decision` — a single
+  act-on-decision MCP tool that wraps all five Desk actions (delegate,
+  defer, do, done, noise) with the parameters each one needs, plus a
+  reverse for `un-handling` a card. *(PR #97)*
+
+**Added — Voice-bridge maturity**
+
+- Default realtime model promoted to **`gpt-realtime-2`**; turn detection
+  switched to **`server_vad`**; Twilio playback cleared on
+  user-interrupt so barge-in actually stops Alfred mid-sentence;
+  `session.updated` ACK gated before media or greetings flow, closing a
+  ~100–500 ms race where Twilio audio could land while OpenAI defaults
+  were still in effect. *(PRs #90, #91, #94)*
+- **Curated 22-tool MCP catalog** via `VOICE_ALLOWED_MCP_TOOLS`, sized
+  to the realtime session's prefix ceiling. *(PR #93)*
+- `composio_execute` routed through ctrl-api so voice writes go through
+  the single-Alfred boundary rather than dialling Composio directly.
+  *(PR #95)*
+- The `self` tool's read-only allowlist widened with both exact-match
+  and anchored-regex sets covering briefings, vault context/search,
+  decisions, matters, chores, workflows, schedules, state/signals/
+  observations, and the learning surface. *(PR #98)*
+
+**Fixed**
+
+- **Vaultwarden master password** on `/settings#agent` now reveals
+  correctly via the `/claude-setup` endpoint; the
+  `vault-signup` + `vault-cli` containers align on `OWNER_EMAIL` rather
+  than `ACME_EMAIL` so the displayed login email matches what
+  Vaultwarden was registered with. *(PRs #80, #85)*
+- **`/verify` unwedge.** `extract_facts_opus` now persists per-chunk
+  LLM results incrementally — a single timed-out chunk no longer
+  throws away the whole stage, and the page distinguishes "still
+  thinking" from "settled but empty." *(PRs #82, #83, #86)*
+- **Composio recurring-break.** Steward selects Gmail streams by
+  `composio_action == GMAIL_FETCH_EMAILS` rather than a filename
+  glob (UUID-id streams from non-auto-config paths now reach the
+  pipeline); Caddy's `@public_webhooks` matcher includes
+  `/api/v1/composio/webhook` so lifecycle POSTs hit ctrl-api instead
+  of the SPA. Plus webhook auth via `X-AAS-API-Key`,
+  `connected_account.updated` handling, and INITIATED→ACTIVE
+  reconciliation when Composio already confirms the account.
+  *(PRs #72, #74, #75, #96)*
+- **Hermes Slack adapter drops `.html`/`.htm` uploads** — a build-time
+  monkey-patch against upstream Hermes restores the attachment path,
+  guarded by a tripwire that fails the build if the upstream needle
+  drifts. *(PRs #61, #62)*
+- **OpenAI SDK Codex accumulator crash** when `output=None` arrives
+  during `response.output_item.added` — a durable patch is baked at
+  image build, with a needle tripwire on SDK version. *(PR #70)*
+- **Hermes profile `.env` permissions** widened to `0o644` so the
+  paperclip adapter (running as uid 1000) can read
+  `API_SERVER_KEY`. Resolves the 401-storm on every heartbeat.
+  *(PR #92)*
+
+**Changed**
+
+- `/channels` UI: Paperclip card replaces the placeholder with a live
+  setup-flow + heartbeat status; the Vault card now surfaces the master
+  password.
+- Hermes pins `max_tokens=8192` on every profile's OpenRouter model so
+  models like grok and `gpt-4.1-nano` are no longer silently capped at
+  the implicit 1024-token ceiling. *(PR #71)*
+- `MCP_EXTERNAL_SERVERS` env var added to the voice-bridge for
+  tenant-specific MCP wiring without forking. *(PR #59)*
+- `/channels` Terminal card is now self-contained (no auxiliary
+  manifest paste). *(PR #60)*
+
+**Continuity**
+
+- Running tenants: `docker compose pull && docker compose up -d` — no
+  manual filesystem ops required.
+- The `codex-builder` profile is **idle by default**. To opt in, set
+  `ENABLE_CODEX_BUILDER=1` in `/opt/alfred/.env` and run a one-time
+  `codex login --device-auth` inside the profile. Operator runbook
+  lives at `docs/codex-builder-operator-guide.md`.
+- ⚠️ **Known open.** The first Paperclip → `codex-feature-builder`
+  end-to-end dispatch is currently blocked by a Paperclip-side
+  adapter wrapper that appears to inject the wrong API key — tracked
+  at `ssdavidai/alfred#119`. The sandbox itself is built and
+  isolated; the wiring needs one more PR.
+
+</Update>
+
 <Update label="2026-05-25" description="One Alfred — continuity across channels and sessions">
 
 Alfred Black becomes **one Alfred**. Prior to this release, a "delegate" from

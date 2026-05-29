@@ -45,6 +45,7 @@
               "architecture/signal-pipeline",
               "architecture/state-machines",
               "architecture/hermes-runtime",
+              "architecture/codex-builder",
               "architecture/sidecars"
             ]
           },
@@ -75,6 +76,7 @@
               "integrations/overview",
               "integrations/composio",
               "integrations/plane",
+              "integrations/paperclip",
               "integrations/sure",
               "integrations/vaultwarden",
               "integrations/gmail-calendar-drive",

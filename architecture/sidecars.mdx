@@ -12,6 +12,7 @@ description: "Plane, Sure, Vaultwarden, the MCP server — and the optional Vexa
 - **Plane** — project management (`plane.{$DOMAIN}`)
 - **Sure** — personal finance (`sure.{$DOMAIN}`)
 - **Vaultwarden** — secrets manager (`vault.{$DOMAIN}`)
+- **Paperclip** — board API + agent registry where Alfred appears as a managed employee (`paperclip.{$DOMAIN}`)
 - **MCP server** — Claude Custom Connectors gateway (`mcp.{$DOMAIN}`)
 
 **Core services** are the infrastructure that makes Alfred work — the dashboard, the runtime, the workflow engine, the bootstrap glue. They aren't sidecars even though they're separate containers.
@@ -25,7 +26,7 @@ description: "Plane, Sure, Vaultwarden, the MCP server — and the optional Vexa
 | Intelligence | `alfred-learn`, `temporal` | 30+ Temporal workflows + the workflow engine |
 | Runtime | `hermes`, `ollama` | The 3-profile AI runtime + the local embedding server |
 | Bootstrap | `init`, `vault-signup`, `vault-cli` | One-shot setup containers |
-| Edge | `voice-bridge`, `mcp-server` | Twilio realtime audio + HTTP MCP for Claude |
+| Edge | `voice-bridge`, `mcp-server`, `paperclip` | Twilio realtime audio + HTTP MCP for Claude + the Paperclip sidecar serving `paperclip.{$DOMAIN}` (single container with embedded Postgres) |
 
 ## The compose graph
 
@@ -100,6 +101,22 @@ Signups are enabled (`SIGNUPS_ALLOWED=true`) so the owner can register the first
 `mcp-server` is the HTTP-transport MCP server that lets `claude.ai` connect to this Alfred install as a Custom Connector *(docker-compose.yaml:623-640)*. It's distinct from the stdio MCP apps Hermes loads internally — same tool catalogue, different transport.
 
 Runs on `:8787`, advertised at `https://mcp.{$DOMAIN}`. OAuth-aware: a connector grant has an `appId` (one of `alfred|sure|plane|vaultwarden|execute|hermes`), and the server registers only that app's tools per connection — so a token bound to `sure` cannot enumerate Plane tools *(packages/mcp-server/src/tools/registry.ts)*.
+
+## voice-bridge (Twilio ↔ OpenAI Realtime)
+
+`voice-bridge` is the Twilio Media Streams ↔ OpenAI Realtime API shim, served at `voice.{$DOMAIN}` on internal port `:9000` *(packages/voice-bridge/src/config.ts:15)*. It speaks Twilio mulaw on the inbound socket and the OpenAI Realtime WebSocket on the outbound side, with ctrl-api as the read-only state surface and Hermes as the tool dispatch path.
+
+The release substantially matured the call path:
+
+- **Default model is `gpt-realtime-2`**, set via `OPENAI_REALTIME_MODEL` with `gpt-realtime-2` as the fallback in `packages/voice-bridge/src/config.ts:46`. The bump from `gpt-realtime-1.5` was driven by better non-American-accent stability under the Received-Pronunciation butler persona.
+- **`server_vad` turn detection** replaces `semantic_vad` *(packages/voice-bridge/src/openai-realtime.ts:182-211)*. The `semantic_vad` mode was eating `input_audio_buffer.speech_started` events under realistic Twilio jitter, so barge-in never triggered `response.cancel`. `server_vad` with `interrupt_response: true` makes the realtime server auto-cancel the in-flight response when the caller starts talking.
+- **Twilio playback-clear on barge-in.** The bridge fires `sendTwilioClear()` against the Twilio WS the instant OpenAI emits `input_audio_buffer.speech_started`, draining the playback buffer so the caller's interruption is heard immediately rather than queued behind already-pushed audio *(packages/voice-bridge/src/voice-call.ts:271-284)*.
+- **`session.updated` ACK gate.** `OpenAIRealtimeClient.connect()` now resolves on `session.updated` rather than `session.created`, so the RP butler persona, `server_vad`, and `interrupt_response: true` are actually applied before any audio flows. A 5 s timeout fails the connect explicitly if OpenAI never echoes back. `appendAudio()` and `triggerGreeting()` refuse to fire before the ACK lands *(packages/voice-bridge/src/openai-realtime.ts:54-353)*.
+- **Curated MCP tool catalog.** OpenAI Realtime has a documented `session.instructions + tools` ceiling of ~16,384 tokens. The pre-curation surface (157 MCP tools across 6 servers + the 17 KB persona) overshot it by ~2.5×, silently truncating tool defs. `VOICE_ALLOWED_MCP_TOOLS` is a tight allowlist of 22 entries (alfred read/write + hermes scheduling + execute list-connections) keeping the prefix comfortably under the ceiling *(packages/voice-bridge/src/mcp-clients.ts:253-279)*. The `self` ctrl-api tool and `composio_execute` remain available as catch-alls.
+- **`self` allowlist widened on the ctrl-api side.** The voice-bridge scoped Bearer (`VOICE_BRIDGE_INTERNAL_TOKEN`) is now path-allowlisted to a read-only catalogue covering briefings, vault context/search/list/records, decisions, matters, chores, workflows, schedules, state/signals/observations, admin needs-attention, and learning surfaces. Two sets implement it: `VOICE_BRIDGE_ALLOWLIST` for exact-match routes and `VOICE_BRIDGE_PATTERN_ALLOWLIST` for `:id`-style parameterised routes (anchored regexes — no prefix inheritance) *(packages/ctrl/src/api/auth.ts:67-161)*. Writes are intentionally omitted; the realtime agent reaches mutation through MCP (`alfred__act_on_decision`, `alfred__notify_principal`, `alfred__create_vault_record`, etc.) so a compromise of voice-bridge bounds blast radius to read.
+- **`composio_execute` proxies through ctrl-api.** The realtime agent's built-in `composio_execute` tool now routes through ctrl-api at `POST /api/v1/integrations/execute` rather than calling Composio directly, preserving the one-Alfred / one-token boundary *(packages/voice-bridge/src/tools.ts:53-100, packages/ctrl/src/api/auth.ts:72-76)*.
+
+A `VOICE_BRIDGE_DEBUG=1` env opens a verbose-log breadcrumb on the realtime socket — used during the 2026-05-28 home-call investigation that surfaced the ACK-gate and `self`-allowlist gaps.
 
 ## Vexa (optional — meeting transcription)
 

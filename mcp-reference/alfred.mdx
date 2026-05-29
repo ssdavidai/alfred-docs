@@ -1,6 +1,6 @@
 ---
 title: "alfred"
-description: "Vault read/write, agent delegation, Temporal workflows, briefings, gateway diagnostics, notifications — the Alfred control surface as 24 MCP tools."
+description: "Vault read/write, agent delegation, Temporal workflows, briefings, decision actions, gateway diagnostics, notifications — the Alfred control surface as 26 MCP tools."
 ---
 
 The `alfred` app is the Alfred control surface for LLM clients. It surfaces the parts of ctrl-api that are safe to drive from a one-hour bearer token: read or write any vault record, kick off Temporal workflows, inspect the Hermes gateway, send notifications, and approve pending device pairings *(packages/mcp-server/src/tools/alfred.ts:18-28)*.
@@ -69,6 +69,21 @@ The Desk-and-delegation surface — what just happened, what is open, what Alfre
 | `list_in_flight_agents` | Ephemeral `exec-*` subagents currently spawned and not yet torn down. | — |
 
 `list_state_changes` is the canonical audit feed (`docs/STATE-MUTATION.md`). `source` values include `briefing.morning`, `steward`, `nightly_narrative`, `manual.<userid>`.
+
+</Accordion>
+
+<Accordion title="Desk actions — act_on_decision, reverse_decision (2 tools)">
+
+These two tools wrap the same `/api/v1/decisions` surface the `/desk` dashboard uses, so a connector can clear and unwind Desk cards on the principal's behalf *(packages/mcp-server/src/tools/alfred.ts:457-572)*.
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `act_on_decision` | Act on one Desk card with the same five buttons the dashboard exposes (`delegate` / `defer` / `done` / `do` / `noise`). | `id`, `action`, `note?`, `source?`, `matter_ref?`, `task_ref?`, `source_headline?` |
+| `reverse_decision` | Undo a decision back to pending — flips `state → reversed` and `DecisionRouterWorkflow` runs the inverse side-effects on the next tick. | `id` |
+
+`act_on_decision` resolves to `POST /api/v1/decisions` *(packages/mcp-server/src/tools/alfred.ts:539-552)*. The action enum mirrors the dashboard exactly — `delegate` re-arms the source signal and lets the matched instinct's agent fire; `defer` parses a natural-language `note` into `resurface_at`; `done` resolves and seeds a learning observation; `do` (intent `take_mine` on the wire) spawns a `to_do/<ts>.md` for the principal; `noise` materialises a `signal_noise_pattern` so the next similar card is filtered upstream. The `note` field is **required for `delegate` and `defer`** (validated server-side via a `superRefine`) and optional for `done` / `do` / `noise`. `source` defaults to `needs_attention` (the common Desk case) but accepts `approval`, `judgment`, `to_do`, `desk_originated`, `pattern_proposal`, or `instinct_fire`. The id passed for a needs_attention card is the bare stem (e.g. `2026-05-28-04-15-xyz`) — the tool wraps it to `needs_attention/<id>.md` before POSTing. Not idempotent — each call writes a fresh decision record, and a retry against an already-handled card returns the new decision with the source already in its target state.
+
+`reverse_decision` resolves to `POST /api/v1/decisions/:id/reverse` *(packages/mcp-server/src/tools/alfred.ts:568-571)*. Idempotent: a no-op on an already-reversed card returns `{ok: true, id, already_reversed: true}`. Best-effort by design — for `intent=delegate`, the source-record flip is reversible but a dispatched agent's outbound side-effects cannot be unwound, so ctrl-api stamps `delegate` decisions with `is_reversible: false` and the route returns HTTP 400 in that case. The four other intents (`defer`, `done`, `take_mine`, `noise`) reverse cleanly.
 
 </Accordion>
 
