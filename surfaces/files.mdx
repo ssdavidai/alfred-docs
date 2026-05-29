@@ -1,0 +1,184 @@
+---
+title: "Files"
+description: "The principal's raw blob store — PDFs, images, archives, audio, code zips — anything that isn't markdown the principal reads in Obsidian."
+---
+
+`/files` is the principal's blob store. The vault is for markdown the
+principal reads and edits in Obsidian; `/files` is for the **binary
+artifacts Alfred can read** but the principal owns — PDFs the accountant
+sends, screenshots dropped on email, archive ZIPs, the odd MP3, the
+wake-word `.tflite`. Distinct vocabulary, distinct page, distinct volume.
+
+The file store is **Store 5** in the alfred-black persistence model
+(joining vault / alfred-state.db / ingest.db / cold.db). The store is
+single-writer (ctrl-api), de-duped at upload, and cold-archived after
+90 days of no access.
+
+## The /files page
+
+The page is a three-pane layout mirroring `/vault` *(packages/web/src/dashboard/FilesPage.tsx)*:
+
+```
+┌─ Files                                       + Upload ─┐
+│ [────── quota strip ──────]                            │
+│ ┌──────────┬──────────────────┬─────────────────────┐  │
+│ │  tree    │  list (drop zone)│  preview pane       │  │
+│ │  search  │                  │  stat + body        │  │
+│ └──────────┴──────────────────┴─────────────────────┘  │
+└────────────────────────────────────────────────────────┘
+```
+
+- **Tree** — prefix tree built from the live file list, click to filter.
+- **Search** — substring match on path + label.
+- **List** — the drop zone. Drag any file onto it for an XHR upload
+  with a live progress bar (XHR because `fetch` doesn't surface upload
+  progress).
+- **Preview pane** — `derivePreviewMode` picks one of `image`, `pdf`,
+  `text`, `audio`, `video`, `binary`. Text bodies under 256 KB inline;
+  PDFs render in an iframe; everything else gets a download button.
+- **Quota strip** — `live_bytes` / `cold_bytes` / `live_count` /
+  `cold_count` from `getFilesUsage`. Soft cap 10 GB live, with a
+  banner once you cross 80 %.
+
+### Upload
+
+Two ways:
+
+1. Drag onto the list pane.
+2. Click *Upload* — opens the file picker.
+
+The upload XHR posts to `/api/files/upload` with a multipart body — one
+`file` part + optional `label` and `prefix` text fields. The server
+computes sha256 streaming through; if the same hash already lives in
+`file_blobs`, the upload is *deduped* — the new `files` row points at
+the existing blob and the upload completes near-instantly.
+
+### Labels
+
+Every file has an optional principal-facing label, separate from its
+original filename. Edits are debounced + optimistic — type in the label
+input, the local row updates immediately, the PATCH fires 500 ms after
+your last keystroke. A failure rolls back with a toast.
+
+## Store 5 — the schema
+
+Migrations `0006_files_table.sql` (PR1) + `0010_files_cold_archive.sql`
+(PR5) define the store across `alfred-state.db`:
+
+```sql
+files (
+  id                 TEXT PRIMARY KEY,             -- ULID
+  path               TEXT NOT NULL,                -- relative under /files/
+  size_bytes         INTEGER NOT NULL,
+  sha256             TEXT NOT NULL,                -- joins file_blobs
+  content_type       TEXT,                         -- MIME, best-effort
+  original_filename  TEXT,
+  principal_label    TEXT,
+  uploaded_by        TEXT NOT NULL,                -- 'principal' | 'alfred' | 'chore:<slug>'
+  uploaded_at        INTEGER NOT NULL,             -- unix ms
+  last_accessed_at   INTEGER,                      -- unix ms
+  deleted_at         INTEGER,                      -- null = live, non-null = tombstone
+  cold_promoted_at   INTEGER                       -- unix ms; null = live blob
+)
+
+file_blobs (
+  sha256             TEXT PRIMARY KEY,
+  size_bytes         INTEGER NOT NULL,
+  path               TEXT NOT NULL,                -- canonical on-disk path
+  ref_count          INTEGER NOT NULL DEFAULT 1,
+  cold_promoted_at   INTEGER
+)
+```
+
+### Dedupe
+
+PR5 split a hot `files` row from the cold `file_blobs` row by sha256.
+Two principal-facing uploads of the same content (a PDF the accountant
+re-sends, a screenshot pasted twice) become **one** on-disk blob with
+`ref_count=2`. Both `files` rows render in the UI; only one disk
+allocation. Soft-delete decrements `ref_count`; the blob unlinks at 0.
+
+### Cold archive (90-day)
+
+`alfred-learn` runs a daily promotion sweep:
+
+1. Find `files` rows with `last_accessed_at` > 90 days OR (NULL AND
+   `uploaded_at` > 90 days), `deleted_at IS NULL`,
+   `cold_promoted_at IS NULL`.
+2. For each underlying `file_blobs` row, read the live blob, zstd-compress
+   at level 19, write to the `files_cold_data` volume at `cold:<ULID>`,
+   delete the live blob, set `file_blobs.path='cold:<ULID>'` and
+   `cold_promoted_at=now()`.
+3. Flip the matching `files.cold_promoted_at` rows.
+
+On read, ctrl-api's `GET /api/v1/files/blob/<path>` route detects the
+`cold:` path prefix and transparently zstd-decompresses on the wire.
+First-access of a cold file is slower; subsequent accesses can optionally
+trigger a *restore* via `POST /api/v1/files/cold-restore/:file_id` that
+moves the bytes back to the live volume.
+
+### The two volumes
+
+| Volume | Mount | Purpose |
+|---|---|---|
+| `files_data` | ctrl-api `rw`; hermes / alfred `ro` | Live blobs (`<ULID>/<safe-name>`) |
+| `files_cold_data` | ctrl-api `rw` only | zstd-compressed cold blobs (`cold:<ULID>`) |
+
+## ctrl-api routes
+
+| Verb | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/v1/files/upload` | Multipart upload; dedupes on sha256 |
+| `GET` | `/api/v1/files/list` | List live files; pagination via `?after` |
+| `GET` | `/api/v1/files/usage` | Quota strip — live/cold byte + count totals |
+| `GET` | `/api/v1/files/stat/*` | One file's metadata |
+| `GET` | `/api/v1/files/blob/*` | The blob — transparent zstd-decompress for cold |
+| `PATCH` | `/api/v1/files/*` | Label edit (only `principal_label` is patchable) |
+| `DELETE` | `/api/v1/files/*` | Soft-delete; `deleted_at` non-null |
+| `GET` | `/api/v1/files/cold-candidates` | The 90-day candidate list (admin) |
+| `POST` | `/api/v1/files/cold-promote/:file_id` | Force-promote one file |
+| `POST` | `/api/v1/files/cold-restore/:file_id` | Restore a cold file to live |
+
+Auth on `/blob/*` accepts `?token=` query param (because `<img>` /
+`<iframe>` can't carry an `Authorization` header).
+
+## The `files` MCP server — 9 tools
+
+Hermes loads `files` as one of its stdio MCP apps
+*(packages/mcp-server/src/tools/files.ts)*. Catalogue:
+
+| Tool | What it does |
+|---|---|
+| `list` | List live files; filter by `prefix` / `since` / `content_type` |
+| `stat` | One file's metadata |
+| `read_text` | Read text-mode body (up to 256 KB) |
+| `read_base64` | Read binary body as base64 (capped) |
+| `search` | Substring on path + label + extracted text (PR4+) |
+| `create` | Programmatically write a file — uploader becomes the agent id |
+| `delete` | Soft-delete |
+| `usage` | Quota — bytes + counts, live vs cold |
+| `describe` | A summary of the catalogue + posture (used by skill docs) |
+
+Both **main** and **workers** profiles load this app, so chores can
+`files.create()` outputs that the principal then sees on `/files`.
+
+## What uses Files today
+
+- **Voice-bridge's `files` read-only surface** — `list/stat/read_text/search`
+  on the realtime agent so the principal can ask "read me the PDF the
+  accountant sent" mid-call (PR #142, PR4 of #114).
+- **Wake-word `.tflite` models** uploaded through the Supervisor bridge
+  land in `/share/openwakeword/`, but the *source* model the operator
+  drops in often comes from `/files`.
+- **Chore outputs** — chores that produce binary artefacts (PDF
+  invoices, daily summary audio briefings) `files.create()` into Store 5
+  so the principal has them on `/files` and a vault `chore-run.md`
+  references the file ULID.
+
+## Related pages
+
+- [The four-store model](/architecture/four-store-model) — where files
+  fit alongside vault / state.db / cold / ingest
+- [Vault](/surfaces/vault) — the markdown counterpart
+- [Voice bridge](/architecture/sidecars#voice-bridge-twilio-openai-realtime)
+  — files surface in the realtime agent

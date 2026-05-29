@@ -36,18 +36,19 @@ A fresh deploy stands up roughly thirty containers. The ones a principal actuall
  </Card>
 </CardGroup>
 
-## The four-store architecture
+## The five-store architecture
 
-The vault is **the principal's published surface, not the system's database**. Behind it, four physical stores split responsibility *(packages/ctrl/docs/STORAGE-ARCHITECTURE.md)*:
+The vault is **the principal's published surface, not the system's database**. Behind it, five physical stores split responsibility *(packages/ctrl/docs/STORAGE-ARCHITECTURE.md)*:
 
 | # | Store | Backing | Purpose |
 |---|-------|---------|---------|
 | 1 | **Vault** | Markdown files in `vault_data` | Twelve canonical record types the principal reads and edits in Obsidian |
 | 2 | **`alfred-state.db`** | SQLite + WAL + sqlite-vec | Machine working memory — signals, observations, audit, embeddings |
-| 3 | **Cold archive** | DuckDB / Parquet (deferred) | Forensic long tail (>90d) |
-| 4 | **`ingest.db`** | SQLite | Raw inbound stream events (7-day TTL) |
+| 3 | **`ingest.db`** | SQLite | Raw inbound stream events (7-day TTL) |
+| 4 | **Cold archive** | SQLite + zstd-compressed blobs | Forensic long tail (>90d for signals/observations) |
+| 5 | **Files** | `files_data` + `files_cold_data` volumes; metadata in `alfred-state.db.files` | Binary blobs the principal owns and Alfred can read — PDFs, audio, archives |
 
-`ctrl-api` is the **sole writer** of stores 2 and 4. Everything else — `alfred-learn`, the vault daemon, the MCP servers — writes through HTTP endpoints. This eliminates multi-process SQLite contention and makes vault drift structurally impossible *(CLAUDE.md §5.2)*.
+`ctrl-api` is the **sole writer** of stores 2–5. Everything else — `alfred-learn`, the vault daemon, the MCP servers — writes through HTTP endpoints. This eliminates multi-process SQLite contention and makes vault drift structurally impossible *(CLAUDE.md §5.2)*.
 
 ## The licence and the posture
 

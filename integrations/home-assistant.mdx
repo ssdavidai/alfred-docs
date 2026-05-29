@@ -1,0 +1,403 @@
+---
+title: "Home Assistant"
+description: "Alfred as Home Assistant's conversation agent + Tier 4 autonomy, wired through a HACS integration and 26 dedicated MCP tools."
+---
+
+Alfred Black integrates with [Home Assistant](https://www.home-assistant.io)
+on three independent layers:
+
+1. **Alfred reads and writes HA** — through 26 `ha__*` MCP tools loaded into
+   Hermes-main, gated by a one-time LLAT paste on `/channels`. Alfred can
+   answer "is the kitchen window open?", set the thermostat, author scenes,
+   and (with approval) install integrations.
+2. **HA reaches Alfred** — through a HACS-installed integration
+   (`ssdavidai/alfred-ha`) that registers Alfred as a `ConversationEntity`
+   so HA's Assist routes typed and voice turns to your tenant.
+3. **Alfred speaks Supervisor** — the same `alfred-ha` integration v1.1
+   ships a Supervisor bridge: nine `alfred.supervisor_*` services that
+   forward to Supervisor REST under HA's auto-injected `SUPERVISOR_TOKEN`,
+   so any LLAT-bearing caller gains Supervisor scope without SSH.
+
+This page is the user-facing writeup. The 35-tool, eight-PR Tier 4 spec
+lives in [`docs/specs/issue-115-ha-tier4-autonomy.md`](https://github.com/ssdavidai/alfred/blob/main/docs/specs/issue-115-ha-tier4-autonomy.md);
+26 of those tools are shipping today (11 reads + 5 PR3-stubbed writes +
+10 PR3 CRUD), with the remaining ~9 deferred to PR4-PR8.
+
+## The /channels Home Assistant card
+
+The HA card on `/channels` is the operator's single setup surface
+*(packages/web/src/dashboard/HaCard.tsx)*. The card carries five visual
+states, derived from ctrl-api's `/api/v1/channels/ha/status`:
+
+| State | What you see | What's true on the backend |
+|---|---|---|
+| `unconfigured` | URL + LLAT paste form, hint pointing at `ssdavidai/alfred-ha` | No row in `ha_channel` |
+| `connecting` | spinner; polls `/status` every 3 s | Token written; bootstrap workflow probing |
+| `connected` | `ha_url`, `ha_version`, registry counts, Disconnect | `connect_state='connected'`, registry cached |
+| `error` | verbatim `last_error` + Retry + Disconnect | A probe failed; the LLAT is still in Vaultwarden |
+| `disconnected` | re-show connect form | row deleted by the principal |
+
+### The LLAT discipline
+
+Home Assistant long-lived access tokens are ~180-char JWTs. They are
+persisted **only** to Vaultwarden, never to `state.db` columns or `.env`
+files; ctrl-api fetches them at call time and decrypts in-process. The
+HaCard:
+
+- pastes into a `<textarea>` with `autoComplete="off"` and `spellCheck={false}`;
+- clears local React state immediately on submit;
+- never re-displays the value — there is no "show password" toggle;
+- any in-toast surfacing routes through `redactLlat()` which leaks only
+  the first 8 chars.
+
+Mint your LLAT under HA's *Profile → Long-Lived Access Tokens*. Use a
+dedicated token labelled `alfred` so you can revoke per-caller; treat the
+LLAT the same way you'd treat root SSH access.
+
+## The `hass` MCP server — 26 tools today
+
+Hermes-main loads `hass` as the **7th** stdio MCP app
+*(packages/hermes/hermes-config.yaml.njk)*. The full catalogue groups into
+three tiers:
+
+### Tier 1 — 11 read tools (PR #128)
+
+| Tool | What it does |
+|---|---|
+| `ha__connection_status` | Probe `/status` — `unconfigured`/`connecting`/`connected`/`error` + counts |
+| `ha__list_entities` | Cached registry; filter by `domain` or `area` |
+| `ha__get_state` | Live state pull via `/api/states/<entity_id>` |
+| `ha__get_history` | Historical state series (default 24 h, max 168 h) |
+| `ha__get_logbook` | Human-readable event log |
+| `ha__list_areas` | Rooms, with their device + entity counts |
+| `ha__list_devices` | Physical devices, optionally filtered by area |
+| `ha__list_automations` | Automation index — id, alias, state, last-triggered |
+| `ha__list_scripts` | Script index |
+| `ha__get_calendars` | HA-side calendars (read-only views) |
+| `ha__resolve_entity` | Fuzzy match "kitchen light" → `light.kitchen_main` |
+
+### Tier 2 — 5 write tools (PR #143)
+
+| Tool | Gate | Notes |
+|---|---|---|
+| `ha__call_service` | `decision_ref` | Loop-guard: same `entity_id` + same `decision_ref` within 60 s → 409 |
+| `ha__propose_automation` | none | Enqueues a draft pack for principal approval; doesn't apply anything |
+| `ha__apply_proposal` | `decision_ref` | Applies an approved proposal, captures a pre-snapshot |
+| `ha__rollback_snapshot` | `decision_ref` | One-shot — `restored_at` flips to non-null |
+| `ha__subscribe_events` | none | Narrow follow-up subscriptions; the household watcher already runs in `alfred-learn` |
+
+### Tier 3 — 10 CRUD tools (PR #161 / PR3 of #115)
+
+| Family | Tools | Gate |
+|---|---|---|
+| Automations | `ha__list_automations_full`, `ha__create_automation`, `ha__update_automation`, `ha__delete_automation` | delete: `decision_ref` |
+| Scenes | `ha__create_scene`, `ha__update_scene`, `ha__delete_scene` | none |
+| Scripts | `ha__create_script`, `ha__update_script`, `ha__delete_script` | none |
+
+### The loop-guard contract
+
+A naive flow — Alfred toggles the kitchen light → HA emits a
+`state_changed` event → Alfred's `LearningWorkflow` ingests it as a signal
+→ proposes a chore → calls `ha__call_service` again — would close a loop.
+Every Tier 2 write therefore:
+
+1. Takes a `decision_ref` (vault path or ulid) in its input;
+2. Has ctrl-api persist an `ha_run` row keyed
+   `(entity_id, created_at, decision_ref)` **before** issuing the upstream
+   HA request;
+3. Has the `HaWatcherWorkflow` (alfred-learn) suppress `state_changed`
+   events that fall inside a 30 s window of an Alfred-originated write,
+   keyed by the partial index `idx_ha_run_entity_recent`.
+
+A second write to the same `entity_id` with the **same** `decision_ref`
+within `HA_LOOP_GUARD_COOLDOWN_MS` (default 60 s) returns
+`409 LOOP_GUARD`. A different `decision_ref` always passes — that means
+Alfred re-derived a decision from a new signal.
+
+### Tier 4 — deferred
+
+The remaining ~9 tools (`ha__integration_discover`/`configure`/`remove`,
+`ha__hacs_search`/`install`/`remove`, `ha__addon_install`/`uninstall`,
+`ha__core_restart`/`update`, `ha__backup_create`/`restore`,
+`ha__user_create`/`mint_llat`, registry CRUD) are designed in the spec
+and ship in PR4-PR8 of #115. The defaults Sir locked on 2026-05-29:
+
+- **Approval gates** — anything whose effect isn't trivially reversible
+  through HA's UI in <2 minutes is gated by `decision_ref`. Cheap entity
+  CRUD (scenes, scripts, automation create/update) runs free.
+- **Auto-snapshots** — `addon_install`, `integration_add`, `core_restart`,
+  `core_update` take a snapshot first. Always.
+- **Daybook entries** — cheap reversible writes are silent; everything
+  else lands in the principal's daybook.
+
+## The `alfred-ha` HACS integration
+
+[`ssdavidai/alfred-ha`](https://github.com/ssdavidai/alfred-ha) is a
+HACS-installable HA integration with two responsibilities:
+
+1. Plug Alfred in as a `ConversationEntity` — the brain behind HA Assist.
+2. Re-publish a slice of Supervisor REST as `alfred.supervisor_*` HA
+   services (v1.1.0+).
+
+### Install via HACS (custom repository)
+
+The integration is not yet in the public HACS catalogue.
+
+1. In HA, open **HACS → Integrations**.
+2. **⋮ → Custom repositories**.
+3. **Repository:** `https://github.com/ssdavidai/alfred-ha`
+4. **Category:** `Integration`. Click **Add**.
+5. **Download → Restart Home Assistant.**
+
+### Configure
+
+Before configuring, mint a channel token from your tenant. The token is
+shown **exactly once** — copy it now.
+
+<CodeGroup>
+```bash UI
+# 1. Open https://<your-tenant>/study → Channel tokens
+# 2. Mint new token for channel "ha-conversation"
+# 3. Copy the raw token shown in the toast
+```
+
+```bash API
+curl -sS -X POST \
+  -H "Authorization: Bearer $AAS_API_KEY" \
+  -H "Content-Type: application/json" \
+  "https://<your-tenant>/api/v1/channel-tokens/mint" \
+  -d '{"channel":"ha-conversation","label":"My HA"}'
+# response.token  is the raw ha_… string — copy it.
+```
+</CodeGroup>
+
+Then in Home Assistant:
+
+1. **Settings → Devices & Services → Add integration → Alfred Black.**
+2. **Alfred tenant URL** — `https://home.alfred.black` (or your tenant's
+   Tailscale MagicDNS host for non-public tenants).
+3. **Channel token** — the `ha_…` token you just minted.
+4. **Submit.** The integration runs a preflight against
+   `/api/v1/channels/ha/turn` and shows an inline error if either field
+   is wrong.
+5. **Settings → Voice assistants → Assist → Conversation agent** → select
+   **Alfred Black**.
+
+Now every HA Assist turn (typed and voice) routes to your tenant.
+
+### Conversation turn shape
+
+Each typed turn is one non-streaming HTTPS POST from the integration to
+ctrl-api:
+
+```http
+POST /api/v1/channels/ha/turn
+Authorization: Bearer ha_<token>
+Content-Type: application/json
+
+{ "text": "...", "conversationId": "...", "language": "en",
+  "agentId": "...", "haInstallId": "..." }
+```
+
+ctrl-api validates the bearer against `channel_tokens.channel='ha-conversation'`,
+rate-limits per `haInstallId` (30 turns/min), forwards to Hermes-main with
+session key `ha-<haInstallId>` (one persistent session per HA install →
+continuity across conversations), then wraps Hermes' reply in HA's
+`ConversationEntity` envelope (`response.speech.plain.speech`).
+
+### Voice satellites + wake-words card
+
+The `/channels` page additionally renders a *Voice satellites + wake-words*
+card (`VoiceWakeWordsCard.tsx`) listing every voice satellite registered
+against this tenant, the wake-word model loaded on each, and the firing
+gate (Wyoming-only or Alfred-direct). See [Wake words](#wake-words) below
+for the firmware constraint.
+
+## The Supervisor bridge (v1.1+)
+
+Home Assistant long-lived access tokens don't grant Supervisor scope —
+there's no way to mint an "addon API key" from inside HA. That blocks any
+external operator (Alfred, ad-hoc scripts) from driving addon configs,
+writing to `/share/`, or fetching host info without falling back to SSH
+or per-addon credentials.
+
+Since **v1.1.0**, `alfred-ha` declares `"hassio"` as a manifest dependency,
+which makes HA auto-inject a `SUPERVISOR_TOKEN` into the integration's
+environment. The integration re-publishes a small surface of Supervisor
+REST as HA services callable via the standard
+`POST /api/services/<domain>/<service>` route with any LLAT.
+
+**The result: any LLAT-bearing caller gets Supervisor scope through
+Alfred.** HA-side auth (the LLAT) gates *who*; the bridge gates *what*
+(`/share/...`, addon REST, host info, OS info).
+
+### The 9 services
+
+| Service | Args | Result |
+|---|---|---|
+| `alfred.supervisor_call` | `{method, path, json_body?}` | `{status, body}` — generic passthrough |
+| `alfred.supervisor_addon_info` | `{slug}` | `{status, body}` (addon config + options + state) |
+| `alfred.supervisor_addon_options_update` | `{slug, options, restart?}` | `{status, body}` |
+| `alfred.supervisor_host_info` | — | `{status, body}` |
+| `alfred.supervisor_os_info` | — | `{status, body}` |
+| `alfred.supervisor_share_write` | `{path, content_base64, create_parents?}` | `{ok, path, bytes_written}` |
+| `alfred.supervisor_share_read` | `{path}` | `{ok, path, size, content_base64}` |
+| `alfred.supervisor_share_list` | `{path}` | `{ok, path, entries[]}` |
+| `alfred.supervisor_share_delete` | `{path}` | `{ok, path}` |
+
+All services support `return_response=true` — call them with
+`?return_response=true` to receive the response envelope.
+
+### Path safety on `/share/`
+
+Writes and reads are scoped to `/share/` and reject:
+
+- `..` traversal (`unsafe_path / reason: traversal`)
+- absolute-path escapes (`reason: outside_share_root`)
+- symlinks that resolve outside `/share/` (`reason: symlink_escape`)
+- payloads exceeding 10 MB (`too_large`)
+
+`supervisor_share_delete` rejects directories — recursive removal must go
+through the explicit `supervisor_call` escape hatch. The rationale: a
+future Alfred regression cannot wipe a tenant's wake-word library.
+
+### Example — upload an openWakeWord model from outside HA
+
+```bash
+HA=https://ha.example.com
+LLAT=eyJhbGciOi…
+
+curl -sS -X POST \
+  -H "Authorization: Bearer $LLAT" \
+  -H "Content-Type: application/json" \
+  "$HA/api/services/alfred/supervisor_share_write?return_response=true" \
+  -d "$(jq -n \
+        --arg path "/share/openwakeword/alfred.tflite" \
+        --arg b64 "$(base64 -w0 < alfred.tflite)" \
+        '{path: $path, content_base64: $b64}')"
+```
+
+Response:
+
+```json
+{
+  "service_response": {
+    "ok": true,
+    "path": "/share/openwakeword/alfred.tflite",
+    "bytes_written": 1048576
+  }
+}
+```
+
+### Where the bridge doesn't work
+
+The bridge requires **HA OS** or **HA Supervised**. On **HA Container** or
+**HA Core (venv)** the services are still registered but every call returns:
+
+```json
+{
+  "error": "supervisor_unavailable",
+  "installation_type": "container_or_core",
+  "hint": "Alfred's Supervisor bridge requires HA OS or HA Supervised…"
+}
+```
+
+That lets the caller branch on installation type instead of interpreting
+a generic 5xx.
+
+## Wake words
+
+The HA Voice PE (Preview Edition) ships with three stock wake words
+(*Hey Jarvis*, *Hey Mycroft*, *Okay Nabu*). For "Hey Alfred" the principal
+has two paths today:
+
+| Path | Constraint | What it gets you |
+|---|---|---|
+| **firmware-flash microWakeWord** | runs on the satellite's ESP32 directly; flashing required | Lowest-latency local detection. No microWakeWord model for "Alfred" exists in the public catalogue — Sir trains one. |
+| **openWakeWord via Wyoming addon** | satellite-only-fires-with-Wyoming experimental firmware | Public catalogue has an `alfred.tflite` model. Higher latency (audio round-trips through HA Wyoming). |
+
+Today on Sir's home: openWakeWord with the `alfred` model loaded into
+`/share/openwakeword/`, satellite running the View Assist Companion
+community firmware so the satellite only fires when Wyoming responds.
+Documented as a not-yet-production path — the long-term plan is microWakeWord
+on the ESP32 once the model exists.
+
+Upload models via the [Supervisor bridge](#example-upload-an-openwakeword-model-from-outside-ha)
+or — if you SSH into HA OS — via the Advanced SSH addon's authorized_keys.
+
+## SSH into HA OS (the third path)
+
+The Advanced SSH addon's `authorized_keys` lives in HA's protected
+`/data/` namespace; setting it from outside the OS is awkward. The
+`alfred-ha` Supervisor bridge unblocks this in one call:
+
+```bash
+curl -sS -X POST \
+  -H "Authorization: Bearer $LLAT" \
+  -H "Content-Type: application/json" \
+  "$HA/api/services/alfred/supervisor_addon_options_update?return_response=true" \
+  -d '{
+    "slug": "core_ssh",
+    "options": { "authorized_keys": ["ssh-ed25519 AAAA... alfred@..."] },
+    "restart": true
+  }'
+```
+
+The bridge writes through Supervisor; Supervisor restarts the addon;
+SSH access lands without you ever clicking through the HA UI.
+
+### When to SSH vs MCP vs bridge
+
+| Goal | Use |
+|---|---|
+| Read entity state, list automations, call a service | `ha__*` MCP tools |
+| Edit `/share/*`, addon options, host info, mint LLATs | `alfred.supervisor_*` HA services (the bridge) |
+| Edit Supervisor-protected files outside `/share/`, hot-patch HA core, debug a wedged addon | SSH into HA OS |
+
+The first two paths go through HA's auth surface — every action is
+logged, attributable to a specific LLAT, and revocable in 5 seconds. SSH
+bypasses all of that, so reserve it for break-glass.
+
+## ctrl-api routes (today)
+
+| Verb | Path | Source |
+|---|---|---|
+| `POST` | `/api/v1/channels/ha/connect` | URL + LLAT paste; writes to Vaultwarden |
+| `GET` | `/api/v1/channels/ha/status` | drives `HaCard` state |
+| `POST` | `/api/v1/channels/ha/disconnect` | revokes |
+| `GET` | `/api/v1/channels/ha/registry` | cached entities/areas/devices/automations/scripts |
+| `POST` | `/api/v1/channels/ha/turn` | the conversation-agent inbound |
+| `POST` | `/api/v1/channels/ha/services/:domain/:service` | the `ha__call_service` backend |
+| `GET/POST/PUT/DELETE` | `/api/v1/channels/ha/automations[/:id]` | PR3 CRUD |
+| `GET/POST/PUT/DELETE` | `/api/v1/channels/ha/scenes[/:id]` | PR3 CRUD |
+| `GET/POST/PUT/DELETE` | `/api/v1/channels/ha/scripts[/:id]` | PR3 CRUD |
+| `POST` | `/api/v1/channels/ha/proposals/:id/apply` | `ha__apply_proposal` |
+| `POST` | `/api/v1/channels/ha/snapshots/:id/rollback` | `ha__rollback_snapshot` |
+| `POST` | `/api/v1/channels/ha/events/subscribe` | `ha__subscribe_events` |
+| `POST` | `/api/v1/channel-tokens/mint` | the HA-conversation token mint |
+
+All defined under `packages/ctrl/src/api/routes/channels_ha.ts`,
+`channel_tokens.ts`.
+
+## state.db tables
+
+Three migrations carry the HA surface today: `0005_ha_channel.sql`,
+`0008_ha_event_subscription.sql`, `0009_ha_registry_vanished.sql`.
+
+| Table | Purpose |
+|---|---|
+| `ha_channel` | One row — connection state + URL + Vaultwarden item id holding the LLAT |
+| `ha_registry` | Cached entities / areas / devices / automations / scripts (refreshed every 6 h) |
+| `ha_event` | Diagnostic ring buffer of state-change events the watcher saw |
+| `ha_run` | Append-only ledger of Alfred-originated writes — the loop-guard's source of truth |
+| `ha_snapshot` | Pre-apply YAML captures for rollback |
+| `ha_proposal` | Draft automation packs awaiting principal approval |
+| `ha_gap` | Detected gaps in the principal's setup (PR6 — surveyor-style proposals) |
+| `channel_tokens` | The HA-conversation tokens — one row per minted token; hashed at rest |
+
+## Related pages
+
+- [The Hermes runtime](/architecture/hermes-runtime) — the 7th MCP server context
+- [Channels](/surfaces/channels) — the HA card on `/channels`
+- [Voice bridge](/architecture/sidecars#voice-bridge-twilio-openai-realtime) — phone-call + Voice PE adjacency
+- [Files](/surfaces/files) — the blob store the wake-word .tflite lands in via the Supervisor bridge

@@ -57,6 +57,7 @@
               "surfaces/desk",
               "surfaces/brief",
               "surfaces/vault",
+              "surfaces/files",
               "surfaces/matters",
               "surfaces/instincts",
               "surfaces/decisions",
@@ -77,6 +78,9 @@
               "integrations/composio",
               "integrations/plane",
               "integrations/paperclip",
+              "integrations/home-assistant",
+              "integrations/recall",
+              "integrations/tailscale",
               "integrations/sure",
               "integrations/vaultwarden",
               "integrations/gmail-calendar-drive",
@@ -812,7 +816,9 @@
               "mcp-reference/plane",
               "mcp-reference/vaultwarden",
               "mcp-reference/execute",
-              "mcp-reference/hermes"
+              "mcp-reference/hermes",
+              "mcp-reference/hass",
+              "mcp-reference/files"
             ]
           }
         ]
