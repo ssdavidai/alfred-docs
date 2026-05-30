@@ -350,10 +350,13 @@
             "group": "Agents",
             "pages": [
               "api-reference/agents/get-agent",
+              "api-reference/agents/get-tool-dispositions",
               "api-reference/agents/list",
               "api-reference/agents/list-profiles",
               "api-reference/agents/main-task",
-              "api-reference/agents/set-model"
+              "api-reference/agents/set-model",
+              "api-reference/agents/set-tool-disposition",
+              "api-reference/agents/spawn-focused-subagent"
             ]
           },
           {
@@ -498,6 +501,7 @@
               "api-reference/integrations/enable-stream",
               "api-reference/integrations/enable-tool",
               "api-reference/integrations/execute",
+              "api-reference/integrations/get-defaults",
               "api-reference/integrations/google-identity",
               "api-reference/integrations/list",
               "api-reference/integrations/list-actions",

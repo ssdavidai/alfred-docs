@@ -1,0 +1,101 @@
+---
+title: "Spawn focused subagent"
+description: "Hand a one-shot task to an ephemeral focused subagent on the Hermes workers profile and relay its plain-text reply."
+api: "POST /api/v1/agents/focused-subagent"
+---
+
+## Overview
+
+Spawns a short-lived focused subagent on the Hermes **workers** profile (`:18790`) with the same Alfred identity + journal as main, runs the supplied task synchronously, and returns the subagent's plain-text reply *(packages/ctrl/src/api/routes/agents.ts)*. This is the backing surface for the `delegate_to_focused_agent` MCP tool — the LLM relays the reply verbatim.
+
+The session key is `focus-<sanitised-domain>-<short-hash>` (4-byte random hex), so two simultaneous delegations on the same domain don't share session memory. ctrl-api posts to `POST http://hermes:18790/v1/responses` with a system persona that instructs the subagent to load the relevant skill (`alfred-<domain>-skill.md` or `alfred-composio-<domain>-skill.md`) and reply in plain text for verbatim relay.
+
+## When to use it
+
+The MCP tool's prompt enumerates two trigger conditions for the LLM:
+
+1. **The target server is currently `delegated`** in the [tool disposition map](/api-reference/agents/get-tool-dispositions) — the LLM has no native tools from that server on this turn, so delegation is the only path.
+2. **Tool-heavy fanout** even on a `direct` server — a Gmail batch over many messages, a Calendar scan across multiple calendars, a Paperclip multi-issue update, a Sure transaction triage across N rows. Fanning 10–20 calls inline blows the context budget and stalls Voice PE; delegating bundles the work into one round-trip on a cheaper model.
+
+## Body Parameters
+
+<ParamField body="task" type="string" required>
+ What the subagent should do, in plain language. Be specific — the subagent does not see the parent conversation, only this task and the optional `context`. Include record paths, vault slugs, recipient handles, time windows.
+</ParamField>
+
+<ParamField body="domain" type="string" required>
+ Which tool surface the subagent needs. Used to slug the session key and select the skill the subagent loads at boot. For MCP servers: `sure`, `plane`, `vaultwarden`, `paperclip`, `hass`, `files`, `execute`, `alfred`, `alfred-ctrl`. For a Composio toolkit: `googlecalendar`, `gmail`, `notion`, `linear`, `slack`, etc.
+</ParamField>
+
+<ParamField body="context" type="string" optional>
+ 1–2 sentences from the parent turn that help the subagent ground its answer (e.g. "Sir's primary calendar id is `<id>`."). Keep it tight — long context erodes the same token budget delegation is meant to save.
+</ParamField>
+
+## Response
+
+<ResponseField name="ok" type="boolean">`true` if the subagent returned a reply (even if empty).</ResponseField>
+
+<ResponseField name="reply" type="string">
+ The subagent's plain-text reply, trimmed. Empty replies are reported as `"(subagent returned empty reply)"` so the caller always has something to relay.
+</ResponseField>
+
+<ResponseField name="session_key" type="string">
+ The workers-profile session key used for this delegation — `focus-<domain-slug>-<4-byte-hex>`.
+</ResponseField>
+
+<ResponseField name="domain" type="string">Echo of the requested domain.</ResponseField>
+
+## Timeout
+
+The call has a **60 s hard timeout** *(AbortSignal.timeout(60_000) in agents.ts)*. Most tool-heavy fanouts complete well inside that — the workers profile uses a cheaper model and a focused skill, so the per-turn latency is dominated by the actual tool calls, not the prompt.
+
+If the workers gateway is unreachable, the route returns HTTP 504 with `error: "HERMES_WORKERS_UNREACHABLE"`. If the workers profile's API key isn't rendered on disk yet (fresh tenant, init hasn't completed), it returns 500 with `error: "HERMES_WORKERS_KEY_MISSING"`.
+
+## Request Example
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://alfred.black/api/v1/agents/focused-subagent \
+ -H "Authorization: Bearer $AAS_API_KEY" \
+ -H "Content-Type: application/json" \
+ -d '{
+  "task": "List the 5 most recent unread emails in Sir'\''s inbox with one-line summaries.",
+  "domain": "gmail",
+  "context": "Sir uses the primary inbox for everything; no labels in play."
+ }'
+```
+
+</RequestExample>
+
+## Response Example
+
+<ResponseExample>
+
+```json 200 OK
+{
+ "ok": true,
+ "reply": "Five most recent unread:\n1. Plane invoice for May (acme.co) — $2,142 due 2026-06-15.\n2. Calendar invite from Miguel — coffee Thursday 10:00.\n3. GitHub PR review request on alfred-platform#893.\n4. AWS billing alert — Tier-3 usage 92 %.\n5. Notion comment from Joe on cratchit-bootstrap doc.",
+ "session_key": "focus-gmail-9a3f1c4e",
+ "domain": "gmail"
+}
+```
+
+```json 504 Gateway Timeout
+{
+ "ok": false,
+ "error": "HERMES_WORKERS_UNREACHABLE",
+ "detail": "fetch failed: getaddrinfo ENOTFOUND hermes",
+ "session_key": "focus-gmail-9a3f1c4e"
+}
+```
+
+</ResponseExample>
+
+<Note>
+NOT idempotent — every call spawns a fresh session. The session key is fresh per call (4-byte random hex), so concurrent calls on the same domain are safe.
+</Note>
+
+<Note>
+The subagent runs under the same Alfred identity and reads the same `one-alfred` journal as main, so it has the cross-channel memory the principal expects. It does *not* have access to messaging channels (Slack, Telegram, SMS) — those live on the main profile. To notify the principal of a result the parent LLM uses [`alfred__notify_principal`](/mcp-reference/alfred) after relaying the reply.
+</Note>

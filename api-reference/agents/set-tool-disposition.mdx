@@ -1,0 +1,110 @@
+---
+title: "Set tool disposition"
+description: "Flip one MCP server between DIRECT (inline tools) and DELEGATED (hidden, reachable via focused subagent). Queues a debounced ~10 s Hermes restart."
+api: "POST /api/v1/agents/tool-disposition"
+---
+
+## Overview
+
+Upserts the disposition row for one MCP server in `state.db.tool_disposition` and queues a debounced Hermes restart so the change takes effect on the next boot of the main profile's gateway *(packages/ctrl/src/api/routes/agents.ts)*.
+
+A flip changes what the LLM on the main profile sees on every turn:
+
+- **`direct`** — Hermes init leaves the server's `tools.include` alone; the LLM sees the server's native tools every turn (fastest, costs tokens).
+- **`delegated`** — Hermes init writes `tools.include: []` on that server's config block, hiding its tools from the main catalogue. The server process still spawns and still serves the workers profile, so the LLM can still reach it via `delegate_to_focused_agent` — that route lives on the workers profile (cheaper model, +3–5 s per use).
+
+The dashboard's `/tools` page is the primary call site (`updated_by: "sir"`); the `set_tool_disposition` MCP tool is the secondary (`updated_by: "alfred"`).
+
+## Debounced restart
+
+Every successful flip arms a **10 s debounce timer** *(HERMES_RESTART_DEBOUNCE_MS in agents.ts)*. A burst of flips inside the window resets the timer, so N back-to-back flips coalesce into one `docker compose restart hermes`. Pay the ~10 s restart cost once, not N times. The flipped row is persisted immediately; only the gateway reload is debounced.
+
+## Self-protected servers
+
+Three servers control Alfred's own self-management surface — flipping them to `delegated` would hide the very tools needed to flip them back:
+
+- **`alfred-ctrl`** — admin/agents/state/health routes.
+- **`alfred`** — vault, decisions, briefings, *and this very disposition surface*.
+- **`execute`** — the Composio gateway every connected-app action funnels through.
+
+The **backend accepts the flip** (no special case in the route) so a deliberate operator-side rescue is always possible. The **dashboard surfaces them as `locked`** with a tooltip *(packages/web/src/tools/ToolsPage2.tsx)*, and the `set_tool_disposition` MCP tool guards against accidental flips by requiring Sir's verbatim confirmation phrase before flipping any of the three.
+
+## Body Parameters
+
+<ParamField body="server" type="string" required>
+ MCP server to flip. Must be one of: `alfred-ctrl`, `alfred`, `sure`, `plane`, `vaultwarden`, `execute`, `paperclip`, `hass`, `files`. Anything else returns 400.
+</ParamField>
+
+<ParamField body="disposition" type="string" required>
+ Target state — `direct` or `delegated`.
+</ParamField>
+
+<ParamField body="updated_by" type="string" optional>
+ Audit attribution. One of `sir` (the dashboard toggle) or `alfred` (the MCP tool). Defaults to `alfred` if omitted. `init` is reserved for the migration seed.
+</ParamField>
+
+## Response
+
+<ResponseField name="ok" type="boolean">Always `true` on a successful write.</ResponseField>
+
+<ResponseField name="row" type="object">
+ The persisted disposition row after the upsert.
+
+ <Expandable title="Row fields">
+ <ResponseField name="server" type="string">Echo of the server name.</ResponseField>
+ <ResponseField name="disposition" type="string">The new disposition.</ResponseField>
+ <ResponseField name="updated_at" type="string">ISO-8601 UTC write timestamp.</ResponseField>
+ <ResponseField name="updated_by" type="string">Resolved attribution (`sir` / `alfred` / `init`).</ResponseField>
+ </Expandable>
+</ResponseField>
+
+<ResponseField name="restart_scheduled" type="boolean">Always `true`. A debounced Hermes restart was armed (or re-armed, if one was already pending).</ResponseField>
+
+<ResponseField name="restart_debounce_ms" type="number">Debounce window in milliseconds. Currently `10000`.</ResponseField>
+
+## Request Example
+
+<RequestExample>
+
+```bash cURL
+curl -X POST https://alfred.black/api/v1/agents/tool-disposition \
+ -H "Authorization: Bearer $AAS_API_KEY" \
+ -H "Content-Type: application/json" \
+ -d '{"server": "sure", "disposition": "delegated", "updated_by": "sir"}'
+```
+
+</RequestExample>
+
+## Response Example
+
+<ResponseExample>
+
+```json 200 OK
+{
+ "ok": true,
+ "row": {
+  "server": "sure",
+  "disposition": "delegated",
+  "updated_at": "2026-05-30T14:27:09Z",
+  "updated_by": "sir"
+ },
+ "restart_scheduled": true,
+ "restart_debounce_ms": 10000
+}
+```
+
+```json 400 Bad Request
+{
+ "error": "Unknown server: foo. Known servers: alfred-ctrl, alfred, sure, plane, vaultwarden, execute, paperclip, hass, files"
+}
+```
+
+</ResponseExample>
+
+<Note>
+Idempotent in steady state — flipping `sure` to `delegated` twice leaves it at `delegated`. NOT idempotent in side effects: every call re-arms the debounce timer, so a flurry can extend the gateway-restart wait by up to one debounce window past the last flip.
+</Note>
+
+<Note>
+The disposition only takes effect after Hermes restarts and `render_mcp_servers.py` re-reads the `tool_disposition` table at init time. Voice-bridge (gpt-realtime-2) and the standalone `mcp-server` HTTP transport for `claude.ai` do **not** consult `tool_disposition` — they're separate runtimes with their own tool catalogues.
+</Note>

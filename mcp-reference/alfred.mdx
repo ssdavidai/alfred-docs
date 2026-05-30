@@ -1,6 +1,6 @@
 ---
 title: "alfred"
-description: "Vault read/write, agent delegation, Temporal workflows, briefings, decision actions, gateway diagnostics, notifications — the Alfred control surface as 26 MCP tools."
+description: "Vault read/write, agent delegation, Temporal workflows, briefings, decision actions, gateway diagnostics, tool dispositions, focused-subagent delegation, notifications — the Alfred control surface as 29 MCP tools."
 ---
 
 The `alfred` app is the Alfred control surface for LLM clients. It surfaces the parts of ctrl-api that are safe to drive from a one-hour bearer token: read or write any vault record, kick off Temporal workflows, inspect the Hermes gateway, send notifications, and approve pending device pairings *(packages/mcp-server/src/tools/alfred.ts:18-28)*.
@@ -98,6 +98,26 @@ Read-only diagnostics on the Hermes runtime that fronts every Alfred LLM call. R
 | `list_openclaw_allowed_tools` | Gateway tool inventory — `builtin_tools[]` (sessions_*, web_search, web_fetch, composio_execute) + `mcp_tools[]`. | — |
 
 Composio per-app actions are not in `list_openclaw_allowed_tools` — they enumerate separately through [`list_composio_tools`](/mcp-reference/execute).
+
+</Accordion>
+
+<Accordion title="Tool dispositions and focused-subagent delegation (3 tools)">
+
+The three tools that let Alfred himself manage the runtime-flippable DIRECT-or-DELEGATED disposition of every MCP server he loads — and reach delegated servers via an ephemeral focused subagent on the workers profile. See [Tool dispositions and delegation](/architecture/hermes-runtime#tool-dispositions-and-delegation) for the full architecture and [the linked skill](https://github.com/ssdavidai/alfred/blob/main/packages/mcp-server/skills/alfred-mcp-skill.md) at `packages/mcp-server/skills/alfred-mcp-skill.md` for the conversational playbook.
+
+| Tool | Purpose | Key params |
+|---|---|---|
+| `list_tool_dispositions` | Read the live disposition map for the 9 MCP servers Hermes-main loads (`alfred`, `alfred-ctrl`, `sure`, `plane`, `vaultwarden`, `paperclip`, `execute`, `hass`, `files`). Cached ~60 s in-process; cheap to call at session start. | — |
+| `set_tool_disposition` | Flip one server between `direct` (native tools in main's catalogue) and `delegated` (tools hidden on main; reachable via `delegate_to_focused_agent`). Triggers a debounced ~10 s Hermes restart. | `server`, `disposition`, `updated_by?` |
+| `delegate_to_focused_agent` | Spawn a one-shot focused subagent on the workers profile with the same Alfred identity + journal. Returns plain text intended for verbatim relay. | `task`, `domain`, `context?` |
+
+`list_tool_dispositions` resolves to [`GET /api/v1/agents/tool-disposition`](/api-reference/agents/get-tool-dispositions). Use at the top of a session to ground subsequent tool-vs-delegate choices — disposition can change between turns (Sir flips via dashboard or voice).
+
+`set_tool_disposition` resolves to [`POST /api/v1/agents/tool-disposition`](/api-reference/agents/set-tool-disposition). Use when Sir says "demote X to delegated", "promote X to direct", "hide the sure tools", or when token-per-turn climbs and Alfred wants to suggest the flip himself. After the queued restart lands the new disposition is live; the canonical principal-facing line is *"I've queued the restart — give it about ten seconds."*
+
+**Self-protection rule.** Three servers control Alfred's own self-management surface: `alfred-ctrl` (admin/agents/state/health), `alfred` (vault + decisions + briefings + this very disposition surface), and `execute` (the Composio gateway). The backend accepts the flip — a deliberate rescue is always possible — but the MCP tool's prompt instructs Alfred never to flip any of the three without Sir's verbatim confirmation phrase *"yes, change my Alfred's tool disposition"* in his most recent message. Same pattern as the HA self-destruct guard.
+
+`delegate_to_focused_agent` resolves to [`POST /api/v1/agents/focused-subagent`](/api-reference/agents/spawn-focused-subagent). Two trigger conditions: (1) the target server is currently `delegated` in `list_tool_dispositions` so the LLM has no native tools from it this turn; (2) the work is a tool-heavy fanout — Gmail batch, calendar across multiple calendars, Paperclip multi-issue update, Sure transaction triage — and inlining 10–20 calls would blow the context budget. **Relay the subagent's reply verbatim**; the subagent's wording is calibrated for direct relay, and rewriting it dilutes correctness and burns tokens. 60 s timeout. Not idempotent — each call spawns a fresh session keyed `focus-<domain>-<short-hash>`.
 
 </Accordion>
 
