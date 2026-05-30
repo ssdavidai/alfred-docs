@@ -1,0 +1,80 @@
+---
+title: "List tool dispositions"
+description: "Read the live DIRECT-or-DELEGATED disposition for each of the 9 MCP servers Hermes loads on the main profile."
+api: "GET /api/v1/agents/tool-disposition"
+---
+
+## Overview
+
+Returns the per-MCP-server disposition map that controls whether each server's tools are exposed inline on the main Hermes profile (**DIRECT**) or hidden behind the `delegate_to_focused_agent` gateway (**DELEGATED**). Backed by `state.db.tool_disposition` (migration `0014`) *(packages/ctrl/src/api/routes/agents.ts)*.
+
+The disposition table seeds every server as `direct` at first boot — initial deploy is behaviour-identical to pre-Phase-B. Sir flips servers to `delegated` (via the `/tools` UI or `set_tool_disposition` MCP tool) when he wants the token savings on a server he uses infrequently, accepting the +3–5 s delegation hop per tool use.
+
+The dashboard polls this route to render the `/tools` MCP-servers section; Alfred's `list_tool_dispositions` MCP tool exposes the same map so a fresh session can glance the current state before deciding whether to call a native tool or delegate.
+
+## The 9 known servers
+
+```
+alfred-ctrl    alfred    sure       plane      vaultwarden
+execute        paperclip hass       files
+```
+
+Anything outside this allowlist is rejected by the [POST endpoint](/api-reference/agents/set-tool-disposition). New servers must be added by migration before they can be flipped.
+
+## Response
+
+<ResponseField name="dispositions" type="array">
+ One row per known server, ordered alphabetically by `server`.
+
+ <Expandable title="Disposition fields">
+ <ResponseField name="server" type="string">
+ MCP server name (one of the 9 known servers).
+ </ResponseField>
+ <ResponseField name="disposition" type="string">
+ Current state — `direct` or `delegated`.
+ </ResponseField>
+ <ResponseField name="updated_at" type="string">
+ ISO-8601 UTC timestamp of the most recent write.
+ </ResponseField>
+ <ResponseField name="updated_by" type="string">
+ Who wrote the row — `init` (migration seed), `sir` (dashboard flip), or `alfred` (`set_tool_disposition` MCP tool).
+ </ResponseField>
+ </Expandable>
+</ResponseField>
+
+## Request Example
+
+<RequestExample>
+
+```bash cURL
+curl -X GET https://alfred.black/api/v1/agents/tool-disposition \
+ -H "Authorization: Bearer $AAS_API_KEY"
+```
+
+</RequestExample>
+
+## Response Example
+
+<ResponseExample>
+
+```json 200 OK
+{
+ "dispositions": [
+  {"server": "alfred",      "disposition": "direct",    "updated_at": "2026-05-30T11:53:04Z", "updated_by": "init"},
+  {"server": "alfred-ctrl", "disposition": "direct",    "updated_at": "2026-05-30T11:53:04Z", "updated_by": "init"},
+  {"server": "execute",     "disposition": "direct",    "updated_at": "2026-05-30T11:53:04Z", "updated_by": "init"},
+  {"server": "files",       "disposition": "direct",    "updated_at": "2026-05-30T11:53:04Z", "updated_by": "init"},
+  {"server": "hass",        "disposition": "direct",    "updated_at": "2026-05-30T11:53:04Z", "updated_by": "init"},
+  {"server": "paperclip",   "disposition": "direct",    "updated_at": "2026-05-30T11:53:04Z", "updated_by": "init"},
+  {"server": "plane",       "disposition": "direct",    "updated_at": "2026-05-30T11:53:04Z", "updated_by": "init"},
+  {"server": "sure",        "disposition": "delegated", "updated_at": "2026-05-30T14:27:09Z", "updated_by": "sir"},
+  {"server": "vaultwarden", "disposition": "direct",    "updated_at": "2026-05-30T11:53:04Z", "updated_by": "init"}
+ ]
+}
+```
+
+</ResponseExample>
+
+<Note>
+Cheap and idempotent. Hermes' `list_tool_dispositions` MCP tool caches this for ~60 s in-process so calling it at the top of every session is essentially free.
+</Note>

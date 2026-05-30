@@ -1,47 +1,73 @@
 ---
 title: "Tools"
-description: "The Hermes allowlist audit — every Composio action, stream, built-in primitive, and MCP endpoint Alfred is permitted to reach."
+description: "The Hermes allowlist audit — every Composio action, stream, built-in primitive, and MCP server Alfred is permitted to reach, plus the per-server DIRECT/DELEGATED toggle."
 ---
 
-`/tools` is a flat audit view: every tool, stream, and MCP endpoint the Hermes runtime will currently let through. One source query — `getAllowedTools` — and a single-input search box across the lot *(packages/web/src/tools/ToolsPage2.tsx:48-103)*.
+`/tools` is the audit view + control surface for everything the Hermes runtime will currently let through. Three sections — Connected apps, Built-in primitives, and **MCP servers (grouped, with the disposition toggle)** — fed by `getAllowedTools` and `getToolDispositions` *(packages/web/src/tools/operations.ts; packages/web/src/tools/ToolsPage2.tsx)*. A single search input filters all three sections in parallel.
 
 ## The three sections
 
 <CardGroup cols={3}>
  <Card title="Connected apps">
- One block per Composio toolkit the principal has authorised, split into **Streams** (sources Alfred can read from) and **Actions** (operations Alfred can perform). Each entry shows its slug, a one-line description, and a deprecation marker when applicable *(ToolsPage2.tsx:212-237, 346-384)*.
+ One card per Composio toolkit the principal has authorised, split into **Streams** (sources Alfred can read from) and **Actions** (operations Alfred can perform). Each entry shows its slug, a one-line description, and a deprecation marker when applicable.
  </Card>
  <Card title="Built-in">
- Primitives the Hermes runtime ships with — file operations, shell, vault read/write — independent of any connected toolkit *(ToolsPage2.tsx:240-285)*.
+ Primitives the Hermes runtime ships with — file operations, shell, vault read/write — independent of any connected toolkit.
  </Card>
  <Card title="MCP servers">
- Every tool registered through one of Alfred's MCP servers (`alfred`, `sure`, `plane`, `vaultwarden`, `execute`, `hermes`, `alfred-ctrl`). Each row is `name · server · description` *(ToolsPage2.tsx:287-338)*.
+ **Grouped by server** (previously a flat per-tool list). Each server card carries name, tool count, current DIRECT/DELEGATED state, the audit line, and a flip toggle. Expand a card to see the old per-tool detail.
  </Card>
 </CardGroup>
 
-The header shows the running total of entries across all three sections — typically around **155 to 165 tools** on a freshly-connected tenant *(ToolsPage2.tsx:105-108)*.
+The header shows the running total of entries across all three sections.
+
+## The MCP-server cards
+
+Each server in the new MCP section renders as a card:
+
+- **Name + tool count** — the server slug and how many tools it has registered with Hermes-main.
+- **Current disposition** — `direct` (brass) or `delegated` (marginalia), pulled from [`GET /api/v1/agents/tool-disposition`](/api-reference/agents/get-tool-dispositions).
+- **Audit line** — `last flipped <when> by <who>`, where `who` is `init` (the migration seed), `sir` (a dashboard flip), or `alfred` (the `set_tool_disposition` MCP tool).
+- **Flip button** — toggles to the other state. After a flip the card shows `hermes restarting…` for ~12 s, then refetches the live state.
+- **Expandable per-tool detail** — `show tools ▸` opens the old flat list of `name · description` for that server, collapsed by default.
+
+A one-paragraph explainer above the list spells out the trade-off:
+
+> **Direct** — Alfred sees the server's tools inline every turn (fastest, costs tokens). **Delegated** — the tools are hidden on the main runtime; Alfred reaches them by spawning a focused sub-agent on the workers profile (cheaper model, +3–5 s per use). Flipping queues a ~10-second Hermes restart. Default: Direct.
+
+See [Tool dispositions and delegation](/architecture/hermes-runtime#tool-dispositions-and-delegation) for the architecture and the [API endpoint](/api-reference/agents/set-tool-disposition) for the contract.
+
+## Self-protected servers
+
+Three servers carry a `locked` chip and no flip button:
+
+- **`alfred`** — vault, decisions, briefings, *and the disposition surface itself*.
+- **`alfred-ctrl`** — admin / agents / state / health.
+- **`execute`** — the Composio gateway every connected-app action funnels through.
+
+Delegating any of the three would hide the very tools needed to flip them back. The backend accepts the flip on a deliberate operator-side rescue path; the UI doesn't. Hover the chip for the tooltip.
 
 ## Command approval — the second gate
 
-The allowlist below the search box says what Alfred is *permitted to reach*. Hermes enforces a second gate beyond the allowlist: a privileged command — a shell action, a write, a sensitive tool call — **pauses for the principal's approval before it runs** *(ToolsPage2.tsx:139-166)*.
+The allowlist below the search box says what Alfred is *permitted to reach*. Hermes enforces a second gate beyond the allowlist: a privileged command — a shell action, a write, a sensitive tool call — **pauses for the principal's approval before it runs**.
 
 Pending approvals arrive in two places:
 
-1. **The originating channel** — if the agent picked up the work from email, the approval prompt lands in email; from Telegram, in Telegram; from `/desk`, on `/desk`.
+1. **The originating channel** — email approvals land in email; Telegram in Telegram; `/desk` cards on `/desk`.
 2. **`/dashboard/devices`** — the catch-all surface, paired Hermes clients including the principal's Claude Desktop / Claude Code device.
 
 <Note>
-The MCP-server side of approval flow has two paths: a human form at `/authorize` that takes the `MCP_APPROVAL_SECRET`, and a programmatic bearer-token bypass for internal agents. Both use timing-safe comparison; both issue tokens with a one-hour TTL *(packages/mcp-server/src/index.ts:210-242, packages/mcp-server/src/oauth/provider.ts:35)*. The approval secret is rotated from [Settings → Agent Configuration → Hand off to Claude](/surfaces/study).
+The MCP-server side of approval flow has two paths: a human form at `/authorize` that takes the `MCP_APPROVAL_SECRET`, and a programmatic bearer-token bypass for internal agents. Both use timing-safe comparison; both issue tokens with a one-hour TTL. The approval secret is rotated from [Settings → Agent Configuration → Hand off to Claude](/surfaces/study).
 </Note>
 
 ## Per-app status
 
-Inside Connected apps, each toolkit row carries an `auto_config_state` chip — `configured` (brass) means streams and skills were wired automatically after the OAuth handshake; anything else (marginalia) means Alfred reached the toolkit but the auto-config reconciler has not closed the loop yet. The `reconcileComposioAutoConfig` Wasp job runs every minute to catch laggards *(packages/web/main.wasp:1253-1262)*.
+Inside Connected apps, each toolkit card carries an `auto_config_state` chip — `configured` (brass) means streams and skills were wired automatically after the OAuth handshake; anything else (marginalia) means Alfred reached the toolkit but the auto-config reconciler has not closed the loop yet. The `reconcileComposioAutoConfig` Wasp job runs every minute to catch laggards.
 
 ## Search
 
-One input across everything. Type a slug fragment, a toolkit name, or a description term — the page filters all three sections in parallel and updates each count. The filter is a plain `includes` match on slug, display name, server, and description *(ToolsPage2.tsx:57-103)*.
+One input across everything. Type a slug fragment, a toolkit name, or a description term — the page filters all three sections in parallel and updates each count. The MCP grouping respects the filter (a server whose tools all filter out collapses to the disposition row, so you can still flip it).
 
 <Tip>
-If a tool you expect is missing here, check [Connections](/surfaces/connections) first — Composio toolkits only surface after the auto-config reconciler runs. If a row says `configured` but you still can't invoke the tool, the **command approval** gate is probably holding it.
+If a tool you expect is missing here, check [Connections](/surfaces/connections) first — Composio toolkits only surface after the auto-config reconciler runs. If a server card shows zero tools but a disposition row, the MCP stdio process may have failed to register its tools at boot; restart Hermes and check `docker compose logs hermes`. If a row says `configured` on a connected app but you still can't invoke a tool, the **command approval** gate is probably holding it.
 </Tip>

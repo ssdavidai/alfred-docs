@@ -6,7 +6,9 @@ api: "POST /api/v1/integrations/execute"
 
 ## Overview
 
-Resolves the active connection for the action's toolkit (scoped to the calling tenant), merges `DEFAULT_ARGS[action]` with the user-supplied args, then runs the Composio Python SDK inside the `alfred-learn` container via `docker exec`. Returns Composio's raw result.
+Resolves the active connection for the action's toolkit (scoped to the calling tenant), then forwards the call to the **alfred-learn Composio HTTP sidecar** at `http://alfred-learn:8788/composio/execute` *(packages/learn/src/composio_server.py)*. The sidecar holds a warmed Composio SDK client in process memory, merges any cached primary-entity [defaults](/api-reference/integrations/get-defaults) under the LLM-supplied args, runs the call in a worker thread, and returns Composio's raw result.
+
+Before PR #177 (Phase A) this route shelled out to `docker exec alfred-learn python3 -c <script>` — every action paid ~4.5 s of Python startup + SDK import. The sidecar pays that once at process boot, so per-call latency drops to **~300–500 ms**. The route shape and response are unchanged; only the transport moved from `docker exec` to service-DNS HTTP.
 
 This is the endpoint behind the gateway's `composio_execute` tool — every Gmail send, Calendar create, Notion update, GitHub PR create, Slack post, etc. funnels through here.
 
@@ -17,7 +19,7 @@ This is the endpoint behind the gateway's `composio_execute` tool — every Gmai
 </ParamField>
 
 <ParamField body="arguments" type="object" optional>
- Action-specific arguments. Merged on top of `DEFAULT_ARGS[action]` so server defaults can be overridden.
+ Action-specific arguments. The sidecar merges cached primary-entity defaults (e.g. `{calendarId: <primary>}` for `googlecalendar`) **under** these args, so an explicit `calendarId` in the request still wins. See [Get integration defaults](/api-reference/integrations/get-defaults).
 </ParamField>
 
 ## Response
@@ -75,4 +77,8 @@ curl -X POST -H "Authorization: Bearer $AAS_API_KEY" \
 
 <Note>
 This is the canonical surface the agent reaches via `self({endpoint: "/api/v1/integrations/execute", method: "POST", body: {...}})`. Per-toolkit `alfred-composio-<toolkit>/SKILL.md` files are auto-generated on connect and tell Alfred exactly which actions exist + their args.
+</Note>
+
+<Note>
+**Emergency rollback.** The `COMPOSIO_EXECUTOR=docker|http` env flag on ctrl-api preserves the old `docker exec` path for emergency rollback if the sidecar misbehaves. Default is `http`. The sidecar's health endpoint is `GET http://alfred-learn:8788/health`.
 </Note>

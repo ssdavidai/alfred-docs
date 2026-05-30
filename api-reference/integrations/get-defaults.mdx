@@ -1,0 +1,85 @@
+---
+title: "Get integration defaults"
+description: "Read the cached primary-entity default args ctrl-api injects under every Composio execute call for a (toolkit, user_id) pair."
+api: "GET /api/v1/integrations/defaults"
+---
+
+## Overview
+
+Returns the cached default arguments that the [composio sidecar](/api-reference/integrations/execute) merges **under** the LLM-supplied args before calling Composio *(packages/ctrl/src/api/routes/integrations.ts)*. The cache lives in `state.db.composio_user_defaults` (migration `0015`). The defaults are populated at OAuth-completion time (the `auto-config` handler runs the toolkit's primary-entity list call once per connection) and can be force-refreshed via `POST /api/v1/integrations/:toolkit/refresh-defaults`.
+
+The merge is `{...defaults, ...llm_args}` — the LLM's explicit args always win. The injection short-cuts fanouts like "what's on my calendar tomorrow" that would otherwise call `GOOGLECALENDAR_LIST_CALENDARS` first, then iterate `GOOGLECALENDAR_EVENTS_LIST` across all of Sir's calendars; with `calendarId: <primary>` pre-injected, the single events-list call targets the right calendar directly.
+
+## Currently populated
+
+- **`googlecalendar`** — `{calendarId: <primary>}`, resolved via `GOOGLECALENDAR_LIST_CALENDARS` picking the entry where `primary === true` or `id === 'primary'`.
+
+## TODO
+
+- **`gmail`** — primary inbox / `userId='me'` is already the SDK default; the value cached here is mostly the email address for the per-toolkit `SKILL.md`.
+- **`notion`** — default workspace via a search or list-users call.
+
+The same pattern lands trivially as each toolkit's `cacheComposioPrimaryDefaults` branch is wired.
+
+## Query Parameters
+
+<ParamField query="toolkit" type="string" required>
+ Composio toolkit slug, lowercased. e.g. `googlecalendar`, `gmail`, `notion`.
+</ParamField>
+
+<ParamField query="user_id" type="string" required>
+ The Composio `user_id` for this tenant (per-tenant — every tenant has exactly one).
+</ParamField>
+
+## Response
+
+<ResponseField name="defaults" type="object | null">
+ Cached default args. `null` if no row exists for `(toolkit, user_id)`. Otherwise an object the sidecar merges under the LLM args before the SDK call.
+</ResponseField>
+
+<ResponseField name="source" type="string">
+ Where the cache row came from — `oauth_completion` (the typical case — written by the auto-config handler when the connection was first activated), `user_explicit` (manual override), or `discovery` (filled in by a later auto-refresh).
+</ResponseField>
+
+<ResponseField name="updated_at" type="string">ISO-8601 UTC timestamp of the most recent write.</ResponseField>
+
+## Request Example
+
+<RequestExample>
+
+```bash cURL
+curl -X GET "https://alfred.black/api/v1/integrations/defaults?toolkit=googlecalendar&user_id=alfred-home" \
+ -H "Authorization: Bearer $AAS_API_KEY"
+```
+
+</RequestExample>
+
+## Response Example
+
+<ResponseExample>
+
+```json 200 OK
+{
+ "defaults": {"calendarId": "ssd@example.com"},
+ "source": "oauth_completion",
+ "updated_at": "2026-05-30T11:54:18Z"
+}
+```
+
+```json 200 OK (no cache row)
+{
+ "defaults": null
+}
+```
+
+```json 400 Bad Request
+{
+ "error": "toolkit and user_id query params are required"
+}
+```
+
+</ResponseExample>
+
+<Note>
+The sidecar reads this endpoint on every `/composio/execute` and caches the result for `COMPOSIO_DEFAULTS_TTL_SECONDS` (default 300 s) per `(toolkit, user_id)`. Failures are logged and swallowed — the execute still goes through with the LLM-supplied args verbatim, which matches pre-Phase-C behaviour. There is no hard dependency on this route being up.
+</Note>

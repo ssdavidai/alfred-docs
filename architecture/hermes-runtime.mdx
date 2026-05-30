@@ -77,6 +77,28 @@ A sixth stdio app, **`hermes`**, lives in the MCP server bundle to surface the H
 
 The five stdio apps all live in one compiled Node bundle at `/opt/mcp-stdio/dist/bin/stdio-app.js`, dispatched by app id *(packages/hermes/Dockerfile:138-141)*. The init container `rsync`s the bundle into each profile's `mcp-stdio/` directory at first boot. Per-profile MCP timeout is 120s; connect timeout 60s.
 
+## Tool dispositions and delegation
+
+Each of the 9 MCP servers Hermes-main loads carries a **runtime-flippable disposition** in `state.db.tool_disposition` (migration `0014`):
+
+- **`direct`** (the default seed for every server) — the LLM on the main profile sees the server's native tools every turn. Fastest, costs tokens.
+- **`delegated`** — the server's tools are **hidden from main's catalogue**, but the server process still spawns and still serves the workers and heavy profiles. The LLM reaches it by spawning a focused subagent on workers (`POST /api/v1/agents/focused-subagent`), exposed as the `delegate_to_focused_agent` MCP tool. Cheaper model, +3–5 s per use.
+
+`packages/hermes/init/render_mcp_servers.py` reads the disposition table at boot — read-only via `file:...?mode=ro` — and, for the main profile only, writes `tools.include: []` on every `delegated` block. Workers, heavy, and the sealed codex-builder are untouched: the disposition is a **profile-wide knob on main only**, so every channel main serves (Telegram, Slack, SMS, Paperclip, in-tenant chat) sees the same map.
+
+Flips happen through two surfaces — both upsert the same `state.db.tool_disposition` row and arm a 10 s debounced restart so a burst coalesces into one gateway reload:
+
+| Surface | Caller | `updated_by` |
+|---|---|---|
+| `/tools` dashboard toggle | the principal | `sir` |
+| `set_tool_disposition` MCP tool *(packages/mcp-server/src/tools/alfred.ts)* | the LLM, when Sir asks or when token-per-turn climbs | `alfred` |
+
+Both flow through `POST /api/v1/agents/tool-disposition` and round-trip through the [list endpoint](/api-reference/agents/get-tool-dispositions). The 9 known servers: `alfred-ctrl`, `alfred`, `sure`, `plane`, `vaultwarden`, `execute`, `paperclip`, `hass`, `files`.
+
+**Self-protected servers.** Three of the 9 — `alfred-ctrl`, `alfred`, `execute` — control Alfred's own self-management surface and Composio progressive disclosure; delegating any of them would hide the tools needed to flip them back. The backend accepts the flip (no special case in the route, so a deliberate rescue is always possible) but the dashboard surfaces them as `locked`, and the MCP tool guards against accidental flips with a verbatim confirmation phrase.
+
+**Other runtimes don't consult the table.** The voice-bridge realtime agent (gpt-realtime-2) and the standalone `mcp-server` HTTP transport for `claude.ai` are separate runtimes with their own tool catalogues — `voice-bridge` uses `VOICE_ALLOWED_MCP_TOOLS`, `mcp-server` filters by OAuth `appId`. They're not affected by Hermes-main flips.
+
 ## The supervisor's role
 
 `supervisor.sh` is a 342-line bash script that does a surprising amount of work at boot:
