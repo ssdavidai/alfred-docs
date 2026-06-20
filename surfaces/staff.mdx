@@ -13,19 +13,33 @@ The Alfred Black design language frames the system as a household: a butler ("Al
 
 ## The actual roster
 
-Under the metaphor, every "specialist" is a named agent bound to a Hermes profile. The roster is enumerated at [Settings → Agent Configuration](/surfaces/study) via `getAgentConfig`, with three top-level profiles *(packages/web/src/dashboard/StudyPage.tsx:222-241)*:
+Under the metaphor, every "specialist" is a named agent bound to a Hermes profile. The live tenant catalogue reports these stable agent ids; deployments may change the model names, but the split between profiles is the current runtime shape:
 
 <CardGroup cols={3}>
- <Card title="Alfred (main)">
- The principal's conversational counterpart on every channel — Slack, Telegram, SMS, the web app, email replies. Carries persistent memory across turns; reads SOUL.md / USER.md / RULES.md at every prompt. Hermes profile: **`main`** (port 18789).
+ <Card title="Alfred" href="/surfaces/channels">
+ Agent id **`main`**. The principal's conversational counterpart on every channel — Slack, Telegram, SMS, the web app, and email replies. Hermes profile: **`main`**.
  </Card>
- <Card title="The Workers">
- The high-volume, cheap end of the household. **Clerk** classifies and extracts signals, drafts reflections; **chore execution** runs the principal's recurring workflows; **surveyor** labels and embeds new vault records for the semantic index. Hermes profile: **`workers`** (port 18790).
+ <Card title="Clerk">
+ Agent id **`learn-clerk`**. Event classification, extraction, and reflection — the cheap, high-volume work. Hermes profile: **`workers`**.
  </Card>
- <Card title="Heavy reasoning">
- Reserved for slow, expensive work: onboarding fact extraction, pattern discovery, the heavy-reasoning beats inside chores that need a frontier model. Used sparingly to keep the bill down. Hermes profile: **`heavy`** (port 18791).
+ <Card title="Curator">
+ Agent id **`vault-curator`**. Processes inbox material into structured vault records. Hermes profile: **`workers`**.
+ </Card>
+ <Card title="Janitor">
+ Agent id **`vault-janitor`**. Fixes structural vault issues and frontmatter problems. Hermes profile: **`workers`**.
+ </Card>
+ <Card title="Distiller">
+ Agent id **`vault-distiller`**. Extracts latent knowledge from vault records. Hermes profile: **`workers`**.
+ </Card>
+ <Card title="Onboarding">
+ Agent id **`onboarding`**. Heavy fact and pattern reasoning during setup. Hermes profile: **`heavy`**.
+ </Card>
+ <Card title="Chore reasoning">
+ Agent id **`chore`**. Heavy-reasoning steps inside recurring workflows. Hermes profile: **`heavy`**.
  </Card>
 </CardGroup>
+
+The surveyor is not exposed as a separate staff card; it is a worker-side service that labels records and writes embeddings for semantic vault search.
 
 ## Why the principal sees one face
 
@@ -33,7 +47,7 @@ The principal interacts with **Alfred** — singular, signed, in one voice. The 
 
 ## How a specialist gets work
 
-The pipeline that connects inbound signals to staff dispatch is detailed in [Signal pipeline](/architecture/signals). Briefly:
+The pipeline that connects inbound signals to staff dispatch is detailed in [Signal pipeline](/architecture/signal-pipeline). Briefly:
 
 1. A stream event lands (email, Composio webhook, OMI audio chunk, calendar push).
 2. **Workers / clerk** extract a signal from it; **workers / surveyor** indexes the artifacts.

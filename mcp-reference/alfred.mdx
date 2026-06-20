@@ -13,7 +13,7 @@ The `alfred` app is the Alfred control surface for LLM clients. It surfaces the 
 
 <Accordion title="Vault — read, search, create, update, promote (6 tools)">
 
-The vault surface enforces the [promotion contract](/architecture/promotion-contract): `create_vault_record` accepts only the 12 canonical record types. Non-canonical types (`observation`, `reflection`, `project`, `event`) are rejected by ctrl-api with HTTP 422 *(packages/mcp-server/src/tools/alfred.ts:108-113)*.
+The vault surface enforces the [promotion contract](/reference/frontmatter-shapes): `create_vault_record` accepts only the 12 canonical record types. Non-canonical types (`observation`, `reflection`, `project`, `event`) are rejected by ctrl-api with HTTP 422 *(packages/mcp-server/src/tools/alfred.ts:108-113)*.
 
 | Tool | Purpose | Key params |
 |---|---|---|
@@ -148,7 +148,7 @@ When an unknown messaging account DMs Alfred's gateway, Hermes hands it a one-ho
 ## Related
 
 <CardGroup cols={2}>
- <Card title="ctrl-api routes" href="/reference/ctrl-api-routes">
+ <Card title="ctrl-api routes" href="/api-reference/introduction">
  The full ctrl-api surface that `alfred-ctrl` exposes unfiltered.
  </Card>
  <Card title="hermes" href="/mcp-reference/hermes">
